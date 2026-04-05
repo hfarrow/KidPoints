@@ -21,4 +21,4 @@ Workflow rules for this repo:
 - Always run `yarn check` after code changes.
 - Always run `yarn test` after completing testable features.
 - Always add tests for new functionality.
-- Before a commit, prefer running `yarn clean:tooling` and then `yarn verify`.
+- Before a commit, prefer running `yarn clean:cache` and then `yarn verify`.

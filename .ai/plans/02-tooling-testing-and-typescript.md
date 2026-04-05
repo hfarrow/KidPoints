@@ -9,7 +9,7 @@ This phase converts the app to TypeScript-first development, adds Jest testing f
 - `check`: run Biome auto-fixes, ESLint auto-fixes with caching, and TypeScript type-checking with incremental caching
 - `test`: run Jest
 - `verify`: run `check` and then `test`
-- `clean:tooling`: remove ESLint and TypeScript cache artifacts
+- `clean:cache`: remove ESLint and TypeScript cache artifacts
 
 ## Key Changes
 
@@ -34,7 +34,7 @@ This phase converts the app to TypeScript-first development, adds Jest testing f
 - Configure ESLint with `--cache` and a cache location under `.cache/`.
 - Configure TypeScript incremental checking with a dedicated `.tsbuildinfo` file under `.cache/`.
 - Add `.cache/` to `.gitignore` so tooling artifacts never show up in commits.
-- Add a cleanup script, recommended name `clean:tooling`, that deletes the ESLint cache file and TypeScript build info output under `.cache/`.
+- Add a cleanup script, recommended name `clean:cache`, that deletes the ESLint cache file and TypeScript build info output under `.cache/`.
 
 ### Jest and baseline testing
 
@@ -48,7 +48,7 @@ This phase converts the app to TypeScript-first development, adds Jest testing f
 - `check`: run Biome with `--write`, then ESLint with `--fix --cache`, then `tsc --noEmit --incremental`
 - `test`: run Jest once in non-watch mode
 - `verify`: run `check` and then `test`
-- `clean:tooling`: remove `.cache/` or the specific cache files within it
+- `clean:cache`: remove `.cache/` or the specific cache files within it
 
 ## Public Interfaces and Config Surface
 
@@ -56,7 +56,7 @@ This phase converts the app to TypeScript-first development, adds Jest testing f
   - `check`
   - `test`
   - `verify`
-  - `clean:tooling`
+  - `clean:cache`
 - New config surface:
   - `tsconfig.json`
   - ESLint config file
@@ -71,7 +71,7 @@ This phase converts the app to TypeScript-first development, adds Jest testing f
 - `yarn check` successfully runs Biome fixes, ESLint fixes with cache enabled, and TypeScript type-checking with incremental output.
 - `yarn test` runs the initial Jest smoke test successfully.
 - `yarn verify` runs checks first and tests second, failing on any step.
-- `yarn clean:tooling` removes the created cache artifacts under `.cache/`.
+- `yarn clean:cache` removes the created cache artifacts under `.cache/`.
 - `.cache/` is ignored by Git and does not appear in normal status output after checks.
 - The app still starts normally after the JavaScript-to-TypeScript conversion.
 
