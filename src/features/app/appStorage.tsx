@@ -14,6 +14,7 @@ import { computeTimerSnapshot } from './timer';
 import {
   commitSharedTransaction,
   createDefaultAppDocument,
+  createEmptyTransactionState,
   getRestorePlan,
   getRevertPlan,
   getTransactionActorDeviceName,
@@ -42,10 +43,10 @@ type AppStorageValue = {
   themeMode: ThemeMode;
   transactions: TransactionRecord[];
   clearTransactionHistory: () => void;
-  getRevertPlan: (transactionId: number) => number[];
-  getRestorePlan: (transactionId: number) => number[];
-  restoreTransaction: (transactionId: number) => void;
-  revertTransaction: (transactionId: number) => void;
+  getRevertPlan: (threadId: string) => string[];
+  getRestorePlan: (threadId: string) => string[];
+  restoreTransaction: (threadId: string) => void;
+  revertTransaction: (threadId: string) => void;
   unlockParent: (pin: string) => boolean;
   addChild: (name: string) => void;
   decrementPoints: (childId: string) => void;
@@ -158,27 +159,26 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
       clearTransactionHistory: () => {
         setDocument((current) => ({
           ...current,
-          transactionState: {
-            nextTransactionId: 1,
-            transactions: [],
-          },
+          transactionState: createEmptyTransactionState(
+            current.transactionState.clientState.deviceId,
+          ),
         }));
       },
-      getRevertPlan: (transactionId) =>
-        getRevertPlan(document.transactionState, transactionId).transactionIds,
-      getRestorePlan: (transactionId) =>
-        getRestorePlan(document.transactionState, transactionId).transactionIds,
-      restoreTransaction: (transactionId) => {
+      getRevertPlan: (threadId) =>
+        getRevertPlan(document.transactionState, threadId).transactionIds,
+      getRestorePlan: (threadId) =>
+        getRestorePlan(document.transactionState, threadId).transactionIds,
+      restoreTransaction: (threadId) => {
         setDocument((current) =>
-          restoreSharedTransaction(current, transactionId, {
+          restoreSharedTransaction(current, threadId, {
             actorDeviceName,
             occurredAt: Date.now(),
           }),
         );
       },
-      revertTransaction: (transactionId) => {
+      revertTransaction: (threadId) => {
         setDocument((current) =>
-          revertSharedTransaction(current, transactionId, {
+          revertSharedTransaction(current, threadId, {
             actorDeviceName,
             occurredAt: Date.now(),
           }),

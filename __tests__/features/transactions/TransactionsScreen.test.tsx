@@ -111,20 +111,28 @@ describe('TransactionsScreen', () => {
     expect(mockReplace).toHaveBeenCalledWith('/');
   });
 
-  it('shows action threads, hides raw revert events, and restores reverted actions', () => {
+  it('shows action threads, hides raw control events, and restores reverted actions', () => {
     const revertTransaction = jest.fn();
     const restoreTransaction = jest.fn();
     const clearTransactionHistory = jest.fn();
+
     mockUseAppStorage.mockReturnValue(
       createStorageState({
         clearTransactionHistory,
-        getRestorePlan: (transactionId: number) =>
-          transactionId === 1 ? [3, 1] : [],
+        getRestorePlan: (threadId: string) =>
+          threadId === 'thread-1' ? ['thread-3', 'thread-1'] : [],
         restoreTransaction,
         revertTransaction,
         transactions: [
           createTransaction({
-            actorDeviceName: 'Parent Phone',
+            activity: [
+              {
+                actorDeviceName: 'Parent Phone',
+                eventId: 'evt-revert',
+                kind: 'revert',
+                occurredAt: 1_000,
+              },
+            ],
             entityRefs: ['child:child-1', 'child-lifecycle:child-1'],
             forward: {
               childId: 'child-1',
@@ -136,23 +144,12 @@ describe('TransactionsScreen', () => {
               type: 'child-points-adjusted',
             },
             id: 1,
-            inverse: {
-              childId: 'child-1',
-              childName: 'Ava',
-              delta: -5,
-              nextPoints: 0,
-              previousPoints: 5,
-              source: 'tap',
-              type: 'child-points-adjusted',
-            },
-            kind: 'child-points-adjusted',
-            revertedByTransactionId: 4,
-            rootTransactionId: 1,
+            latestControlTargetThreadIds: ['thread-3', 'thread-1'],
             status: 'reverted',
+            threadId: 'thread-1',
             undoPolicy: 'reversible',
           }),
           createTransaction({
-            actorDeviceName: 'Parent Phone',
             entityRefs: ['timer:shared'],
             forward: {
               nextTimerState: {
@@ -164,15 +161,12 @@ describe('TransactionsScreen', () => {
               type: 'timer-started',
             },
             id: 2,
-            inverse: null,
-            kind: 'timer-started',
-            rootTransactionId: 2,
+            threadId: 'thread-2',
             undoPolicy: 'tracked_only',
           }),
           createTransaction({
-            actorDeviceName: 'Parent Phone',
-            dependsOnTransactionIds: [1],
             entityRefs: ['child:child-1'],
+            explicitStatus: 'applied',
             forward: {
               childId: 'child-1',
               nextName: 'Rowan',
@@ -180,28 +174,8 @@ describe('TransactionsScreen', () => {
               type: 'child-renamed',
             },
             id: 3,
-            inverse: null,
-            kind: 'child-renamed',
-            revertedByTransactionId: 4,
-            rootTransactionId: 3,
             status: 'reverted',
-            undoPolicy: 'tracked_only',
-          }),
-          createTransaction({
-            actorDeviceName: 'Parent Phone',
-            dependsOnTransactionIds: [1, 3],
-            entryKind: 'revert',
-            entityRefs: ['child:child-1'],
-            forward: {
-              targetRootTransactionIds: [1, 3],
-              targetTransactionIds: [1, 3],
-              type: 'revert-chain',
-            },
-            id: 4,
-            inverse: null,
-            kind: 'revert-chain',
-            rootTransactionId: 1,
-            status: 'applied',
+            threadId: 'thread-3',
             undoPolicy: 'tracked_only',
           }),
         ],
@@ -234,7 +208,6 @@ describe('TransactionsScreen', () => {
     expect(view.getByText('5)')).toBeTruthy();
     expect(view.getByText('Ava renamed to Rowan')).toBeTruthy();
     expect(view.queryByText(/Reverted:/)).toBeNull();
-    expect(view.queryByLabelText('Revert transaction 2')).toBeNull();
     expect(view.queryByLabelText('Restore transaction 1')).toBeNull();
 
     fireEvent.press(view.getByLabelText('Select transaction 1'));
@@ -244,7 +217,7 @@ describe('TransactionsScreen', () => {
 
     fireEvent.press(view.getByLabelText('Restore transaction 1'));
 
-    expect(restoreTransaction).toHaveBeenCalledWith(1);
+    expect(restoreTransaction).toHaveBeenCalledWith('thread-1');
     expect(revertTransaction).not.toHaveBeenCalled();
   });
 });
@@ -252,14 +225,14 @@ describe('TransactionsScreen', () => {
 function createStorageState(
   overrides: Partial<{
     clearTransactionHistory: () => void;
-    getRevertPlan: (transactionId: number) => number[];
-    getRestorePlan: (transactionId: number) => number[];
+    getRevertPlan: (threadId: string) => string[];
+    getRestorePlan: (threadId: string) => string[];
     isHydrated: boolean;
     parentSession: {
       isUnlocked: boolean;
     };
-    restoreTransaction: (transactionId: number) => void;
-    revertTransaction: (transactionId: number) => void;
+    restoreTransaction: (threadId: string) => void;
+    revertTransaction: (threadId: string) => void;
     transactions: ReturnType<typeof createTransaction>[];
   }> = {},
 ) {
@@ -280,36 +253,43 @@ function createStorageState(
 
 function createTransaction(
   overrides: Partial<{
+    activity: {
+      actorDeviceName: string;
+      eventId: string;
+      kind: 'restore' | 'revert';
+      occurredAt: number;
+    }[];
     actorDeviceName: string;
-    dependsOnTransactionIds: number[];
-    entryKind: 'action' | 'restore' | 'revert';
+    dependsOnThreadIds: string[];
     entityRefs: string[];
+    explicitStatus: 'applied' | 'reverted';
     forward: object;
     id: number;
-    inverse: object | null;
     kind: string;
+    latestControlTargetThreadIds: string[];
     occurredAt: number;
-    revertedByTransactionId: number | null;
-    rootTransactionId: number;
+    rootEventId: string;
     status: 'applied' | 'reverted';
+    threadId: string;
     undoPolicy: 'reversible' | 'tracked_only';
   }>,
 ) {
   return {
+    activity: [],
     actorDeviceName: 'Parent Phone',
-    dependsOnTransactionIds: [],
-    entryKind: 'action' as const,
+    dependsOnThreadIds: [],
     entityRefs: [],
+    explicitStatus: 'reverted' as const,
     forward: {
       type: 'timer-reset',
     },
     id: 1,
-    inverse: null,
     kind: 'timer-reset',
+    latestControlTargetThreadIds: ['thread-1'],
     occurredAt: 1_000,
-    revertedByTransactionId: null,
-    rootTransactionId: 1,
+    rootEventId: 'evt-root',
     status: 'applied' as const,
+    threadId: 'thread-1',
     undoPolicy: 'tracked_only' as const,
     ...overrides,
   };

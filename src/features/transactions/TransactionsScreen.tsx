@@ -38,7 +38,7 @@ export function TransactionsScreen() {
   } = useAppStorage();
   const styles = useThemedStyles(createStyles);
   const [selectedTransactionId, setSelectedTransactionId] = useState<
-    number | null
+    string | null
   >(null);
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export function TransactionsScreen() {
     }
 
     const stillExists = getVisibleTransactions(transactions).some(
-      (transaction) => transaction.id === selectedTransactionId,
+      (transaction) => transaction.threadId === selectedTransactionId,
     );
 
     if (!stillExists) {
@@ -75,7 +75,7 @@ export function TransactionsScreen() {
       selectedTransactionId === null
         ? null
         : (orderedTransactions.find(
-            (transaction) => transaction.id === selectedTransactionId,
+            (transaction) => transaction.threadId === selectedTransactionId,
           ) ?? null),
     [orderedTransactions, selectedTransactionId],
   );
@@ -83,27 +83,27 @@ export function TransactionsScreen() {
     if (!selectedTransaction) {
       return {
         mode: null as 'restore' | 'revert' | null,
-        transactionIds: [] as number[],
+        transactionIds: [] as string[],
       };
     }
 
     if (canRevertTransaction(selectedTransaction)) {
       return {
         mode: 'revert' as const,
-        transactionIds: getRevertPlan(selectedTransaction.id),
+        transactionIds: getRevertPlan(selectedTransaction.threadId),
       };
     }
 
     if (canRestoreTransaction(selectedTransaction)) {
       return {
         mode: 'restore' as const,
-        transactionIds: getRestorePlan(selectedTransaction.id),
+        transactionIds: getRestorePlan(selectedTransaction.threadId),
       };
     }
 
     return {
       mode: null as 'restore' | 'revert' | null,
-      transactionIds: [] as number[],
+      transactionIds: [] as string[],
     };
   }, [getRestorePlan, getRevertPlan, selectedTransaction]);
   const selectedRevertSet = useMemo(
@@ -204,18 +204,15 @@ export function TransactionsScreen() {
         ) : null}
 
         {orderedTransactions.map((transaction) => {
-          const isSelected = selectedTransactionId === transaction.id;
+          const isSelected = selectedTransactionId === transaction.threadId;
           const isInRevertChain =
-            !isSelected && selectedRevertSet.has(transaction.id);
+            !isSelected && selectedRevertSet.has(transaction.threadId);
           const revertable = canRevertTransaction(transaction);
           const restorable = canRestoreTransaction(transaction);
           const selectedActionCount = isSelected
             ? selectedActionPlan.transactionIds.length
             : 0;
-          const activityEntries = getTransactionActivityEntries(
-            transaction,
-            transactions,
-          ).filter((entry) => entry.kind !== 'action');
+          const activityEntries = getTransactionActivityEntries(transaction);
 
           return (
             <Tile
@@ -238,7 +235,7 @@ export function TransactionsScreen() {
               initiallyCollapsed
               onCollapsedChange={(nextIsCollapsed) => {
                 setSelectedTransactionId(
-                  nextIsCollapsed ? null : transaction.id,
+                  nextIsCollapsed ? null : transaction.threadId,
                 );
               }}
               title={renderTransactionTitle(
@@ -295,7 +292,7 @@ export function TransactionsScreen() {
                   <View style={styles.activityList}>
                     {activityEntries.map((entry) => (
                       <Text
-                        key={entry.id}
+                        key={entry.eventId}
                         style={[
                           styles.activityItem,
                           { color: tokens.textMuted },
@@ -317,8 +314,8 @@ export function TransactionsScreen() {
                       } transaction ${transaction.id}`}
                       onPress={() =>
                         restorable
-                          ? restoreTransaction(transaction.id)
-                          : revertTransaction(transaction.id)
+                          ? restoreTransaction(transaction.threadId)
+                          : revertTransaction(transaction.threadId)
                       }
                       style={[
                         styles.revertButton,

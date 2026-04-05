@@ -3,15 +3,17 @@ import { describe, expect, it } from '@jest/globals';
 import {
   commitSharedTransaction,
   createDefaultAppDocument,
+  createTransactionSyncSnapshot,
   getRestorePlan,
   getRevertPlan,
+  reconcileTransactionDocuments,
   restoreTransaction,
   revertTransaction,
 } from '../../../src/features/app/transactions';
 
 describe('transactions', () => {
-  it('merges contiguous tap point adjustments for the same child and direction', () => {
-    let document = createDefaultAppDocument();
+  it('collapses contiguous tap point adjustments into one visible thread', () => {
+    let document = withDeviceId(createDefaultAppDocument(), 'device-a');
 
     document = commitSharedTransaction(
       document,
@@ -38,6 +40,7 @@ describe('transactions', () => {
     );
 
     expect(document.head.children[0]?.points).toBe(3);
+    expect(document.transactionState.events).toHaveLength(4);
     expect(document.transactionState.transactions).toHaveLength(2);
     expect(document.transactionState.transactions[1]?.forward).toMatchObject({
       childId,
@@ -49,8 +52,8 @@ describe('transactions', () => {
     });
   });
 
-  it('starts a new points transaction when the direction or child changes', () => {
-    let document = createDefaultAppDocument();
+  it('starts a new visible point thread when the direction or child changes', () => {
+    let document = withDeviceId(createDefaultAppDocument(), 'device-a');
 
     document = commitSharedTransaction(
       document,
@@ -88,49 +91,8 @@ describe('transactions', () => {
     ).toHaveLength(3);
   });
 
-  it('does not merge exact point edits into tap bursts', () => {
-    let document = createDefaultAppDocument();
-
-    document = commitSharedTransaction(
-      document,
-      { type: 'addChild', name: 'Ava' },
-      { actorDeviceName: 'Parent Phone', occurredAt: 100 },
-    );
-
-    const childId = document.head.children[0]?.id ?? '';
-
-    document = commitSharedTransaction(
-      document,
-      { type: 'incrementPoints', amount: 1, childId },
-      { actorDeviceName: 'Parent Phone', occurredAt: 101 },
-    );
-    document = commitSharedTransaction(
-      document,
-      { type: 'setPoints', childId, points: 9 },
-      { actorDeviceName: 'Parent Phone', occurredAt: 102 },
-    );
-
-    const pointTransactions = document.transactionState.transactions.filter(
-      (transaction) => transaction.kind === 'child-points-adjusted',
-    );
-
-    expect(pointTransactions).toHaveLength(2);
-    expect(pointTransactions[0]?.forward).toMatchObject({
-      delta: 1,
-      nextPoints: 1,
-      previousPoints: 0,
-      source: 'tap',
-    });
-    expect(pointTransactions[1]?.forward).toMatchObject({
-      delta: 8,
-      nextPoints: 9,
-      previousPoints: 1,
-      source: 'set',
-    });
-  });
-
-  it('records timer start, pause, and reset as tracked-only transactions', () => {
-    let document = createDefaultAppDocument();
+  it('records timer start, pause, and reset as tracked-only threads', () => {
+    let document = withDeviceId(createDefaultAppDocument(), 'device-a');
 
     document = commitSharedTransaction(
       document,
@@ -150,31 +112,27 @@ describe('transactions', () => {
 
     expect(
       document.transactionState.transactions.map((transaction) => ({
-        inverse: transaction.inverse,
         kind: transaction.kind,
         undoPolicy: transaction.undoPolicy,
       })),
     ).toEqual([
       {
-        inverse: null,
         kind: 'timer-started',
         undoPolicy: 'tracked_only',
       },
       {
-        inverse: null,
         kind: 'timer-paused',
         undoPolicy: 'tracked_only',
       },
       {
-        inverse: null,
         kind: 'timer-reset',
         undoPolicy: 'tracked_only',
       },
     ]);
   });
 
-  it('allows reverting an old point delta without reverting later point deltas', () => {
-    let document = createDefaultAppDocument();
+  it('allows reverting an old point thread without reverting later point threads', () => {
+    let document = withDeviceId(createDefaultAppDocument(), 'device-a');
 
     document = commitSharedTransaction(
       document,
@@ -200,19 +158,19 @@ describe('transactions', () => {
       { actorDeviceName: 'Parent Phone', occurredAt: 103 },
     );
 
-    const originalPointTransactionId =
-      document.transactionState.transactions[1]?.id ?? 0;
-    const laterPointTransactionId =
-      document.transactionState.transactions[3]?.id ?? 0;
+    const originalPointThreadId =
+      document.transactionState.transactions[1]?.threadId ?? '';
+    const laterPointThreadId =
+      document.transactionState.transactions[3]?.threadId ?? '';
 
     expect(
-      getRevertPlan(document.transactionState, originalPointTransactionId),
+      getRevertPlan(document.transactionState, originalPointThreadId),
     ).toEqual({
       target: document.transactionState.transactions[1],
-      transactionIds: [originalPointTransactionId],
+      transactionIds: [originalPointThreadId],
     });
 
-    document = revertTransaction(document, originalPointTransactionId, {
+    document = revertTransaction(document, originalPointThreadId, {
       actorDeviceName: 'Parent Phone',
       occurredAt: 104,
     });
@@ -220,13 +178,13 @@ describe('transactions', () => {
     expect(document.head.children[0]?.points).toBe(1);
     expect(
       document.transactionState.transactions.find(
-        (transaction) => transaction.id === laterPointTransactionId,
+        (transaction) => transaction.threadId === laterPointThreadId,
       )?.status,
     ).toBe('applied');
   });
 
-  it('reverting child add pulls later child-targeted transactions into the chain', () => {
-    let document = createDefaultAppDocument();
+  it('reverting child add pulls later child-targeted threads into the chain', () => {
+    let document = withDeviceId(createDefaultAppDocument(), 'device-a');
 
     document = commitSharedTransaction(
       document,
@@ -245,12 +203,17 @@ describe('transactions', () => {
       { actorDeviceName: 'Parent Phone', occurredAt: 102 },
     );
 
-    const addTransactionId = document.transactionState.transactions[0]?.id ?? 0;
-    const plan = getRevertPlan(document.transactionState, addTransactionId);
+    const addThreadId =
+      document.transactionState.transactions[0]?.threadId ?? '';
+    const plan = getRevertPlan(document.transactionState, addThreadId);
 
-    expect(plan.transactionIds).toEqual([3, 2, 1]);
+    expect(plan.transactionIds).toEqual([
+      document.transactionState.transactions[2]?.threadId,
+      document.transactionState.transactions[1]?.threadId,
+      addThreadId,
+    ]);
 
-    document = revertTransaction(document, addTransactionId, {
+    document = revertTransaction(document, addThreadId, {
       actorDeviceName: 'Parent Phone',
       occurredAt: 103,
     });
@@ -263,8 +226,8 @@ describe('transactions', () => {
     ).toBe(true);
   });
 
-  it('restoring a reverted transaction reapplies the original chain', () => {
-    let document = createDefaultAppDocument();
+  it('restoring a reverted thread reapplies the original chain', () => {
+    let document = withDeviceId(createDefaultAppDocument(), 'device-a');
 
     document = commitSharedTransaction(
       document,
@@ -278,44 +241,142 @@ describe('transactions', () => {
       { actorDeviceName: 'Parent Phone', occurredAt: 101 },
     );
 
-    const pointTransactionId =
-      document.transactionState.transactions[1]?.id ?? 0;
+    const pointThreadId =
+      document.transactionState.transactions[1]?.threadId ?? '';
 
-    document = revertTransaction(document, pointTransactionId, {
+    document = revertTransaction(document, pointThreadId, {
       actorDeviceName: 'Parent Phone',
       occurredAt: 102,
     });
 
-    expect(
-      getRestorePlan(document.transactionState, pointTransactionId),
-    ).toEqual({
+    expect(getRestorePlan(document.transactionState, pointThreadId)).toEqual({
       target: document.transactionState.transactions[1],
-      transactionIds: [pointTransactionId],
+      transactionIds: [pointThreadId],
     });
 
-    document = restoreTransaction(document, pointTransactionId, {
+    document = restoreTransaction(document, pointThreadId, {
       actorDeviceName: 'Parent Phone',
       occurredAt: 103,
     });
 
-    const restoreChainTransactionId =
-      document.transactionState.transactions.at(-1)?.id ?? 0;
-
     expect(document.head.children[0]?.points).toBe(1);
     expect(
       document.transactionState.transactions.find(
-        (transaction) => transaction.id === pointTransactionId,
+        (transaction) => transaction.threadId === pointThreadId,
       )?.status,
     ).toBe('applied');
     expect(
-      document.transactionState.transactions.find(
-        (transaction) => transaction.id === restoreChainTransactionId,
-      )?.status,
-    ).toBe('applied');
-    expect(
-      document.transactionState.transactions.find(
-        (transaction) => transaction.id === restoreChainTransactionId,
-      )?.entryKind,
+      document.transactionState.transactions
+        .find((transaction) => transaction.threadId === pointThreadId)
+        ?.activity.at(-1)?.kind,
     ).toBe('restore');
   });
+
+  it('reconciles divergent client histories into the same canonical hash', () => {
+    let deviceA = withDeviceId(createDefaultAppDocument(), 'device-a');
+    let deviceB = withDeviceId(createDefaultAppDocument(), 'device-b');
+
+    deviceA = commitSharedTransaction(
+      deviceA,
+      { type: 'addChild', name: 'Ava' },
+      { actorDeviceName: 'Phone A', occurredAt: 100 },
+    );
+
+    deviceB = reconcileTransactionDocuments(deviceB, [
+      createTransactionSyncSnapshot(deviceA.transactionState),
+    ]).document;
+
+    const childId = deviceA.head.children[0]?.id ?? '';
+
+    deviceA = commitSharedTransaction(
+      deviceA,
+      { type: 'incrementPoints', amount: 1, childId },
+      { actorDeviceName: 'Phone A', occurredAt: 200 },
+    );
+    deviceB = commitSharedTransaction(
+      deviceB,
+      { type: 'setPoints', childId, points: 10 },
+      { actorDeviceName: 'Phone B', occurredAt: 200 },
+    );
+
+    const mergedA = reconcileTransactionDocuments(deviceA, [
+      createTransactionSyncSnapshot(deviceB.transactionState),
+    ]).document;
+    const mergedB = reconcileTransactionDocuments(deviceB, [
+      createTransactionSyncSnapshot(deviceA.transactionState),
+    ]).document;
+
+    expect(mergedA.transactionState.canonicalHash).toBe(
+      mergedB.transactionState.canonicalHash,
+    );
+    expect(mergedA.transactionState.headHash).toBe(
+      mergedB.transactionState.headHash,
+    );
+    expect(mergedA.head.children).toEqual(mergedB.head.children);
+    expect(mergedA.head.children[0]?.points).toBe(10);
+  });
+
+  it('reconciles concurrent revert and dependent child updates deterministically', () => {
+    let deviceA = withDeviceId(createDefaultAppDocument(), 'device-a');
+    let deviceB = withDeviceId(createDefaultAppDocument(), 'device-b');
+
+    deviceA = commitSharedTransaction(
+      deviceA,
+      { type: 'addChild', name: 'Ava' },
+      { actorDeviceName: 'Phone A', occurredAt: 100 },
+    );
+
+    const bootstrap = createTransactionSyncSnapshot(deviceA.transactionState);
+    deviceB = reconcileTransactionDocuments(deviceB, [bootstrap]).document;
+
+    const childId = deviceA.head.children[0]?.id ?? '';
+    const addThreadId =
+      deviceA.transactionState.transactions[0]?.threadId ?? '';
+
+    deviceA = revertTransaction(deviceA, addThreadId, {
+      actorDeviceName: 'Phone A',
+      occurredAt: 200,
+    });
+    deviceB = commitSharedTransaction(
+      deviceB,
+      { type: 'incrementPoints', amount: 1, childId },
+      { actorDeviceName: 'Phone B', occurredAt: 200 },
+    );
+
+    const mergedA = reconcileTransactionDocuments(deviceA, [
+      createTransactionSyncSnapshot(deviceB.transactionState),
+    ]).document;
+    const mergedB = reconcileTransactionDocuments(deviceB, [
+      createTransactionSyncSnapshot(deviceA.transactionState),
+    ]).document;
+
+    expect(mergedA.transactionState.canonicalHash).toBe(
+      mergedB.transactionState.canonicalHash,
+    );
+    expect(mergedA.head.children).toEqual([]);
+    expect(
+      mergedA.transactionState.transactions.find(
+        (transaction) =>
+          transaction.kind === 'child-points-adjusted' &&
+          transaction.forward.type === 'child-points-adjusted' &&
+          transaction.forward.childId === childId,
+      )?.status,
+    ).toBe('reverted');
+  });
 });
+
+function withDeviceId<T extends ReturnType<typeof createDefaultAppDocument>>(
+  document: T,
+  deviceId: string,
+) {
+  return {
+    ...document,
+    transactionState: {
+      ...document.transactionState,
+      clientState: {
+        deviceId,
+        nextDeviceSequence: 1,
+      },
+    },
+  };
+}

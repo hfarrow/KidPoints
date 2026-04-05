@@ -27,15 +27,12 @@ class AsyncStorageAppRepository implements AppRepository {
         return {
           ...document,
           head: normalizePersistedAppData(document.head),
-          transactionState: {
-            nextTransactionId: document.transactionState.nextTransactionId,
-            transactions: document.transactionState.transactions,
-          },
+          transactionState: document.transactionState,
         } satisfies PersistedAppDocument;
       }
 
       return {
-        version: 3 as const,
+        version: 4 as const,
         head: normalizePersistedAppData(
           parsedValue as Partial<PersistedAppData>,
         ),

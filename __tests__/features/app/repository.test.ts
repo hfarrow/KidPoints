@@ -28,6 +28,8 @@ describe('appRepository', () => {
 
     expect(loaded.head.uiPreferences.themeMode).toBe('system');
     expect(loaded.transactionState.transactions).toEqual([]);
+    expect(loaded.transactionState.events).toEqual([]);
+    expect(loaded.transactionState.clientState.deviceId).toContain('device-');
   });
 
   it('defaults ui preferences when storage does not include them', async () => {
@@ -45,7 +47,7 @@ describe('appRepository', () => {
     expect(loaded.head.uiPreferences.themeMode).toBe('system');
   });
 
-  it('migrates legacy snapshot-only storage into a document with empty transactions', async () => {
+  it('migrates legacy snapshot-only storage into a document with empty sync state', async () => {
     mockAsyncStorage.getItem.mockImplementation(async () =>
       JSON.stringify({
         ...createDefaultAppData(),
@@ -66,13 +68,12 @@ describe('appRepository', () => {
     const loaded = await appRepository.load();
 
     expect(loaded.head.children[0]?.displayName).toBe('Ava');
-    expect(loaded.transactionState).toEqual({
-      nextTransactionId: 1,
-      transactions: [],
-    });
+    expect(loaded.transactionState.events).toEqual([]);
+    expect(loaded.transactionState.transactions).toEqual([]);
+    expect(loaded.transactionState.clientState.nextDeviceSequence).toBe(1);
   });
 
-  it('migrates version 2 transaction documents into action threads and hidden revert events', async () => {
+  it('migrates legacy transaction documents into immutable events and derived threads', async () => {
     mockAsyncStorage.getItem.mockImplementation(async () =>
       JSON.stringify({
         head: createDefaultAppData(),
@@ -93,19 +94,9 @@ describe('appRepository', () => {
                 type: 'child-points-adjusted',
               },
               id: 1,
-              inverse: {
-                childId: 'child-1',
-                childName: 'Ava',
-                delta: -1,
-                nextPoints: 0,
-                previousPoints: 1,
-                source: 'tap',
-                type: 'child-points-adjusted',
-              },
               kind: 'child-points-adjusted',
               occurredAt: 100,
-              revertedByTransactionId: 2,
-              status: 'reverted',
+              rootTransactionId: 1,
               undoPolicy: 'reversible',
             },
             {
@@ -113,46 +104,33 @@ describe('appRepository', () => {
               dependsOnTransactionIds: [1],
               entityRefs: ['child:child-1'],
               forward: {
-                targetTransactionIds: [1],
+                targetRootTransactionIds: [1],
                 type: 'revert-chain',
               },
               id: 2,
-              inverse: {
-                targetTransactionIds: [1],
-                type: 'reapply-transactions',
-              },
               kind: 'revert-chain',
               occurredAt: 101,
-              revertedByTransactionId: null,
-              status: 'applied',
-              undoPolicy: 'reversible',
+              rootTransactionId: 1,
+              undoPolicy: 'tracked_only',
             },
           ],
         },
-        version: 2,
+        version: 3,
       }),
     );
 
     const loaded = await appRepository.load();
 
-    expect(loaded.version).toBe(3);
+    expect(loaded.version).toBe(4);
+    expect(loaded.transactionState.events).toHaveLength(2);
+    expect(loaded.transactionState.transactions).toHaveLength(1);
     expect(loaded.transactionState.transactions[0]).toMatchObject({
-      entryKind: 'action',
       id: 1,
-      rootTransactionId: 1,
+      status: 'reverted',
+      undoPolicy: 'reversible',
     });
-    expect(loaded.transactionState.transactions[1]).toMatchObject({
-      entryKind: 'revert',
-      id: 2,
-      kind: 'revert-chain',
-      rootTransactionId: 1,
-    });
-    expect(
-      loaded.transactionState.transactions[1]?.forward.type === 'revert-chain'
-        ? loaded.transactionState.transactions[1].forward
-            .targetRootTransactionIds
-        : [],
-    ).toEqual([1]);
+    expect(loaded.transactionState.canonicalHash).toContain('h');
+    expect(loaded.transactionState.headHash).toContain('h');
   });
 
   it('persists the selected theme mode', async () => {
