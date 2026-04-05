@@ -2,7 +2,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { act, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-import TabsLayout from '../app/(tabs)/_layout';
+import TabsLayout from '../../../app/(tabs)/_layout';
 
 jest.mock('@expo/vector-icons', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -53,23 +53,23 @@ jest.mock('expo-router', () => {
   };
 });
 
-jest.mock('../src/components/ParentPinModal', () => ({
+jest.mock('../../../src/components/ParentPinModal', () => ({
   ParentPinModal: (props: unknown) => {
     mockParentPinModal(props);
     return null;
   },
 }));
 
-jest.mock('../src/features/theme/themeContext', () => ({
+jest.mock('../../../src/features/theme/themeContext', () => ({
   useAppTheme: () => mockUseAppTheme(),
 }));
 
-jest.mock('../src/features/app/appStorage', () => ({
+jest.mock('../../../src/features/app/appStorage', () => ({
   useAppStorage: jest.fn(),
 }));
 
 const { useAppStorage } = jest.requireMock(
-  '../src/features/app/appStorage',
+  '../../../src/features/app/appStorage',
 ) as {
   useAppStorage: jest.Mock;
 };

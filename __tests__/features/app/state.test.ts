@@ -6,11 +6,11 @@ import {
   DEFAULT_PARENT_PIN,
   sortChildren,
   verifyParentPin,
-} from '../src/features/app/state';
+} from '../../../src/features/app/state';
 import {
   computeTimerSnapshot,
   formatDuration,
-} from '../src/features/app/timer';
+} from '../../../src/features/app/timer';
 
 describe('appDataReducer', () => {
   it('adds and reorders children while preserving sequential sort order', () => {

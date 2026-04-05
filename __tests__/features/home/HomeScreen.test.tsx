@@ -3,8 +3,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { Alert } from 'react-native';
 
-import { HomeScreen } from '../src/features/home/HomeScreen';
-import { getThemeTokens } from '../src/features/theme/theme';
+import { HomeScreen } from '../../../src/features/home/HomeScreen';
+import { getThemeTokens } from '../../../src/features/theme/theme';
 
 const mockPush = jest.fn();
 const mockUseAppStorage = jest.fn();
@@ -41,11 +41,11 @@ jest.mock('@expo/vector-icons', () => {
   };
 });
 
-jest.mock('../src/features/app/appStorage', () => ({
+jest.mock('../../../src/features/app/appStorage', () => ({
   useAppStorage: () => mockUseAppStorage(),
 }));
 
-jest.mock('../src/features/theme/themeContext', () => ({
+jest.mock('../../../src/features/theme/themeContext', () => ({
   useAppTheme: () => mockUseAppTheme(),
   useThemedStyles: (factory: (theme: unknown) => unknown) =>
     factory(mockUseAppTheme()),

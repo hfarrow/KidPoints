@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { appRepository } from '../src/features/app/repository';
-import { createDefaultAppData } from '../src/features/app/state';
+import { appRepository } from '../../../src/features/app/repository';
+import { createDefaultAppData } from '../../../src/features/app/state';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports

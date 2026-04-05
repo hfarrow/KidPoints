@@ -1,7 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { render } from '@testing-library/react-native';
 
-import { AlarmScreen } from '../src/features/alarm/AlarmScreen';
+import { AlarmScreen } from '../../../src/features/alarm/AlarmScreen';
 
 const mockReplace = jest.fn();
 
@@ -11,12 +11,12 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
-jest.mock('../src/features/app/appStorage', () => ({
+jest.mock('../../../src/features/app/appStorage', () => ({
   useAppStorage: jest.fn(),
 }));
 
 const { useAppStorage } = jest.requireMock(
-  '../src/features/app/appStorage',
+  '../../../src/features/app/appStorage',
 ) as {
   useAppStorage: jest.Mock;
 };

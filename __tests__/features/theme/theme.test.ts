@@ -4,7 +4,7 @@ import {
   getAppScreenSurface,
   getThemeTokens,
   resolveThemeMode,
-} from '../src/features/theme/theme';
+} from '../../../src/features/theme/theme';
 
 describe('theme helpers', () => {
   it('resolves system theme against the device color scheme', () => {

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render } from '@testing-library/react-native';
 
-import { ScreenHeader } from '../src/components/ScreenHeader';
-import { getThemeTokens } from '../src/features/theme/theme';
+import { ScreenHeader } from '../../src/components/ScreenHeader';
+import { getThemeTokens } from '../../src/features/theme/theme';
 
 jest.mock('@expo/vector-icons', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -30,11 +30,11 @@ const mockSetThemeMode = jest.fn((mode: 'light' | 'dark' | 'system') => {
   currentThemeMode = mode;
 });
 
-jest.mock('../src/features/app/appStorage', () => ({
+jest.mock('../../src/features/app/appStorage', () => ({
   useAppStorage: jest.fn(),
 }));
 
-jest.mock('../src/features/theme/themeContext', () => {
+jest.mock('../../src/features/theme/themeContext', () => {
   const useAppTheme = jest.fn();
 
   return {
@@ -45,13 +45,13 @@ jest.mock('../src/features/theme/themeContext', () => {
 });
 
 const { useAppStorage } = jest.requireMock(
-  '../src/features/app/appStorage',
+  '../../src/features/app/appStorage',
 ) as {
   useAppStorage: jest.Mock;
 };
 
 const { useAppTheme } = jest.requireMock(
-  '../src/features/theme/themeContext',
+  '../../src/features/theme/themeContext',
 ) as {
   useAppTheme: jest.Mock;
 };
