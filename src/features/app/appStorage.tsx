@@ -27,6 +27,7 @@ import type {
 
 type AppStorageValue = {
   appData: PersistedAppData;
+  archivedChildren: PersistedAppData['children'];
   children: PersistedAppData['children'];
   isHydrated: boolean;
   lockParent: () => void;
@@ -42,8 +43,10 @@ type AppStorageValue = {
   moveChild: (childId: string, direction: 'up' | 'down') => void;
   pauseTimer: () => void;
   renameChild: (childId: string, name: string) => void;
-  removeChild: (childId: string) => void;
+  archiveChild: (childId: string) => void;
+  deleteChildPermanently: (childId: string) => void;
   resetTimer: () => void;
+  restoreChild: (childId: string) => void;
   setPoints: (childId: string, points: number) => void;
   startTimer: () => void;
   updateTimerConfig: (patch: Partial<SharedTimerConfig>) => void;
@@ -98,7 +101,12 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
   }, []);
 
   const value = useMemo<AppStorageValue>(() => {
-    const children = sortChildren(appData.children);
+    const children = sortChildren(
+      appData.children.filter((child) => !child.isArchived),
+    );
+    const archivedChildren = [...appData.children]
+      .filter((child) => child.isArchived)
+      .sort((left, right) => (right.archivedAt ?? 0) - (left.archivedAt ?? 0));
     const resolvedTheme = resolveThemeMode(
       appData.uiPreferences.themeMode,
       systemColorScheme,
@@ -111,6 +119,7 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
 
     return {
       appData,
+      archivedChildren,
       children,
       isHydrated,
       lockParent: () => {
@@ -158,11 +167,17 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
 
         dispatch({ type: 'renameChild', childId, name });
       },
-      removeChild: (childId) => {
-        dispatch({ type: 'removeChild', childId });
+      archiveChild: (childId) => {
+        dispatch({ type: 'archiveChild', childId, archivedAt: Date.now() });
+      },
+      deleteChildPermanently: (childId) => {
+        dispatch({ type: 'deleteChildPermanently', childId });
       },
       resetTimer: () => {
         dispatch({ type: 'resetTimer' });
+      },
+      restoreChild: (childId) => {
+        dispatch({ type: 'restoreChild', childId });
       },
       setPoints: (childId, points) => {
         dispatch({ type: 'setPoints', childId, points });

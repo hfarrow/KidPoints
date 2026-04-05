@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ListModal } from '../../components/ListModal';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { Tile } from '../../components/Tile';
 import { useAppStorage } from '../app/appStorage';
@@ -24,7 +25,10 @@ export function HomeScreen() {
   const { getScreenSurface, tokens } = useAppTheme();
   const {
     addChild,
+    archiveChild,
+    archivedChildren,
     children,
+    deleteChildPermanently,
     decrementPoints,
     incrementPoints,
     isHydrated,
@@ -32,14 +36,15 @@ export function HomeScreen() {
     parentSession,
     pauseTimer,
     renameChild,
-    removeChild,
     resetTimer,
+    restoreChild,
     setPoints,
     startTimer,
     timerSnapshot,
   } = useAppStorage();
   const [childName, setChildName] = useState('');
   const [addModalVisible, setAddModalVisible] = useState(false);
+  const [archivedChildrenVisible, setArchivedChildrenVisible] = useState(false);
   const [pointEditor, setPointEditor] = useState<{
     childId: string;
     displayName: string;
@@ -68,6 +73,12 @@ export function HomeScreen() {
 
     renameChild(childId, trimmedName);
   };
+
+  useEffect(() => {
+    if (archivedChildrenVisible && archivedChildren.length === 0) {
+      setArchivedChildrenVisible(false);
+    }
+  }, [archivedChildren, archivedChildrenVisible]);
 
   if (!isHydrated) {
     return (
@@ -223,30 +234,70 @@ export function HomeScreen() {
                 title={`${child.displayName} settings`}
               >
                 <View style={styles.settingsList}>
-                  <Pressable
-                    accessibilityLabel={`Save ${child.displayName} settings`}
-                    onPress={() => {
-                      saveChildSettingsName({
-                        childId: child.id,
-                        currentName: child.displayName,
-                        nextName: childSettingsEditor.value,
-                      });
-                      setChildSettingsEditor(null);
-                    }}
-                    style={[
-                      styles.settingsSaveAction,
-                      { backgroundColor: tokens.controlSurface },
-                    ]}
-                  >
-                    <Text
+                  <View style={styles.settingsActionRow}>
+                    <Pressable
+                      accessibilityLabel={`Save ${child.displayName} settings`}
+                      onPress={() => {
+                        saveChildSettingsName({
+                          childId: child.id,
+                          currentName: child.displayName,
+                          nextName: childSettingsEditor.value,
+                        });
+                        setChildSettingsEditor(null);
+                      }}
                       style={[
-                        styles.settingsSaveActionText,
-                        { color: tokens.controlText },
+                        styles.settingsSaveAction,
+                        { backgroundColor: tokens.controlSurface },
                       ]}
                     >
-                      Save
-                    </Text>
-                  </Pressable>
+                      <Text
+                        style={[
+                          styles.settingsSaveActionText,
+                          { color: tokens.controlText },
+                        ]}
+                      >
+                        Save
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={index === 0}
+                      onPress={() => moveChild(child.id, 'up')}
+                      style={[
+                        styles.secondaryAction,
+                        styles.settingsCompactAction,
+                        { backgroundColor: tokens.controlSurface },
+                        index === 0 && styles.disabledAction,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.secondaryActionText,
+                          { color: tokens.controlText },
+                        ]}
+                      >
+                        Move up
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={index === children.length - 1}
+                      onPress={() => moveChild(child.id, 'down')}
+                      style={[
+                        styles.secondaryAction,
+                        styles.settingsCompactAction,
+                        { backgroundColor: tokens.controlSurface },
+                        index === children.length - 1 && styles.disabledAction,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.secondaryActionText,
+                          { color: tokens.controlText },
+                        ]}
+                      >
+                        Move down
+                      </Text>
+                    </Pressable>
+                  </View>
                   <View
                     style={[styles.settingRow, { borderColor: tokens.border }]}
                   >
@@ -289,56 +340,18 @@ export function HomeScreen() {
                       value={childSettingsEditor.value}
                     />
                   </View>
-                  <View style={styles.inlineActions}>
-                    <Pressable
-                      disabled={index === 0}
-                      onPress={() => moveChild(child.id, 'up')}
-                      style={[
-                        styles.secondaryAction,
-                        { backgroundColor: tokens.controlSurface },
-                        index === 0 && styles.disabledAction,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.secondaryActionText,
-                          { color: tokens.controlText },
-                        ]}
-                      >
-                        Move up
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      disabled={index === children.length - 1}
-                      onPress={() => moveChild(child.id, 'down')}
-                      style={[
-                        styles.secondaryAction,
-                        { backgroundColor: tokens.controlSurface },
-                        index === children.length - 1 && styles.disabledAction,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.secondaryActionText,
-                          { color: tokens.controlText },
-                        ]}
-                      >
-                        Move down
-                      </Text>
-                    </Pressable>
-                  </View>
                   <Pressable
                     onPress={() =>
                       Alert.alert(
-                        'Remove child',
-                        `Remove ${child.displayName} from the dashboard?`,
+                        'Archive child',
+                        `${child.displayName} will be removed from the dashboard, but all of their data will be preserved so you can restore them later.`,
                         [
                           { style: 'cancel', text: 'Cancel' },
                           {
                             style: 'destructive',
-                            text: 'Remove',
+                            text: 'Archive',
                             onPress: () => {
-                              removeChild(child.id);
+                              archiveChild(child.id);
                               setChildSettingsEditor(null);
                             },
                           },
@@ -347,7 +360,7 @@ export function HomeScreen() {
                     }
                     style={styles.dangerAction}
                   >
-                    <Text style={styles.dangerActionText}>Remove child</Text>
+                    <Text style={styles.dangerActionText}>Archive child</Text>
                   </Pressable>
                 </View>
               </Tile>
@@ -459,12 +472,32 @@ export function HomeScreen() {
 
         {isParentUnlocked ? (
           <Tile initiallyCollapsed title="Parent tools">
-            <Pressable
-              onPress={() => setAddModalVisible(true)}
-              style={styles.primaryAction}
-            >
-              <Text style={styles.primaryActionText}>Add child widget</Text>
-            </Pressable>
+            <View style={styles.parentToolsActions}>
+              <Pressable
+                onPress={() => setAddModalVisible(true)}
+                style={styles.primaryAction}
+              >
+                <Text style={styles.primaryActionText}>Add child widget</Text>
+              </Pressable>
+              {archivedChildren.length > 0 ? (
+                <Pressable
+                  onPress={() => setArchivedChildrenVisible(true)}
+                  style={[
+                    styles.secondaryAction,
+                    { backgroundColor: tokens.controlSurface },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.secondaryActionText,
+                      { color: tokens.controlText },
+                    ]}
+                  >
+                    Show archived children
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
           </Tile>
         ) : null}
       </ScrollView>
@@ -538,6 +571,80 @@ export function HomeScreen() {
       </Modal>
 
       {parentPinModal}
+
+      <ListModal
+        data={archivedChildren}
+        emptyMessage="Archived children will appear here whenever you archive a child tile."
+        keyExtractor={(child) => child.id}
+        onClose={() => setArchivedChildrenVisible(false)}
+        renderItem={(child) => (
+          <View style={styles.archivedChildRow}>
+            <View style={styles.archivedChildCopy}>
+              <Text
+                style={[
+                  styles.archivedChildName,
+                  { color: tokens.textPrimary },
+                ]}
+              >
+                {child.displayName}
+              </Text>
+              <Text
+                style={[styles.archivedChildMeta, { color: tokens.textMuted }]}
+              >
+                {child.points} point{child.points === 1 ? '' : 's'}
+              </Text>
+            </View>
+            <View style={styles.archivedChildActions}>
+              <Pressable
+                accessibilityLabel={`Restore ${child.displayName}`}
+                onPress={() => restoreChild(child.id)}
+                style={[
+                  styles.archivedChildIconButton,
+                  { backgroundColor: tokens.controlSurface },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.archivedChildIconButtonText,
+                    { color: tokens.controlText },
+                  ]}
+                >
+                  {'\u21ba'}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel={`Delete ${child.displayName} permanently`}
+                onPress={() =>
+                  Alert.alert(
+                    'Delete child permanently',
+                    `Delete ${child.displayName} permanently? All data for this child will be deleted and cannot be restored.`,
+                    [
+                      { style: 'cancel', text: 'Cancel' },
+                      {
+                        style: 'destructive',
+                        text: 'Delete permanently',
+                        onPress: () => {
+                          deleteChildPermanently(child.id);
+                        },
+                      },
+                    ],
+                  )
+                }
+                style={[
+                  styles.archivedChildIconButton,
+                  styles.archivedChildDeleteButton,
+                ]}
+              >
+                <Text style={styles.archivedChildDeleteButtonText}>
+                  {'\ud83d\uddd1'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+        title="Archived children"
+        visible={archivedChildrenVisible}
+      />
 
       <Modal
         animationType="fade"
@@ -701,7 +808,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   settingsSaveAction: {
-    alignSelf: 'flex-start',
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -712,6 +818,16 @@ const styles = StyleSheet.create({
   },
   settingsList: {
     gap: 8,
+  },
+  settingsActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingsCompactAction: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   settingRow: {
     minHeight: 52,
@@ -833,6 +949,49 @@ const styles = StyleSheet.create({
   },
   parentSection: {
     gap: 8,
+  },
+  parentToolsActions: {
+    gap: 10,
+  },
+  archivedChildRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  archivedChildCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  archivedChildName: {
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  archivedChildMeta: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  archivedChildActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  archivedChildIconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  archivedChildIconButtonText: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  archivedChildDeleteButton: {
+    backgroundColor: '#fee2e2',
+  },
+  archivedChildDeleteButtonText: {
+    fontSize: 18,
   },
   modalBackdrop: {
     flex: 1,

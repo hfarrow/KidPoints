@@ -28,7 +28,7 @@ describe('appRepository', () => {
     expect(loaded.uiPreferences.themeMode).toBe('system');
   });
 
-  it('hydrates older saved data that does not include ui preferences', async () => {
+  it('defaults ui preferences when storage does not include them', async () => {
     mockAsyncStorage.getItem.mockImplementation(async () =>
       JSON.stringify({
         children: [],

@@ -4,6 +4,7 @@ import {
   appDataReducer,
   createDefaultAppData,
   DEFAULT_PARENT_PIN,
+  sortChildren,
   verifyParentPin,
 } from '../src/features/app/state';
 import {
@@ -23,11 +24,12 @@ describe('appDataReducer', () => {
       direction: 'up',
     });
 
-    expect(state.children.map((child) => child.displayName)).toEqual([
-      'Blake',
-      'Avery',
-    ]);
-    expect(state.children.map((child) => child.sortOrder)).toEqual([0, 1]);
+    expect(
+      sortChildren(state.children).map((child) => child.displayName),
+    ).toEqual(['Blake', 'Avery']);
+    expect(
+      sortChildren(state.children).map((child) => child.sortOrder),
+    ).toEqual([0, 1]);
   });
 
   it('increments, decrements, and sets points without allowing negatives', () => {
@@ -66,6 +68,72 @@ describe('appDataReducer', () => {
       ...originalChild,
       displayName: 'Rowan',
     });
+  });
+
+  it('archives a child without deleting their data and normalizes active sort order', () => {
+    let state = createDefaultAppData();
+
+    state = appDataReducer(state, { type: 'addChild', name: 'Avery' });
+    state = appDataReducer(state, { type: 'addChild', name: 'Blake' });
+    const archivedChild = state.children[0];
+
+    state = appDataReducer(state, {
+      type: 'archiveChild',
+      childId: archivedChild.id,
+      archivedAt: 500,
+    });
+
+    expect(state.children).toContainEqual({
+      ...archivedChild,
+      archivedAt: 500,
+      isArchived: true,
+    });
+    expect(
+      state.children
+        .filter((child) => !child.isArchived)
+        .map((child) => child.sortOrder),
+    ).toEqual([0]);
+  });
+
+  it('restores an archived child with their existing data and appends them after active children', () => {
+    let state = createDefaultAppData();
+
+    state = appDataReducer(state, { type: 'addChild', name: 'Avery' });
+    state = appDataReducer(state, { type: 'addChild', name: 'Blake' });
+    const archivedChild = state.children[0];
+
+    state = appDataReducer(state, {
+      type: 'archiveChild',
+      childId: archivedChild.id,
+      archivedAt: 500,
+    });
+    state = appDataReducer(state, {
+      type: 'restoreChild',
+      childId: archivedChild.id,
+    });
+
+    expect(
+      state.children.find((child) => child.id === archivedChild.id),
+    ).toMatchObject({
+      ...archivedChild,
+      archivedAt: null,
+      isArchived: false,
+      sortOrder: 1,
+    });
+  });
+
+  it('deletes a child permanently only when requested', () => {
+    let state = createDefaultAppData();
+
+    state = appDataReducer(state, { type: 'addChild', name: 'Avery' });
+    const childId = state.children[0].id;
+
+    state = appDataReducer(state, {
+      type: 'deleteChildPermanently',
+      childId,
+    });
+
+    expect(state.children).toEqual([]);
   });
 
   it('verifies the default parent pin', () => {

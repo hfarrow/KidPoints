@@ -4,7 +4,8 @@ export type ChildProfile = {
   points: number;
   sortOrder: number;
   avatarColor: string;
-  isActive: boolean;
+  isArchived: boolean;
+  archivedAt: number | null;
 };
 
 export type SharedTimerConfig = {

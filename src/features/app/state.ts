@@ -8,7 +8,9 @@ export type AppDataAction =
   | { type: 'hydrate'; payload: PersistedAppData }
   | { type: 'addChild'; name: string }
   | { type: 'renameChild'; childId: string; name: string }
-  | { type: 'removeChild'; childId: string }
+  | { type: 'archiveChild'; childId: string; archivedAt: number }
+  | { type: 'restoreChild'; childId: string }
+  | { type: 'deleteChildPermanently'; childId: string }
   | { type: 'moveChild'; childId: string; direction: 'up' | 'down' }
   | { type: 'incrementPoints'; childId: string; amount: number }
   | { type: 'decrementPoints'; childId: string; amount: number }
@@ -68,28 +70,32 @@ export function appDataReducer(
     case 'hydrate':
       return action.payload;
     case 'addChild': {
-      const orderedChildren = sortChildren(state.children);
-      const nextIndex = orderedChildren.length;
+      const nextIndex = getActiveChildren(state.children).length;
 
       return {
         ...state,
         children: [
-          ...orderedChildren,
+          ...state.children,
           {
             id: createId(),
             displayName: action.name.trim(),
             points: 0,
             sortOrder: nextIndex,
             avatarColor: AVATAR_COLORS[nextIndex % AVATAR_COLORS.length],
-            isActive: true,
+            isArchived: false,
+            archivedAt: null,
           },
         ],
       };
     }
-    case 'removeChild':
+    case 'archiveChild':
+      return archiveChild(state, action.childId, action.archivedAt);
+    case 'restoreChild':
+      return restoreChild(state, action.childId);
+    case 'deleteChildPermanently':
       return {
         ...state,
-        children: normalizeSortOrder(
+        children: normalizeActiveChildSortOrder(
           state.children.filter((child) => child.id !== action.childId),
         ),
       };
@@ -106,7 +112,7 @@ export function appDataReducer(
         ),
       };
     case 'moveChild': {
-      const orderedChildren = sortChildren(state.children);
+      const orderedChildren = getActiveChildren(state.children);
       const currentIndex = orderedChildren.findIndex(
         (child) => child.id === action.childId,
       );
@@ -128,7 +134,7 @@ export function appDataReducer(
 
       return {
         ...state,
-        children: normalizeSortOrder(reordered),
+        children: applyActiveChildOrder(state.children, reordered),
       };
     }
     case 'incrementPoints':
@@ -199,6 +205,48 @@ function updatePoints(
   };
 }
 
+function archiveChild(
+  state: PersistedAppData,
+  childId: string,
+  archivedAt: number,
+): PersistedAppData {
+  return {
+    ...state,
+    children: normalizeActiveChildSortOrder(
+      state.children.map((child) =>
+        child.id === childId
+          ? {
+              ...child,
+              isArchived: true,
+              archivedAt,
+            }
+          : child,
+      ),
+    ),
+  };
+}
+
+function restoreChild(
+  state: PersistedAppData,
+  childId: string,
+): PersistedAppData {
+  const nextSortOrder = getActiveChildren(state.children).length;
+
+  return {
+    ...state,
+    children: state.children.map((child) =>
+      child.id === childId
+        ? {
+            ...child,
+            isArchived: false,
+            archivedAt: null,
+            sortOrder: nextSortOrder,
+          }
+        : child,
+    ),
+  };
+}
+
 function startTimer(
   state: PersistedAppData,
   startedAt: number,
@@ -256,11 +304,43 @@ function clampPoints(points: number) {
   return Math.max(Math.round(points), 0);
 }
 
-function normalizeSortOrder<T extends { sortOrder: number }>(items: T[]) {
-  return items.map((item, index) => ({
-    ...item,
-    sortOrder: index,
-  }));
+function getActiveChildren<
+  T extends { isArchived: boolean; sortOrder: number },
+>(children: T[]) {
+  return sortChildren(children.filter((child) => !child.isArchived));
+}
+
+function normalizeActiveChildSortOrder<
+  T extends { isArchived: boolean; sortOrder: number },
+>(items: T[]) {
+  let nextSortOrder = 0;
+
+  return items.map((item) =>
+    item.isArchived
+      ? item
+      : {
+          ...item,
+          sortOrder: nextSortOrder++,
+        },
+  );
+}
+
+function applyActiveChildOrder<
+  T extends { id: string; isArchived: boolean; sortOrder: number },
+>(allChildren: T[], orderedActiveChildren: T[]) {
+  const activeChildrenById = new Map<string, T>(
+    orderedActiveChildren.map((child, index) => [
+      child.id,
+      {
+        ...child,
+        sortOrder: index,
+      } satisfies T,
+    ]),
+  );
+
+  return allChildren.map((child) =>
+    child.isArchived ? child : (activeChildrenById.get(child.id) ?? child),
+  );
 }
 
 function createId() {
