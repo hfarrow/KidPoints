@@ -50,6 +50,24 @@ describe('appDataReducer', () => {
     expect(state.children[0]?.points).toBe(0);
   });
 
+  it('renames a child while preserving the rest of the child profile', () => {
+    let state = createDefaultAppData();
+
+    state = appDataReducer(state, { type: 'addChild', name: 'Avery' });
+    const originalChild = state.children[0];
+
+    state = appDataReducer(state, {
+      type: 'renameChild',
+      childId: originalChild.id,
+      name: 'Rowan',
+    });
+
+    expect(state.children[0]).toMatchObject({
+      ...originalChild,
+      displayName: 'Rowan',
+    });
+  });
+
   it('verifies the default parent pin', () => {
     const state = createDefaultAppData();
 

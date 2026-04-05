@@ -7,6 +7,7 @@ const AVATAR_COLORS = ['#fb7185', '#38bdf8', '#34d399', '#f59e0b', '#a78bfa'];
 export type AppDataAction =
   | { type: 'hydrate'; payload: PersistedAppData }
   | { type: 'addChild'; name: string }
+  | { type: 'renameChild'; childId: string; name: string }
   | { type: 'removeChild'; childId: string }
   | { type: 'moveChild'; childId: string; direction: 'up' | 'down' }
   | { type: 'incrementPoints'; childId: string; amount: number }
@@ -90,6 +91,18 @@ export function appDataReducer(
         ...state,
         children: normalizeSortOrder(
           state.children.filter((child) => child.id !== action.childId),
+        ),
+      };
+    case 'renameChild':
+      return {
+        ...state,
+        children: state.children.map((child) =>
+          child.id === action.childId
+            ? {
+                ...child,
+                displayName: action.name.trim(),
+              }
+            : child,
         ),
       };
     case 'moveChild': {

@@ -41,6 +41,7 @@ type AppStorageValue = {
   incrementPoints: (childId: string) => void;
   moveChild: (childId: string, direction: 'up' | 'down') => void;
   pauseTimer: () => void;
+  renameChild: (childId: string, name: string) => void;
   removeChild: (childId: string) => void;
   resetTimer: () => void;
   setPoints: (childId: string, points: number) => void;
@@ -149,6 +150,13 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
       },
       pauseTimer: () => {
         dispatch({ type: 'pauseTimer', pausedAt: Date.now() });
+      },
+      renameChild: (childId, name) => {
+        if (!name.trim()) {
+          return;
+        }
+
+        dispatch({ type: 'renameChild', childId, name });
       },
       removeChild: (childId) => {
         dispatch({ type: 'removeChild', childId });

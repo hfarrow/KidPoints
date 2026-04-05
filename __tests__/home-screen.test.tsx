@@ -52,6 +52,7 @@ describe('HomeScreen', () => {
     expect(view.queryByText('Reset')).toBeNull();
     expect(view.queryByText('-')).toBeNull();
     expect(view.queryByText('+')).toBeNull();
+    expect(view.queryByLabelText('Open Ava settings')).toBeNull();
     expect(view.queryByText('v')).toBeNull();
     expect(view.queryByText('>')).toBeNull();
   });
@@ -77,7 +78,7 @@ describe('HomeScreen', () => {
     expect(view.queryByText('Parent Mode')).toBeNull();
   });
 
-  it('prompts for the parent pin before opening the points editor in child mode', () => {
+  it('prompts for the parent pin before enabling point editing in child mode', () => {
     const unlockParent = jest.fn((pin: string) => pin === '0000');
     mockUseAppStorage.mockReturnValue(
       createStorageState(false, {
@@ -94,10 +95,49 @@ describe('HomeScreen', () => {
     fireEvent.changeText(view.getByLabelText('Parent PIN'), '0000');
 
     expect(unlockParent).toHaveBeenCalledWith('0000');
-    expect(view.getByText('Save points')).toBeTruthy();
+    expect(view.queryByText('Save points')).toBeNull();
   });
 
-  it('keeps the child tile controls available when parent mode is unlocked', () => {
+  it('autosaves a renamed child when the settings input loses focus', () => {
+    const renameChild = jest.fn();
+    mockUseAppStorage.mockReturnValue(
+      createStorageState(true, {
+        renameChild,
+      }),
+    );
+
+    const view = render(<HomeScreen />);
+
+    fireEvent.press(view.getByLabelText('Open Ava settings'));
+
+    expect(view.getByText('Ava settings')).toBeTruthy();
+
+    fireEvent.changeText(view.getByLabelText('Child name for Ava'), 'Rowan');
+    fireEvent(view.getByLabelText('Child name for Ava'), 'blur');
+
+    expect(renameChild).toHaveBeenCalledWith('child-1', 'Rowan');
+    expect(view.getByText('Ava settings')).toBeTruthy();
+  });
+
+  it('closes the child settings tile from the Save action', () => {
+    const renameChild = jest.fn();
+    mockUseAppStorage.mockReturnValue(
+      createStorageState(true, {
+        renameChild,
+      }),
+    );
+
+    const view = render(<HomeScreen />);
+
+    fireEvent.press(view.getByLabelText('Open Ava settings'));
+    fireEvent.changeText(view.getByLabelText('Child name for Ava'), 'Rowan');
+    fireEvent.press(view.getByText('Save'));
+
+    expect(renameChild).toHaveBeenCalledWith('child-1', 'Rowan');
+    expect(view.queryByText('Ava settings')).toBeNull();
+  });
+
+  it('shows a settings gear instead of an expander on child tiles when parent mode is unlocked', () => {
     mockUseAppStorage.mockReturnValue(createStorageState(true));
 
     const view = render(<HomeScreen />);
@@ -106,7 +146,10 @@ describe('HomeScreen', () => {
     expect(view.getByText('Reset')).toBeTruthy();
     expect(view.getByText('-')).toBeTruthy();
     expect(view.getByText('+')).toBeTruthy();
-    expect(view.getByText('v')).toBeTruthy();
+    expect(view.getByLabelText('Open Ava settings')).toBeTruthy();
+    expect(view.queryByText('v')).toBeNull();
+    expect(view.queryByText('Move up')).toBeNull();
+    expect(view.queryByText('Move down')).toBeNull();
   });
 });
 
@@ -142,6 +185,7 @@ function buildStorageState(isUnlocked: boolean) {
       isUnlocked,
     },
     pauseTimer: jest.fn(),
+    renameChild: jest.fn(),
     removeChild: jest.fn(),
     resetTimer: jest.fn(),
     setPoints: jest.fn(),

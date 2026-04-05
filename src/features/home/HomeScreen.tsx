@@ -31,6 +31,7 @@ export function HomeScreen() {
     moveChild,
     parentSession,
     pauseTimer,
+    renameChild,
     removeChild,
     resetTimer,
     setPoints,
@@ -44,8 +45,29 @@ export function HomeScreen() {
     displayName: string;
     value: string;
   } | null>(null);
+  const [childSettingsEditor, setChildSettingsEditor] = useState<{
+    childId: string;
+    value: string;
+  } | null>(null);
   const isParentUnlocked = parentSession.isUnlocked;
   const { parentPinModal, requestParentUnlock } = useParentUnlockAction();
+  const saveChildSettingsName = ({
+    childId,
+    currentName,
+    nextName,
+  }: {
+    childId: string;
+    currentName: string;
+    nextName: string;
+  }) => {
+    const trimmedName = nextName.trim();
+
+    if (!trimmedName || trimmedName === currentName) {
+      return;
+    }
+
+    renameChild(childId, trimmedName);
+  };
 
   if (!isHydrated) {
     return (
@@ -188,137 +210,123 @@ export function HomeScreen() {
           </Tile>
         ) : null}
 
-        {children.map((child, index) => (
-          <Tile
-            key={child.id}
-            collapsible={isParentUnlocked}
-            collapsedSummary={
-              <View style={styles.collapsedChildSummary}>
-                <View
-                  style={[
-                    styles.childControlsRail,
-                    { backgroundColor: tokens.controlSurface },
-                  ]}
-                >
-                  {isParentUnlocked ? (
-                    <Pressable
-                      disabled={!isParentUnlocked}
-                      onPress={() => decrementPoints(child.id)}
-                      style={[
-                        styles.childSegment,
-                        styles.childActionSegment,
-                        styles.childActionSegmentLeft,
-                      ]}
-                    >
-                      <Text style={styles.childActionText}>-</Text>
-                    </Pressable>
-                  ) : null}
+        {children.map((child, index) => {
+          const isEditingSettings = childSettingsEditor?.childId === child.id;
+
+          if (isEditingSettings) {
+            return (
+              <Tile
+                key={child.id}
+                collapsible={false}
+                floatingTitle
+                summaryVisibleWhenExpanded
+                title={`${child.displayName} settings`}
+              >
+                <View style={styles.settingsList}>
                   <Pressable
-                    accessibilityLabel={`Edit ${child.displayName} points`}
-                    onPress={() =>
-                      requestParentUnlock(() => {
-                        setPointEditor({
-                          childId: child.id,
-                          displayName: child.displayName,
-                          value: String(child.points),
-                        });
-                      })
-                    }
+                    accessibilityLabel={`Save ${child.displayName} settings`}
+                    onPress={() => {
+                      saveChildSettingsName({
+                        childId: child.id,
+                        currentName: child.displayName,
+                        nextName: childSettingsEditor.value,
+                      });
+                      setChildSettingsEditor(null);
+                    }}
                     style={[
-                      styles.childSegment,
-                      styles.childPointsSegment,
-                      { backgroundColor: tokens.inputSurface },
+                      styles.settingsSaveAction,
+                      { backgroundColor: tokens.controlSurface },
                     ]}
                   >
                     <Text
                       style={[
-                        styles.childPointsValue,
+                        styles.settingsSaveActionText,
+                        { color: tokens.controlText },
+                      ]}
+                    >
+                      Save
+                    </Text>
+                  </Pressable>
+                  <View
+                    style={[styles.settingRow, { borderColor: tokens.border }]}
+                  >
+                    <Text
+                      style={[
+                        styles.settingLabel,
                         { color: tokens.textPrimary },
                       ]}
                     >
-                      {child.points}
+                      Name:
                     </Text>
-                  </Pressable>
-                  {isParentUnlocked ? (
+                    <TextInput
+                      accessibilityLabel={`Child name for ${child.displayName}`}
+                      onBlur={() =>
+                        saveChildSettingsName({
+                          childId: child.id,
+                          currentName: child.displayName,
+                          nextName: childSettingsEditor.value,
+                        })
+                      }
+                      onChangeText={(value) =>
+                        setChildSettingsEditor((current) =>
+                          current
+                            ? {
+                                ...current,
+                                value,
+                              }
+                            : null,
+                        )
+                      }
+                      placeholder="Child name"
+                      placeholderTextColor={tokens.textMuted}
+                      style={[
+                        styles.settingInput,
+                        {
+                          backgroundColor: tokens.inputSurface,
+                          color: tokens.textPrimary,
+                        },
+                      ]}
+                      value={childSettingsEditor.value}
+                    />
+                  </View>
+                  <View style={styles.inlineActions}>
                     <Pressable
-                      disabled={!isParentUnlocked}
-                      onPress={() => incrementPoints(child.id)}
+                      disabled={index === 0}
+                      onPress={() => moveChild(child.id, 'up')}
                       style={[
-                        styles.childSegment,
-                        styles.childActionSegment,
-                        styles.childActionSegmentRight,
+                        styles.secondaryAction,
+                        { backgroundColor: tokens.controlSurface },
+                        index === 0 && styles.disabledAction,
                       ]}
                     >
-                      <Text style={styles.childActionText}>+</Text>
+                      <Text
+                        style={[
+                          styles.secondaryActionText,
+                          { color: tokens.controlText },
+                        ]}
+                      >
+                        Move up
+                      </Text>
                     </Pressable>
-                  ) : null}
-                </View>
-              </View>
-            }
-            floatingTitle
-            summaryVisibleWhenExpanded
-            title={child.displayName}
-          >
-            {isParentUnlocked ? (
-              <View style={styles.parentSection}>
-                <View style={styles.inlineActions}>
-                  <Pressable
-                    disabled={index === 0}
-                    onPress={() => moveChild(child.id, 'up')}
-                    style={[
-                      styles.secondaryAction,
-                      { backgroundColor: tokens.controlSurface },
-                      index === 0 && styles.disabledAction,
-                    ]}
-                  >
-                    <Text
+                    <Pressable
+                      disabled={index === children.length - 1}
+                      onPress={() => moveChild(child.id, 'down')}
                       style={[
-                        styles.secondaryActionText,
-                        { color: tokens.controlText },
+                        styles.secondaryAction,
+                        { backgroundColor: tokens.controlSurface },
+                        index === children.length - 1 && styles.disabledAction,
                       ]}
                     >
-                      Move up
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={index === children.length - 1}
-                    onPress={() => moveChild(child.id, 'down')}
-                    style={[
-                      styles.secondaryAction,
-                      { backgroundColor: tokens.controlSurface },
-                      index === children.length - 1 && styles.disabledAction,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.secondaryActionText,
-                        { color: tokens.controlText },
-                      ]}
-                    >
-                      Move down
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() =>
-                      Alert.alert(
-                        'Per-child settings',
-                        'Per-child configuration will be expanded in a later phase.',
-                      )
-                    }
-                    style={[
-                      styles.secondaryAction,
-                      { backgroundColor: tokens.controlSurface },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.secondaryActionText,
-                        { color: tokens.controlText },
-                      ]}
-                    >
-                      Settings later
-                    </Text>
-                  </Pressable>
+                      <Text
+                        style={[
+                          styles.secondaryActionText,
+                          { color: tokens.controlText },
+                        ]}
+                      >
+                        Move down
+                      </Text>
+                    </Pressable>
+                  </View>
                   <Pressable
                     onPress={() =>
                       Alert.alert(
@@ -329,7 +337,10 @@ export function HomeScreen() {
                           {
                             style: 'destructive',
                             text: 'Remove',
-                            onPress: () => removeChild(child.id),
+                            onPress: () => {
+                              removeChild(child.id);
+                              setChildSettingsEditor(null);
+                            },
                           },
                         ],
                       )
@@ -339,10 +350,112 @@ export function HomeScreen() {
                     <Text style={styles.dangerActionText}>Remove child</Text>
                   </Pressable>
                 </View>
-              </View>
-            ) : null}
-          </Tile>
-        ))}
+              </Tile>
+            );
+          }
+
+          return (
+            <Tile
+              key={child.id}
+              collapsible={false}
+              headerAccessory={
+                isParentUnlocked ? (
+                  <Pressable
+                    accessibilityLabel={`Open ${child.displayName} settings`}
+                    onPress={() =>
+                      setChildSettingsEditor({
+                        childId: child.id,
+                        value: child.displayName,
+                      })
+                    }
+                    style={[
+                      styles.iconAction,
+                      { backgroundColor: tokens.controlSurface },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.iconActionText,
+                        { color: tokens.controlText },
+                      ]}
+                    >
+                      {'\u2699'}
+                    </Text>
+                  </Pressable>
+                ) : null
+              }
+              collapsedSummary={
+                <View style={styles.collapsedChildSummary}>
+                  <View
+                    style={[
+                      styles.childControlsRail,
+                      { backgroundColor: tokens.controlSurface },
+                    ]}
+                  >
+                    {isParentUnlocked ? (
+                      <Pressable
+                        disabled={!isParentUnlocked}
+                        onPress={() => decrementPoints(child.id)}
+                        style={[
+                          styles.childSegment,
+                          styles.childActionSegment,
+                          styles.childActionSegmentLeft,
+                        ]}
+                      >
+                        <Text style={styles.childActionText}>-</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      accessibilityLabel={`Edit ${child.displayName} points`}
+                      onPress={() => {
+                        if (!isParentUnlocked) {
+                          requestParentUnlock();
+                          return;
+                        }
+
+                        setPointEditor({
+                          childId: child.id,
+                          displayName: child.displayName,
+                          value: String(child.points),
+                        });
+                      }}
+                      style={[
+                        styles.childSegment,
+                        styles.childPointsSegment,
+                        { backgroundColor: tokens.inputSurface },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.childPointsValue,
+                          { color: tokens.textPrimary },
+                        ]}
+                      >
+                        {child.points}
+                      </Text>
+                    </Pressable>
+                    {isParentUnlocked ? (
+                      <Pressable
+                        disabled={!isParentUnlocked}
+                        onPress={() => incrementPoints(child.id)}
+                        style={[
+                          styles.childSegment,
+                          styles.childActionSegment,
+                          styles.childActionSegmentRight,
+                        ]}
+                      >
+                        <Text style={styles.childActionText}>+</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+              }
+              floatingTitle
+              summaryVisibleWhenExpanded
+              title={child.displayName}
+            />
+          );
+        })}
 
         {isParentUnlocked ? (
           <Tile initiallyCollapsed title="Parent tools">
@@ -586,6 +699,38 @@ const styles = StyleSheet.create({
   dangerActionText: {
     color: '#b91c1c',
     fontWeight: '800',
+  },
+  settingsSaveAction: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  settingsSaveActionText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  settingsList: {
+    gap: 8,
+  },
+  settingRow: {
+    minHeight: 52,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  settingLabel: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  settingInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 10,
+    fontSize: 15,
   },
   collapsedTimerActions: {
     flexDirection: 'row',
