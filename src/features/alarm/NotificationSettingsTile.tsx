@@ -21,15 +21,11 @@ export function NotificationSettingsTile({
   const { tokens } = useAppTheme();
 
   return (
-    <Tile eyebrow="Delivery" title="Notification placeholders">
+    <Tile collapsible={false} floatingTitle title="Notifications">
       <View style={styles.switchRow}>
         <View style={styles.switchCopy}>
           <Text style={[styles.fieldLabel, { color: tokens.textPrimary }]}>
             Notifications enabled
-          </Text>
-          <Text style={[styles.supportingText, { color: tokens.textMuted }]}>
-            This persists the preference now. Native alarm and notification
-            delivery will be added later.
           </Text>
         </View>
         <Switch
@@ -39,40 +35,59 @@ export function NotificationSettingsTile({
           value={notificationsEnabled}
         />
       </View>
-      <View style={styles.soundRow}>
-        {(['Chime', 'Bell'] as const).map((sound) => {
-          const selected = alarmSound === sound;
+      <View style={styles.switchRow}>
+        <View style={styles.switchCopy}>
+          <Text style={[styles.fieldLabel, { color: tokens.textPrimary }]}>
+            Alarm sound
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.soundToggleRail,
+            { backgroundColor: tokens.controlSurface },
+          ]}
+        >
+          {(['Chime', 'Bell'] as const).map((sound, index) => {
+            const selected = alarmSound === sound;
 
-          return (
-            <Pressable
-              key={sound}
-              onPress={() => onAlarmSoundChange(sound)}
-              style={[
-                styles.soundOption,
-                selected && styles.soundOptionSelected,
-              ]}
-            >
-              <Text
+            return (
+              <Pressable
+                key={sound}
+                onPress={() => onAlarmSoundChange(sound)}
                 style={[
-                  styles.soundOptionText,
-                  selected && styles.soundOptionTextSelected,
+                  styles.soundToggleOption,
+                  selected && {
+                    backgroundColor: tokens.controlSurfaceActive,
+                  },
+                  index === 0 && styles.soundToggleOptionLeft,
+                  index === 1 && [
+                    styles.soundToggleOptionRight,
+                    { borderLeftColor: tokens.border },
+                  ],
                 ]}
               >
-                {sound}
-              </Text>
-            </Pressable>
-          );
-        })}
+                <Text
+                  style={[
+                    styles.soundOptionText,
+                    {
+                      color: selected
+                        ? tokens.controlTextOnActive
+                        : tokens.controlText,
+                    },
+                  ]}
+                >
+                  {sound}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
     </Tile>
   );
 }
 
 const styles = StyleSheet.create({
-  supportingText: {
-    fontSize: 15,
-    lineHeight: 22,
-  },
   fieldLabel: {
     fontSize: 15,
     fontWeight: '800',
@@ -86,25 +101,30 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 6,
   },
-  soundRow: {
+  soundToggleRail: {
+    minHeight: 42,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  soundOption: {
+    alignItems: 'stretch',
+    overflow: 'hidden',
     borderRadius: 999,
-    backgroundColor: '#fde68a',
+  },
+  soundToggleOption: {
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  soundOptionSelected: {
-    backgroundColor: '#b45309',
+  soundToggleOptionLeft: {
+    borderTopLeftRadius: 999,
+    borderBottomLeftRadius: 999,
+  },
+  soundToggleOptionRight: {
+    borderLeftWidth: 1,
+    borderTopRightRadius: 999,
+    borderBottomRightRadius: 999,
   },
   soundOptionText: {
     fontWeight: '800',
-    color: '#92400e',
-  },
-  soundOptionTextSelected: {
-    color: '#fffbeb',
   },
 });

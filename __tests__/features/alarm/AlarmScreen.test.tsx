@@ -133,8 +133,11 @@ describe('AlarmScreen', () => {
 
     expect(view.getAllByText('Alarm')).toHaveLength(2);
     expect(view.getByText('15:00')).toBeTruthy();
-    expect(view.getByText('Interval settings')).toBeTruthy();
+    expect(view.getByText('Settings')).toBeTruthy();
+    expect(view.getByText('Notifications')).toBeTruthy();
     expect(view.queryByText('Current cycle')).toBeNull();
+    expect(view.queryByText('Interval settings')).toBeNull();
+    expect(view.queryByText('Notification placeholders')).toBeNull();
 
     fireEvent.press(view.getByText('Start'));
     fireEvent.press(view.getByText('Reset'));

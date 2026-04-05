@@ -17,7 +17,7 @@ export function ParentToolsTile({
   const { tokens } = useAppTheme();
 
   return (
-    <Tile initiallyCollapsed title="Parent tools">
+    <Tile initiallyCollapsed title="Parent Tools">
       <View style={styles.parentToolsActions}>
         <Pressable onPress={onAddChild} style={styles.primaryAction}>
           <Text style={styles.primaryActionText}>Add child widget</Text>

@@ -23,7 +23,7 @@ export function IntervalSettingsTile({
   const { tokens } = useAppTheme();
 
   return (
-    <Tile eyebrow="Timing" title="Interval settings">
+    <Tile collapsible={false} floatingTitle title="Settings">
       <View style={styles.fieldGroup}>
         <Text style={[styles.fieldLabel, { color: tokens.textPrimary }]}>
           Interval length in minutes
