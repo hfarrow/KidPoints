@@ -13,3 +13,10 @@ When generating React or React Native code for this repo:
 - Prefer idiomatic React patterns over clever shortcuts.
 - Keep components and Hooks pure, and keep side effects out of render.
 - Follow the Rules of Hooks consistently.
+
+Workflow rules for this repo:
+
+- Always run `yarn check` after code changes.
+- Always run `yarn test` after completing testable features.
+- Always add tests for new functionality.
+- Before a commit, prefer running `yarn clean:tooling` and then `yarn verify`.
