@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAppStorage } from '../features/app/appStorage';
+import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
 import { ParentPinModal } from './ParentPinModal';
+import { SettingsModal } from './SettingsModal';
 
 type ScreenHeaderProps = {
   title: string;
@@ -11,7 +13,10 @@ type ScreenHeaderProps = {
 
 export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
   const [pinModalVisible, setPinModalVisible] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const { lockParent, parentSession, unlockParent } = useAppStorage();
+  const { setThemeMode, themeMode } = useAppTheme();
+  const styles = useThemedStyles(createStyles);
 
   return (
     <View style={styles.header}>
@@ -19,79 +24,115 @@ export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.subtitle}>{subtitle}</Text>
       </View>
-      <Pressable
-        onPress={() => {
-          if (parentSession.isUnlocked) {
-            lockParent();
-            return;
-          }
+      <View style={styles.controlsRow}>
+        <Pressable
+          onPress={() => {
+            if (parentSession.isUnlocked) {
+              lockParent();
+              return;
+            }
 
-          setPinModalVisible(true);
-        }}
-        style={[
-          styles.modeButton,
-          parentSession.isUnlocked
-            ? styles.modeButtonActive
-            : styles.modeButtonIdle,
-        ]}
-      >
-        <Text
+            setPinModalVisible(true);
+          }}
           style={[
-            styles.modeButtonText,
+            styles.modeButton,
             parentSession.isUnlocked
-              ? styles.modeButtonTextActive
-              : styles.modeButtonTextIdle,
+              ? styles.modeButtonActive
+              : styles.modeButtonIdle,
           ]}
         >
-          {parentSession.isUnlocked ? 'Lock Parent Mode' : 'Unlock Parent Mode'}
-        </Text>
-      </Pressable>
+          <Text
+            style={[
+              styles.modeButtonText,
+              parentSession.isUnlocked
+                ? styles.modeButtonTextActive
+                : styles.modeButtonTextIdle,
+            ]}
+          >
+            {parentSession.isUnlocked
+              ? 'Lock Parent Mode'
+              : 'Unlock Parent Mode'}
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Open settings"
+          onPress={() => setSettingsVisible(true)}
+          style={styles.iconButton}
+        >
+          <Text style={styles.iconButtonText}>{'\u2699'}</Text>
+        </Pressable>
+      </View>
       <ParentPinModal
         visible={pinModalVisible}
         onClose={() => setPinModalVisible(false)}
         onSubmit={unlockParent}
       />
+      <SettingsModal
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+        onSelectThemeMode={setThemeMode}
+        themeMode={themeMode}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  header: {
-    gap: 16,
-  },
-  copy: {
-    gap: 6,
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: '900',
-    color: '#0f172a',
-  },
-  subtitle: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: '#475569',
-  },
-  modeButton: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-  },
-  modeButtonIdle: {
-    backgroundColor: '#e2e8f0',
-  },
-  modeButtonActive: {
-    backgroundColor: '#0f766e',
-  },
-  modeButtonText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  modeButtonTextIdle: {
-    color: '#0f172a',
-  },
-  modeButtonTextActive: {
-    color: '#f8fafc',
-  },
-});
+const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    header: {
+      gap: 16,
+    },
+    copy: {
+      gap: 6,
+    },
+    controlsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: 10,
+    },
+    title: {
+      fontSize: 34,
+      fontWeight: '900',
+      color: tokens.textPrimary,
+    },
+    subtitle: {
+      fontSize: 16,
+      lineHeight: 24,
+      color: tokens.textMuted,
+    },
+    modeButton: {
+      borderRadius: 999,
+      paddingHorizontal: 18,
+      paddingVertical: 11,
+    },
+    modeButtonIdle: {
+      backgroundColor: tokens.controlSurface,
+    },
+    modeButtonActive: {
+      backgroundColor: tokens.controlSurfaceActive,
+    },
+    modeButtonText: {
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    modeButtonTextIdle: {
+      color: tokens.textPrimary,
+    },
+    modeButtonTextActive: {
+      color: tokens.controlTextOnActive,
+    },
+    iconButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: tokens.controlSurface,
+    },
+    iconButtonText: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: tokens.controlText,
+    },
+  });

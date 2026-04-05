@@ -7,7 +7,8 @@ import {
   useReducer,
   useState,
 } from 'react';
-
+import { useColorScheme } from 'react-native';
+import { resolveThemeMode } from '../theme/theme';
 import { appRepository } from './repository';
 import {
   appDataReducer,
@@ -19,7 +20,9 @@ import { computeTimerSnapshot } from './timer';
 import type {
   ParentSession,
   PersistedAppData,
+  ResolvedTheme,
   SharedTimerConfig,
+  ThemeMode,
 } from './types';
 
 type AppStorageValue = {
@@ -28,7 +31,10 @@ type AppStorageValue = {
   isHydrated: boolean;
   lockParent: () => void;
   parentSession: ParentSession;
+  resolvedTheme: ResolvedTheme;
+  setThemeMode: (mode: ThemeMode) => void;
   timerSnapshot: ReturnType<typeof computeTimerSnapshot>;
+  themeMode: ThemeMode;
   unlockParent: (pin: string) => boolean;
   addChild: (name: string) => void;
   decrementPoints: (childId: string) => void;
@@ -55,6 +61,7 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
   });
   const [isHydrated, setIsHydrated] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const systemColorScheme = useColorScheme();
 
   useEffect(() => {
     let isMounted = true;
@@ -91,6 +98,10 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<AppStorageValue>(() => {
     const children = sortChildren(appData.children);
+    const resolvedTheme = resolveThemeMode(
+      appData.uiPreferences.themeMode,
+      systemColorScheme,
+    );
     const timerSnapshot = computeTimerSnapshot(
       appData.timerConfig,
       appData.timerState,
@@ -105,7 +116,12 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
         setParentSession({ isUnlocked: false });
       },
       parentSession,
+      resolvedTheme,
+      setThemeMode: (themeMode) => {
+        dispatch({ type: 'setThemeMode', themeMode });
+      },
       timerSnapshot,
+      themeMode: appData.uiPreferences.themeMode,
       unlockParent: (pin) => {
         const success = verifyParentPin(appData, pin);
 
@@ -150,7 +166,7 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
         dispatch({ type: 'updateTimerConfig', patch });
       },
     };
-  }, [appData, isHydrated, now, parentSession]);
+  }, [appData, isHydrated, now, parentSession, systemColorScheme]);
 
   return (
     <AppStorageContext.Provider value={value}>

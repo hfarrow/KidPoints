@@ -8,6 +8,8 @@ import {
   View,
 } from 'react-native';
 
+import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
+
 type ParentPinModalProps = {
   visible: boolean;
   onClose: () => void;
@@ -19,6 +21,8 @@ export function ParentPinModal({
   onClose,
   onSubmit,
 }: ParentPinModalProps) {
+  const { tokens } = useAppTheme();
+  const styles = useThemedStyles(createStyles);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
 
@@ -70,7 +74,7 @@ export function ParentPinModal({
             maxLength={8}
             onChangeText={handlePinChange}
             placeholder="Default prototype PIN: 0000"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={tokens.textMuted}
             secureTextEntry
             style={styles.input}
             value={pin}
@@ -87,60 +91,62 @@ export function ParentPinModal({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    padding: 24,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    borderRadius: 24,
-    backgroundColor: '#f8fafc',
-    padding: 24,
-    gap: 14,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#475569',
-  },
-  input: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#0f172a',
-  },
-  error: {
-    color: '#b91c1c',
-    fontWeight: '600',
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 8,
-  },
-  secondaryButton: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-  },
-  secondaryButtonText: {
-    fontWeight: '700',
-    color: '#334155',
-  },
-});
+const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      backgroundColor: tokens.modalBackdrop,
+    },
+    card: {
+      width: '100%',
+      maxWidth: 420,
+      borderRadius: 24,
+      padding: 24,
+      gap: 14,
+      backgroundColor: tokens.modalSurface,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: '800',
+      color: tokens.textPrimary,
+    },
+    subtitle: {
+      fontSize: 15,
+      lineHeight: 22,
+      color: tokens.textMuted,
+    },
+    input: {
+      borderRadius: 16,
+      borderWidth: 1,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      fontSize: 16,
+      backgroundColor: tokens.inputSurface,
+      borderColor: tokens.border,
+      color: tokens.textPrimary,
+    },
+    error: {
+      color: '#b91c1c',
+      fontWeight: '600',
+    },
+    actions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginTop: 8,
+    },
+    secondaryButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      backgroundColor: tokens.controlSurface,
+      borderColor: tokens.border,
+    },
+    secondaryButtonText: {
+      fontWeight: '700',
+      color: tokens.controlText,
+    },
+  });

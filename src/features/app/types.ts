@@ -28,6 +28,14 @@ export type ParentSession = {
   isUnlocked: boolean;
 };
 
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+export type ResolvedTheme = Exclude<ThemeMode, 'system'>;
+
+export type UiPreferences = {
+  themeMode: ThemeMode;
+};
+
 export type ShopCatalogItem = {
   id: string;
   title: string;
@@ -49,6 +57,7 @@ export type CartState = {
 
 export type PersistedAppData = {
   children: ChildProfile[];
+  uiPreferences: UiPreferences;
   timerConfig: SharedTimerConfig;
   timerState: SharedTimerState;
   parentSettings: ParentSettings;

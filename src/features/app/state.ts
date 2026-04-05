@@ -1,4 +1,4 @@
-import type { PersistedAppData, SharedTimerConfig } from './types';
+import type { PersistedAppData, SharedTimerConfig, ThemeMode } from './types';
 
 export const DEFAULT_PARENT_PIN = '0000';
 
@@ -12,6 +12,7 @@ export type AppDataAction =
   | { type: 'incrementPoints'; childId: string; amount: number }
   | { type: 'decrementPoints'; childId: string; amount: number }
   | { type: 'setPoints'; childId: string; points: number }
+  | { type: 'setThemeMode'; themeMode: ThemeMode }
   | { type: 'updateTimerConfig'; patch: Partial<SharedTimerConfig> }
   | { type: 'startTimer'; startedAt: number }
   | { type: 'pauseTimer'; pausedAt: number }
@@ -20,6 +21,9 @@ export type AppDataAction =
 export function createDefaultAppData(): PersistedAppData {
   return {
     children: [],
+    uiPreferences: {
+      themeMode: 'system',
+    },
     timerConfig: {
       intervalMinutes: 15,
       notificationsEnabled: true,
@@ -129,6 +133,14 @@ export function appDataReducer(
               }
             : child,
         ),
+      };
+    case 'setThemeMode':
+      return {
+        ...state,
+        uiPreferences: {
+          ...state.uiPreferences,
+          themeMode: action.themeMode,
+        },
       };
     case 'updateTimerConfig':
       return {

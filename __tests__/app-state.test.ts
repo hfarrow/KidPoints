@@ -58,6 +58,16 @@ describe('appDataReducer', () => {
     expect(verifyParentPin(state, '1234')).toBe(false);
   });
 
+  it('defaults ui preferences to system and stores theme changes', () => {
+    let state = createDefaultAppData();
+
+    expect(state.uiPreferences.themeMode).toBe('system');
+
+    state = appDataReducer(state, { type: 'setThemeMode', themeMode: 'dark' });
+
+    expect(state.uiPreferences.themeMode).toBe('dark');
+  });
+
   it('starts, pauses, resumes, and resets the shared timer', () => {
     let state = createDefaultAppData();
 

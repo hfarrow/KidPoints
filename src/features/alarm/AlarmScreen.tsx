@@ -14,10 +14,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { Tile } from '../../components/Tile';
 import { useAppStorage } from '../app/appStorage';
-import { getAppScreenSurface } from '../app/surfaces';
 import { formatDuration, formatTime } from '../app/timer';
+import { useAppTheme } from '../theme/themeContext';
 
 export function AlarmScreen() {
+  const { getScreenSurface, tokens } = useAppTheme();
   const {
     appData,
     isHydrated,
@@ -57,7 +58,7 @@ export function AlarmScreen() {
       edges={['top']}
       style={[
         styles.safeArea,
-        { backgroundColor: getAppScreenSurface(parentSession.isUnlocked) },
+        { backgroundColor: getScreenSurface(parentSession.isUnlocked) },
       ]}
     >
       <ScrollView contentContainerStyle={styles.content}>
@@ -67,10 +68,10 @@ export function AlarmScreen() {
         />
 
         <Tile eyebrow="Live status" title="Current cycle">
-          <Text style={styles.heroMetric}>
+          <Text style={[styles.heroMetric, { color: tokens.textPrimary }]}>
             {formatDuration(timerSnapshot.remainingMs)}
           </Text>
-          <Text style={styles.supportingText}>
+          <Text style={[styles.supportingText, { color: tokens.textMuted }]}>
             {timerSnapshot.isRunning
               ? `Running. Next interval check-in at ${formatTime(timerSnapshot.nextTriggerAt)}.`
               : 'Paused. Starting the timer begins a fresh interval cycle.'}
@@ -90,7 +91,9 @@ export function AlarmScreen() {
 
         <Tile eyebrow="Timing" title="Interval settings">
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Interval length in minutes</Text>
+            <Text style={[styles.fieldLabel, { color: tokens.textPrimary }]}>
+              Interval length in minutes
+            </Text>
             <TextInput
               keyboardType="number-pad"
               onBlur={() => {
@@ -102,12 +105,21 @@ export function AlarmScreen() {
                 });
               }}
               onChangeText={setIntervalInput}
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: tokens.inputSurface,
+                  borderColor: tokens.border,
+                  color: tokens.textPrimary,
+                },
+              ]}
               value={intervalInput}
             />
           </View>
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Alarm duration in seconds</Text>
+            <Text style={[styles.fieldLabel, { color: tokens.textPrimary }]}>
+              Alarm duration in seconds
+            </Text>
             <TextInput
               keyboardType="number-pad"
               onBlur={() => {
@@ -119,7 +131,14 @@ export function AlarmScreen() {
                 });
               }}
               onChangeText={setDurationInput}
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: tokens.inputSurface,
+                  borderColor: tokens.border,
+                  color: tokens.textPrimary,
+                },
+              ]}
               value={durationInput}
             />
           </View>
@@ -128,8 +147,12 @@ export function AlarmScreen() {
         <Tile eyebrow="Delivery" title="Notification placeholders">
           <View style={styles.switchRow}>
             <View style={styles.switchCopy}>
-              <Text style={styles.fieldLabel}>Notifications enabled</Text>
-              <Text style={styles.supportingText}>
+              <Text style={[styles.fieldLabel, { color: tokens.textPrimary }]}>
+                Notifications enabled
+              </Text>
+              <Text
+                style={[styles.supportingText, { color: tokens.textMuted }]}
+              >
                 This persists the preference now. Native alarm and notification
                 delivery will be added later.
               </Text>
@@ -187,12 +210,10 @@ const styles = StyleSheet.create({
   heroMetric: {
     fontSize: 50,
     fontWeight: '900',
-    color: '#0f172a',
   },
   supportingText: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#475569',
   },
   actionRow: {
     flexDirection: 'row',
@@ -225,17 +246,13 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#0f172a',
   },
   input: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#fcd34d',
-    backgroundColor: '#fff7ed',
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: '#0f172a',
   },
   switchRow: {
     flexDirection: 'row',

@@ -15,11 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { Tile } from '../../components/Tile';
 import { useAppStorage } from '../app/appStorage';
-import { getAppScreenSurface } from '../app/surfaces';
 import { formatDuration } from '../app/timer';
+import { useAppTheme } from '../theme/themeContext';
 
 export function HomeScreen() {
   const router = useRouter();
+  const { getScreenSurface, tokens } = useAppTheme();
   const {
     addChild,
     children,
@@ -49,12 +50,14 @@ export function HomeScreen() {
         edges={['top']}
         style={[
           styles.safeArea,
-          { backgroundColor: getAppScreenSurface(parentSession.isUnlocked) },
+          { backgroundColor: getScreenSurface(parentSession.isUnlocked) },
         ]}
       >
         <View style={styles.loadingState}>
-          <Text style={styles.loadingTitle}>Preparing KidPoints...</Text>
-          <Text style={styles.loadingBody}>
+          <Text style={[styles.loadingTitle, { color: tokens.textPrimary }]}>
+            Preparing KidPoints...
+          </Text>
+          <Text style={[styles.loadingBody, { color: tokens.textMuted }]}>
             Loading saved kids, timer settings, and parent controls.
           </Text>
         </View>
@@ -67,7 +70,7 @@ export function HomeScreen() {
       edges={['top']}
       style={[
         styles.safeArea,
-        { backgroundColor: getAppScreenSurface(parentSession.isUnlocked) },
+        { backgroundColor: getScreenSurface(parentSession.isUnlocked) },
       ]}
     >
       <ScrollView contentContainerStyle={styles.content}>
@@ -83,9 +86,16 @@ export function HomeScreen() {
             parentSession.isUnlocked ? (
               <Pressable
                 onPress={() => router.push('/alarm')}
-                style={styles.iconAction}
+                style={[
+                  styles.iconAction,
+                  { backgroundColor: tokens.controlSurface },
+                ]}
               >
-                <Text style={styles.iconActionText}>{'\u2699'}</Text>
+                <Text
+                  style={[styles.iconActionText, { color: tokens.controlText }]}
+                >
+                  {'\u2699'}
+                </Text>
               </Pressable>
             ) : null
           }
@@ -93,10 +103,15 @@ export function HomeScreen() {
           title="Alarm"
           collapsedSummary={
             <View style={styles.timerSummary}>
-              <Text style={styles.timerValue}>
+              <Text style={[styles.timerValue, { color: tokens.textPrimary }]}>
                 {formatDuration(timerSnapshot.remainingMs)}
               </Text>
-              <View style={styles.timerControlsRail}>
+              <View
+                style={[
+                  styles.timerControlsRail,
+                  { backgroundColor: tokens.controlSurface },
+                ]}
+              >
                 <Pressable
                   onPress={() => {
                     if (timerSnapshot.isRunning) {
@@ -109,9 +124,15 @@ export function HomeScreen() {
                   style={[
                     styles.timerControlSegment,
                     styles.timerControlSegmentLeft,
+                    { borderRightColor: tokens.border },
                   ]}
                 >
-                  <Text style={styles.timerActionText}>
+                  <Text
+                    style={[
+                      styles.timerActionText,
+                      { color: tokens.controlText },
+                    ]}
+                  >
                     {timerSnapshot.isRunning ? 'Pause' : 'Start'}
                   </Text>
                 </Pressable>
@@ -120,9 +141,17 @@ export function HomeScreen() {
                   style={[
                     styles.timerControlSegment,
                     styles.timerControlSegmentRight,
+                    { borderLeftColor: tokens.border },
                   ]}
                 >
-                  <Text style={styles.timerActionText}>Reset</Text>
+                  <Text
+                    style={[
+                      styles.timerActionText,
+                      { color: tokens.controlText },
+                    ]}
+                  >
+                    Reset
+                  </Text>
                 </Pressable>
               </View>
             </View>
@@ -131,7 +160,7 @@ export function HomeScreen() {
 
         {children.length === 0 ? (
           <Tile title="No child widgets yet">
-            <Text style={styles.supportingText}>
+            <Text style={[styles.supportingText, { color: tokens.textMuted }]}>
               Unlock Parent Mode to add the first child widget to this shared
               dashboard.
             </Text>
@@ -151,7 +180,12 @@ export function HomeScreen() {
             key={child.id}
             collapsedSummary={
               <View style={styles.collapsedChildSummary}>
-                <View style={styles.childControlsRail}>
+                <View
+                  style={[
+                    styles.childControlsRail,
+                    { backgroundColor: tokens.controlSurface },
+                  ]}
+                >
                   <Pressable
                     disabled={!parentSession.isUnlocked}
                     onPress={() => decrementPoints(child.id)}
@@ -172,9 +206,20 @@ export function HomeScreen() {
                         value: String(child.points),
                       })
                     }
-                    style={[styles.childSegment, styles.childPointsSegment]}
+                    style={[
+                      styles.childSegment,
+                      styles.childPointsSegment,
+                      { backgroundColor: tokens.inputSurface },
+                    ]}
                   >
-                    <Text style={styles.childPointsValue}>{child.points}</Text>
+                    <Text
+                      style={[
+                        styles.childPointsValue,
+                        { color: tokens.textPrimary },
+                      ]}
+                    >
+                      {child.points}
+                    </Text>
                   </Pressable>
                   <Pressable
                     disabled={!parentSession.isUnlocked}
@@ -202,20 +247,36 @@ export function HomeScreen() {
                     onPress={() => moveChild(child.id, 'up')}
                     style={[
                       styles.secondaryAction,
+                      { backgroundColor: tokens.controlSurface },
                       index === 0 && styles.disabledAction,
                     ]}
                   >
-                    <Text style={styles.secondaryActionText}>Move up</Text>
+                    <Text
+                      style={[
+                        styles.secondaryActionText,
+                        { color: tokens.controlText },
+                      ]}
+                    >
+                      Move up
+                    </Text>
                   </Pressable>
                   <Pressable
                     disabled={index === children.length - 1}
                     onPress={() => moveChild(child.id, 'down')}
                     style={[
                       styles.secondaryAction,
+                      { backgroundColor: tokens.controlSurface },
                       index === children.length - 1 && styles.disabledAction,
                     ]}
                   >
-                    <Text style={styles.secondaryActionText}>Move down</Text>
+                    <Text
+                      style={[
+                        styles.secondaryActionText,
+                        { color: tokens.controlText },
+                      ]}
+                    >
+                      Move down
+                    </Text>
                   </Pressable>
                   <Pressable
                     onPress={() =>
@@ -224,9 +285,17 @@ export function HomeScreen() {
                         'Per-child configuration will be expanded in a later phase.',
                       )
                     }
-                    style={styles.secondaryAction}
+                    style={[
+                      styles.secondaryAction,
+                      { backgroundColor: tokens.controlSurface },
+                    ]}
                   >
-                    <Text style={styles.secondaryActionText}>
+                    <Text
+                      style={[
+                        styles.secondaryActionText,
+                        { color: tokens.controlText },
+                      ]}
+                    >
                       Settings later
                     </Text>
                   </Pressable>
@@ -273,15 +342,31 @@ export function HomeScreen() {
         visible={addModalVisible}
         onRequestClose={() => setAddModalVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Add child widget</Text>
+        <View
+          style={[
+            styles.modalBackdrop,
+            { backgroundColor: tokens.modalBackdrop },
+          ]}
+        >
+          <View
+            style={[styles.modalCard, { backgroundColor: tokens.modalSurface }]}
+          >
+            <Text style={[styles.modalTitle, { color: tokens.textPrimary }]}>
+              Add child widget
+            </Text>
             <TextInput
               accessibilityLabel="Child name"
               onChangeText={setChildName}
               placeholder="Child name"
-              placeholderTextColor="#94a3b8"
-              style={styles.modalInput}
+              placeholderTextColor={tokens.textMuted}
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: tokens.inputSurface,
+                  borderColor: tokens.border,
+                  color: tokens.textPrimary,
+                },
+              ]}
               value={childName}
             />
             <View style={styles.inlineActions}>
@@ -290,9 +375,19 @@ export function HomeScreen() {
                   setChildName('');
                   setAddModalVisible(false);
                 }}
-                style={styles.secondaryAction}
+                style={[
+                  styles.secondaryAction,
+                  { backgroundColor: tokens.controlSurface },
+                ]}
               >
-                <Text style={styles.secondaryActionText}>Cancel</Text>
+                <Text
+                  style={[
+                    styles.secondaryActionText,
+                    { color: tokens.controlText },
+                  ]}
+                >
+                  Cancel
+                </Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -315,9 +410,16 @@ export function HomeScreen() {
         visible={pointEditor !== null}
         onRequestClose={() => setPointEditor(null)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
+        <View
+          style={[
+            styles.modalBackdrop,
+            { backgroundColor: tokens.modalBackdrop },
+          ]}
+        >
+          <View
+            style={[styles.modalCard, { backgroundColor: tokens.modalSurface }]}
+          >
+            <Text style={[styles.modalTitle, { color: tokens.textPrimary }]}>
               {pointEditor?.displayName ?? 'Set points'}
             </Text>
             <TextInput
@@ -334,16 +436,33 @@ export function HomeScreen() {
                 );
               }}
               placeholder="Enter a point total"
-              placeholderTextColor="#94a3b8"
-              style={styles.modalInput}
+              placeholderTextColor={tokens.textMuted}
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: tokens.inputSurface,
+                  borderColor: tokens.border,
+                  color: tokens.textPrimary,
+                },
+              ]}
               value={pointEditor?.value ?? ''}
             />
             <View style={styles.inlineActions}>
               <Pressable
                 onPress={() => setPointEditor(null)}
-                style={styles.secondaryAction}
+                style={[
+                  styles.secondaryAction,
+                  { backgroundColor: tokens.controlSurface },
+                ]}
               >
-                <Text style={styles.secondaryActionText}>Cancel</Text>
+                <Text
+                  style={[
+                    styles.secondaryActionText,
+                    { color: tokens.controlText },
+                  ]}
+                >
+                  Cancel
+                </Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -389,18 +508,15 @@ const styles = StyleSheet.create({
   loadingTitle: {
     fontSize: 28,
     fontWeight: '900',
-    color: '#0f172a',
   },
   loadingBody: {
     textAlign: 'center',
     fontSize: 15,
     lineHeight: 22,
-    color: '#475569',
   },
   supportingText: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#475569',
   },
   inlineActions: {
     flexDirection: 'row',
@@ -420,19 +536,16 @@ const styles = StyleSheet.create({
   },
   secondaryAction: {
     borderRadius: 999,
-    backgroundColor: '#e2e8f0',
     paddingHorizontal: 16,
     paddingVertical: 11,
   },
   secondaryActionText: {
-    color: '#334155',
     fontWeight: '700',
   },
   iconAction: {
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: '#e2e8f0',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -469,7 +582,6 @@ const styles = StyleSheet.create({
   },
   timerValue: {
     flexShrink: 0,
-    color: '#0f172a',
     fontSize: 30,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
@@ -482,7 +594,6 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     overflow: 'hidden',
     borderRadius: 999,
-    backgroundColor: '#e2e8f0',
   },
   timerControlSegment: {
     flex: 1,
@@ -494,14 +605,11 @@ const styles = StyleSheet.create({
   },
   timerControlSegmentLeft: {
     borderRightWidth: 1,
-    borderRightColor: '#cbd5e1',
   },
   timerControlSegmentRight: {
     borderLeftWidth: 1,
-    borderLeftColor: '#cbd5e1',
   },
   timerActionText: {
-    color: '#334155',
     fontSize: 13,
     fontWeight: '800',
   },
@@ -515,7 +623,6 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     overflow: 'hidden',
     borderRadius: 23,
-    backgroundColor: '#d8e2ee',
   },
   childSegment: {
     alignItems: 'center',
@@ -547,13 +654,11 @@ const styles = StyleSheet.create({
   childPointsSegment: {
     flexBasis: 0,
     flexGrow: 6,
-    backgroundColor: '#e2e8f0',
     paddingHorizontal: 14,
   },
   childPointsValue: {
     fontSize: 24,
     fontWeight: '900',
-    color: '#0f172a',
     fontVariant: ['tabular-nums'],
   },
   parentSection: {
@@ -563,30 +668,24 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
     padding: 24,
   },
   modalCard: {
     width: '100%',
     maxWidth: 420,
     borderRadius: 24,
-    backgroundColor: '#f8fafc',
     padding: 24,
     gap: 14,
   },
   modalTitle: {
     fontSize: 24,
     fontWeight: '900',
-    color: '#0f172a',
   },
   modalInput: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#fff',
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: '#0f172a',
   },
 });

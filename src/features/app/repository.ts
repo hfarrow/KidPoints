@@ -19,6 +19,10 @@ class AsyncStorageAppRepository implements AppRepository {
       return {
         ...defaultData,
         ...parsedValue,
+        uiPreferences: {
+          ...defaultData.uiPreferences,
+          ...parsedValue.uiPreferences,
+        },
         parentSettings: {
           ...defaultData.parentSettings,
           ...parsedValue.parentSettings,

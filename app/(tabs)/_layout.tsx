@@ -3,10 +3,12 @@ import { useState } from 'react';
 
 import { ParentPinModal } from '../../src/components/ParentPinModal';
 import { useAppStorage } from '../../src/features/app/appStorage';
+import { useAppTheme } from '../../src/features/theme/themeContext';
 
 export default function TabsLayout() {
   const router = useRouter();
   const { parentSession, unlockParent } = useAppStorage();
+  const { tokens } = useAppTheme();
   const [pinModalVisible, setPinModalVisible] = useState(false);
 
   return (
@@ -14,12 +16,13 @@ export default function TabsLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveBackgroundColor: '#e2e8f0',
-          tabBarActiveTintColor: '#0f172a',
-          tabBarInactiveTintColor: '#64748b',
+          tabBarActiveBackgroundColor: tokens.tabBarActiveBackground,
+          tabBarActiveTintColor: tokens.tabBarActiveTint,
+          tabBarInactiveTintColor: tokens.tabBarInactiveTint,
           tabBarStyle: {
             height: 82,
-            backgroundColor: '#f8fafc',
+            backgroundColor: tokens.tabBarBackground,
+            borderTopColor: tokens.border,
             paddingBottom: 18,
             paddingTop: 8,
           },

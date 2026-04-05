@@ -7,6 +7,7 @@ import TabsLayout from '../app/(tabs)/_layout';
 const mockPush = jest.fn();
 const mockParentPinModal = jest.fn();
 const mockTabsScreen = jest.fn();
+const mockUseAppTheme = jest.fn();
 
 jest.mock('expo-router', () => {
   const mockReact = jest.requireActual('react') as typeof import('react');
@@ -34,6 +35,10 @@ jest.mock('../src/components/ParentPinModal', () => ({
   },
 }));
 
+jest.mock('../src/features/theme/themeContext', () => ({
+  useAppTheme: () => mockUseAppTheme(),
+}));
+
 jest.mock('../src/features/app/appStorage', () => ({
   useAppStorage: jest.fn(),
 }));
@@ -46,6 +51,16 @@ const { useAppStorage } = jest.requireMock(
 
 describe('TabsLayout', () => {
   it('gates the Alarm tab behind the parent PIN when parent mode is locked', () => {
+    mockUseAppTheme.mockReturnValue({
+      tokens: {
+        border: '#cbd5e1',
+        tabBarActiveBackground: '#e2e8f0',
+        tabBarActiveTint: '#0f172a',
+        tabBarBackground: '#f8fafc',
+        tabBarInactiveTint: '#64748b',
+      },
+    });
+
     const mockUnlockParent = jest.fn((pin: string) => pin === '0000');
 
     useAppStorage.mockReturnValue({
