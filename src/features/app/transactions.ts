@@ -126,6 +126,7 @@ export type TransactionRecord = {
   activity: TransactionActivityEntry[];
   explicitStatus: TransactionStatus;
   latestControlTargetThreadIds: string[];
+  supersededByThreadId: string | null;
 };
 
 export type TransactionClientState = {
@@ -220,6 +221,23 @@ type ThreadAccumulator = {
   latestControlTargetThreadIds: string[];
   occurredAt: number;
   rootEventId: string;
+  threadId: string;
+  undoPolicy: TransactionUndoPolicy;
+};
+
+type ThreadProjectionDraft = {
+  activity: TransactionActivityEntry[];
+  actorDeviceName: string;
+  dependsOnThreadIds: string[];
+  entityRefs: TransactionEntityRef[];
+  explicitStatus: TransactionStatus;
+  forward: TransactionActionMutation;
+  id: number;
+  kind: TransactionActionMutation['type'];
+  latestControlTargetThreadIds: string[];
+  occurredAt: number;
+  rootEventId: string;
+  status: TransactionStatus;
   threadId: string;
   undoPolicy: TransactionUndoPolicy;
 };
@@ -561,18 +579,35 @@ export function getRestorePlan(
     };
   }
 
-  const transactionIds = new Set<string>(target.latestControlTargetThreadIds);
+  const transactionIds = new Set<string>();
+  const transactionByThreadId = new Map(
+    transactionState.transactions.map((transaction) => [
+      transaction.threadId,
+      transaction,
+    ]),
+  );
+  const collectRevertedDependencies = (dependencyThreadId: string) => {
+    const dependency = transactionByThreadId.get(dependencyThreadId);
 
-  for (const transaction of transactionState.transactions) {
-    if (
-      transaction.explicitStatus === 'applied' &&
-      transaction.status === 'reverted' &&
-      transaction.dependsOnThreadIds.some((dependencyThreadId) =>
-        transactionIds.has(dependencyThreadId),
-      )
-    ) {
-      transactionIds.add(transaction.threadId);
+    if (!dependency || transactionIds.has(dependencyThreadId)) {
+      return;
     }
+
+    if (dependency.status !== 'reverted') {
+      return;
+    }
+
+    transactionIds.add(dependencyThreadId);
+
+    for (const nestedDependencyThreadId of dependency.dependsOnThreadIds) {
+      collectRevertedDependencies(nestedDependencyThreadId);
+    }
+  };
+
+  transactionIds.add(target.threadId);
+
+  for (const dependencyThreadId of target.dependsOnThreadIds) {
+    collectRevertedDependencies(dependencyThreadId);
   }
 
   return {
@@ -658,7 +693,9 @@ export function restoreTransaction(
 
 export function canRevertTransaction(transaction: TransactionRecord) {
   return (
-    transaction.undoPolicy === 'reversible' && transaction.status === 'applied'
+    transaction.undoPolicy === 'reversible' &&
+    transaction.status === 'applied' &&
+    transaction.supersededByThreadId === null
   );
 }
 
@@ -666,7 +703,8 @@ export function canRestoreTransaction(transaction: TransactionRecord) {
   return (
     transaction.undoPolicy === 'reversible' &&
     transaction.status === 'reverted' &&
-    transaction.explicitStatus === 'reverted'
+    transaction.explicitStatus === 'reverted' &&
+    transaction.supersededByThreadId === null
   );
 }
 
@@ -963,26 +1001,51 @@ function rebuildState(
       left.occurredAt - right.occurredAt ||
       left.rootEventId.localeCompare(right.rootEventId),
   );
-  const transactions = orderedThreads.map((thread, index) => {
-    const forward = aggregateThreadMutation(thread.actionEvents);
+  const threadProjectionDrafts: ThreadProjectionDraft[] = orderedThreads.map(
+    (thread, index) => {
+      const forward = aggregateThreadMutation(thread.actionEvents);
 
+      return {
+        activity: [...thread.activity].sort(
+          (left, right) =>
+            left.occurredAt - right.occurredAt ||
+            left.eventId.localeCompare(right.eventId),
+        ),
+        actorDeviceName: thread.actorDeviceName,
+        dependsOnThreadIds: [...thread.dependsOnThreadIds],
+        entityRefs: [...thread.entityRefs],
+        explicitStatus: thread.explicitStatus,
+        forward,
+        id: index + 1,
+        kind: forward.type,
+        latestControlTargetThreadIds: [...thread.latestControlTargetThreadIds],
+        occurredAt: thread.occurredAt,
+        rootEventId: thread.rootEventId,
+        status: isThreadApplied(thread.threadId) ? 'applied' : 'reverted',
+        threadId: thread.threadId,
+        undoPolicy: thread.undoPolicy,
+      };
+    },
+  );
+  const supersededByThreadIdByThreadId = deriveSupersededThreadIds(
+    threadProjectionDrafts,
+  );
+  const transactions = threadProjectionDrafts.map((thread) => {
     return {
-      activity: [...thread.activity].sort(
-        (left, right) =>
-          left.occurredAt - right.occurredAt ||
-          left.eventId.localeCompare(right.eventId),
-      ),
+      activity: [...thread.activity],
       actorDeviceName: thread.actorDeviceName,
       dependsOnThreadIds: [...thread.dependsOnThreadIds],
       entityRefs: [...thread.entityRefs],
       explicitStatus: thread.explicitStatus,
-      forward,
-      id: index + 1,
-      kind: forward.type,
+      forward: thread.forward,
+      id: thread.id,
+      kind: thread.kind,
       latestControlTargetThreadIds: [...thread.latestControlTargetThreadIds],
       occurredAt: thread.occurredAt,
       rootEventId: thread.rootEventId,
-      status: isThreadApplied(thread.threadId) ? 'applied' : 'reverted',
+      status: thread.status,
+      supersededByThreadId:
+        supersededByThreadIdByThreadId.get(thread.threadId) ?? null,
       threadId: thread.threadId,
       undoPolicy: thread.undoPolicy,
     } satisfies TransactionRecord;
@@ -1714,6 +1777,44 @@ function getTimerDependencies(transactionState: TransactionState) {
     );
 
   return dependency ? [dependency.threadId] : [];
+}
+
+function deriveSupersededThreadIds(transactions: ThreadProjectionDraft[]) {
+  const nextThreadIdByLaneKey = new Map<string, string>();
+  const supersededByThreadIdByThreadId = new Map<string, string | null>();
+
+  for (let index = transactions.length - 1; index >= 0; index -= 1) {
+    const transaction = transactions[index];
+
+    if (!transaction) {
+      continue;
+    }
+
+    const laneKey = getExclusiveLaneKey(transaction.forward);
+
+    if (!laneKey) {
+      supersededByThreadIdByThreadId.set(transaction.threadId, null);
+      continue;
+    }
+
+    supersededByThreadIdByThreadId.set(
+      transaction.threadId,
+      nextThreadIdByLaneKey.get(laneKey) ?? null,
+    );
+    nextThreadIdByLaneKey.set(laneKey, transaction.threadId);
+  }
+
+  return supersededByThreadIdByThreadId;
+}
+
+function getExclusiveLaneKey(mutation: TransactionActionMutation) {
+  switch (mutation.type) {
+    case 'child-archived':
+    case 'child-restored':
+      return `child-lifecycle:${mutation.childId}`;
+    default:
+      return null;
+  }
 }
 
 function canMergePointEvent(

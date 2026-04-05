@@ -120,31 +120,25 @@ describe('TransactionsScreen', () => {
       createStorageState({
         clearTransactionHistory,
         getRestorePlan: (threadId: string) =>
-          threadId === 'thread-1' ? ['thread-3', 'thread-1'] : [],
+          threadId === 'thread-3' ? ['thread-3', 'thread-1'] : [],
         restoreTransaction,
         revertTransaction,
         transactions: [
           createTransaction({
-            activity: [
-              {
-                actorDeviceName: 'Parent Phone',
-                eventId: 'evt-revert',
-                kind: 'revert',
-                occurredAt: 1_000,
-              },
-            ],
             entityRefs: ['child:child-1', 'child-lifecycle:child-1'],
             forward: {
-              childId: 'child-1',
-              childName: 'Ava',
-              delta: 5,
-              nextPoints: 5,
-              previousPoints: 0,
-              source: 'tap',
-              type: 'child-points-adjusted',
+              child: {
+                archivedAt: null,
+                avatarColor: '#abcdef',
+                displayName: 'Ava',
+                id: 'child-1',
+                isArchived: false,
+                points: 0,
+                sortOrder: 0,
+              },
+              type: 'child-added',
             },
             id: 1,
-            latestControlTargetThreadIds: ['thread-3', 'thread-1'],
             status: 'reverted',
             threadId: 'thread-1',
             undoPolicy: 'reversible',
@@ -165,18 +159,30 @@ describe('TransactionsScreen', () => {
             undoPolicy: 'tracked_only',
           }),
           createTransaction({
-            entityRefs: ['child:child-1'],
-            explicitStatus: 'applied',
+            activity: [
+              {
+                actorDeviceName: 'Parent Phone',
+                eventId: 'evt-revert',
+                kind: 'revert',
+                occurredAt: 1_000,
+              },
+            ],
+            dependsOnThreadIds: ['thread-1'],
+            entityRefs: ['child:child-1', 'child-lifecycle:child-1'],
             forward: {
               childId: 'child-1',
-              nextName: 'Rowan',
-              previousName: 'Ava',
-              type: 'child-renamed',
+              childName: 'Ava',
+              delta: 5,
+              nextPoints: 5,
+              previousPoints: 0,
+              source: 'tap',
+              type: 'child-points-adjusted',
             },
             id: 3,
+            latestControlTargetThreadIds: ['thread-3', 'thread-1'],
             status: 'reverted',
             threadId: 'thread-3',
-            undoPolicy: 'tracked_only',
+            undoPolicy: 'reversible',
           }),
         ],
       }),
@@ -206,19 +212,83 @@ describe('TransactionsScreen', () => {
     expect(view.getByText('Ava +5 points (0')).toBeTruthy();
     expect(view.getByLabelText('chevron-forward')).toBeTruthy();
     expect(view.getByText('5)')).toBeTruthy();
-    expect(view.getByText('Ava renamed to Rowan')).toBeTruthy();
+    expect(view.getByText('Added Ava')).toBeTruthy();
     expect(view.queryByText(/Reverted:/)).toBeNull();
-    expect(view.queryByLabelText('Restore transaction 1')).toBeNull();
+    expect(view.queryByLabelText('Restore transaction 3')).toBeNull();
+
+    fireEvent.press(view.getByLabelText('Select transaction 3'));
+
+    expect(view.getByText('Restore 2 actions')).toBeTruthy();
+    expect(
+      view.getByText('Highlighted actions below will also be restored.'),
+    ).toBeTruthy();
+    expect(view.getByText(/Reverted \| Parent Phone \|/)).toBeTruthy();
+    expect(view.getByText('Started timer')).toBeTruthy();
+
+    fireEvent.press(view.getByLabelText('Focus affected actions'));
+
+    expect(
+      view.getByText('Showing only the affected actions for this chain.'),
+    ).toBeTruthy();
+    expect(view.queryByText('Started timer')).toBeNull();
+    expect(view.getByText('Added Ava')).toBeTruthy();
+
+    fireEvent.press(view.getByLabelText('Show all actions'));
+
+    expect(view.getByText('Started timer')).toBeTruthy();
+
+    fireEvent.press(view.getByLabelText('Restore transaction 3'));
+
+    expect(restoreTransaction).toHaveBeenCalledWith('thread-3');
+    expect(revertTransaction).not.toHaveBeenCalled();
+  });
+
+  it('shows superseded lifecycle actions as historical only', () => {
+    mockUseAppStorage.mockReturnValue(
+      createStorageState({
+        transactions: [
+          createTransaction({
+            forward: {
+              childId: 'child-1',
+              childName: 'Ava',
+              archivedAt: 1_000,
+              previousSortOrder: 0,
+              type: 'child-archived',
+            },
+            id: 1,
+            status: 'reverted',
+            supersededByThreadId: 'thread-2',
+            threadId: 'thread-1',
+            undoPolicy: 'reversible',
+          }),
+          createTransaction({
+            forward: {
+              childId: 'child-1',
+              childName: 'Ava',
+              archivedAt: 1_100,
+              previousSortOrder: 0,
+              type: 'child-archived',
+            },
+            id: 2,
+            threadId: 'thread-2',
+            undoPolicy: 'reversible',
+          }),
+        ],
+      }),
+    );
+
+    const view = render(<TransactionsScreen />);
 
     fireEvent.press(view.getByLabelText('Select transaction 1'));
 
-    expect(view.getByText('Restore 2 actions')).toBeTruthy();
-    expect(view.getByText(/Reverted \| Parent Phone \|/)).toBeTruthy();
-
-    fireEvent.press(view.getByLabelText('Restore transaction 1'));
-
-    expect(restoreTransaction).toHaveBeenCalledWith('thread-1');
-    expect(revertTransaction).not.toHaveBeenCalled();
+    expect(view.getByText('Superseded')).toBeTruthy();
+    expect(
+      view.getByText(
+        'A later archive or restore action for this child has superseded this one.',
+      ),
+    ).toBeTruthy();
+    expect(view.queryByLabelText('Restore transaction 1')).toBeNull();
+    expect(view.queryByLabelText('Revert transaction 1')).toBeNull();
   });
 });
 
@@ -270,6 +340,7 @@ function createTransaction(
     occurredAt: number;
     rootEventId: string;
     status: 'applied' | 'reverted';
+    supersededByThreadId: string | null;
     threadId: string;
     undoPolicy: 'reversible' | 'tracked_only';
   }>,
@@ -289,6 +360,7 @@ function createTransaction(
     occurredAt: 1_000,
     rootEventId: 'evt-root',
     status: 'applied' as const,
+    supersededByThreadId: null,
     threadId: 'thread-1',
     undoPolicy: 'tracked_only' as const,
     ...overrides,

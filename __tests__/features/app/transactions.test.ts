@@ -1,6 +1,8 @@
 import { describe, expect, it } from '@jest/globals';
 
 import {
+  canRestoreTransaction,
+  canRevertTransaction,
   commitSharedTransaction,
   createDefaultAppDocument,
   createTransactionSyncSnapshot,
@@ -270,6 +272,144 @@ describe('transactions', () => {
         .find((transaction) => transaction.threadId === pointThreadId)
         ?.activity.at(-1)?.kind,
     ).toBe('restore');
+  });
+
+  it('restoring a reverted middle thread restores only required dependencies', () => {
+    let document = withDeviceId(createDefaultAppDocument(), 'device-a');
+
+    document = commitSharedTransaction(
+      document,
+      { type: 'addChild', name: 'Ava' },
+      { actorDeviceName: 'Parent Phone', occurredAt: 100 },
+    );
+
+    const childId = document.head.children[0]?.id ?? '';
+
+    document = commitSharedTransaction(
+      document,
+      { type: 'archiveChild', childId, archivedAt: 101 },
+      { actorDeviceName: 'Parent Phone', occurredAt: 101 },
+    );
+    document = commitSharedTransaction(
+      document,
+      { type: 'restoreChild', childId },
+      { actorDeviceName: 'Parent Phone', occurredAt: 102 },
+    );
+    document = commitSharedTransaction(
+      document,
+      { type: 'incrementPoints', amount: 1, childId },
+      { actorDeviceName: 'Parent Phone', occurredAt: 103 },
+    );
+
+    const addThreadId =
+      document.transactionState.transactions[0]?.threadId ?? '';
+    const archiveThreadId =
+      document.transactionState.transactions[1]?.threadId ?? '';
+    const restoreChildThreadId =
+      document.transactionState.transactions[2]?.threadId ?? '';
+    const pointThreadId =
+      document.transactionState.transactions[3]?.threadId ?? '';
+
+    document = revertTransaction(document, addThreadId, {
+      actorDeviceName: 'Parent Phone',
+      occurredAt: 104,
+    });
+
+    expect(
+      getRestorePlan(document.transactionState, restoreChildThreadId),
+    ).toEqual({
+      target: document.transactionState.transactions[2],
+      transactionIds: [restoreChildThreadId, archiveThreadId, addThreadId],
+    });
+
+    document = restoreTransaction(document, restoreChildThreadId, {
+      actorDeviceName: 'Parent Phone',
+      occurredAt: 105,
+    });
+
+    expect(document.head.children).toHaveLength(1);
+    expect(document.head.children[0]).toMatchObject({
+      displayName: 'Ava',
+      isArchived: false,
+      points: 0,
+    });
+    expect(
+      document.transactionState.transactions.find(
+        (transaction) => transaction.threadId === pointThreadId,
+      )?.status,
+    ).toBe('reverted');
+    expect(
+      document.transactionState.transactions.find(
+        (transaction) => transaction.threadId === restoreChildThreadId,
+      )?.status,
+    ).toBe('applied');
+  });
+
+  it('supersedes older child lifecycle threads when a newer lifecycle action exists', () => {
+    let document = withDeviceId(createDefaultAppDocument(), 'device-a');
+
+    document = commitSharedTransaction(
+      document,
+      { type: 'addChild', name: 'Ava' },
+      { actorDeviceName: 'Parent Phone', occurredAt: 100 },
+    );
+
+    const childId = document.head.children[0]?.id ?? '';
+
+    document = commitSharedTransaction(
+      document,
+      { type: 'archiveChild', childId, archivedAt: 101 },
+      { actorDeviceName: 'Parent Phone', occurredAt: 101 },
+    );
+
+    const firstArchiveThreadId =
+      document.transactionState.transactions[1]?.threadId ?? '';
+
+    document = revertTransaction(document, firstArchiveThreadId, {
+      actorDeviceName: 'Parent Phone',
+      occurredAt: 102,
+    });
+    document = commitSharedTransaction(
+      document,
+      { type: 'archiveChild', childId, archivedAt: 103 },
+      { actorDeviceName: 'Parent Phone', occurredAt: 103 },
+    );
+
+    const secondArchiveThreadId =
+      document.transactionState.transactions[2]?.threadId ?? '';
+    const firstArchive = document.transactionState.transactions.find(
+      (transaction) => transaction.threadId === firstArchiveThreadId,
+    );
+    const secondArchive = document.transactionState.transactions.find(
+      (transaction) => transaction.threadId === secondArchiveThreadId,
+    );
+
+    expect(firstArchive).toBeDefined();
+    expect(secondArchive).toBeDefined();
+    expect(firstArchive?.supersededByThreadId).toBe(secondArchiveThreadId);
+    expect(secondArchive?.supersededByThreadId).toBeNull();
+    if (!firstArchive || !secondArchive) {
+      throw new Error('Expected lifecycle archive transactions to exist');
+    }
+
+    expect(canRestoreTransaction(firstArchive)).toBe(false);
+    expect(canRevertTransaction(firstArchive)).toBe(false);
+    expect(canRevertTransaction(secondArchive)).toBe(true);
+
+    document = revertTransaction(document, secondArchiveThreadId, {
+      actorDeviceName: 'Parent Phone',
+      occurredAt: 104,
+    });
+
+    expect(document.head.children[0]).toMatchObject({
+      displayName: 'Ava',
+      isArchived: false,
+    });
+    expect(
+      document.transactionState.transactions.find(
+        (transaction) => transaction.threadId === firstArchiveThreadId,
+      )?.status,
+    ).toBe('reverted');
   });
 
   it('reconciles divergent client histories into the same canonical hash', () => {

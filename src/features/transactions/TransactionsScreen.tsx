@@ -40,6 +40,7 @@ export function TransactionsScreen() {
   const [selectedTransactionId, setSelectedTransactionId] = useState<
     string | null
   >(null);
+  const [isFocusedChainOnly, setIsFocusedChainOnly] = useState(false);
 
   useEffect(() => {
     if (!isHydrated || parentSession.isUnlocked) {
@@ -59,6 +60,7 @@ export function TransactionsScreen() {
     );
 
     if (!stillExists) {
+      setIsFocusedChainOnly(false);
       setSelectedTransactionId(null);
     }
   }, [selectedTransactionId, transactions]);
@@ -110,6 +112,35 @@ export function TransactionsScreen() {
     () => new Set(selectedActionPlan.transactionIds),
     [selectedActionPlan.transactionIds],
   );
+  const focusedTransactionIds = useMemo(() => {
+    if (!selectedTransaction) {
+      return [] as string[];
+    }
+
+    if (selectedActionPlan.transactionIds.length > 0) {
+      return selectedActionPlan.transactionIds;
+    }
+
+    return [selectedTransaction.threadId];
+  }, [selectedActionPlan.transactionIds, selectedTransaction]);
+  const focusedTransactionSet = useMemo(
+    () => new Set(focusedTransactionIds),
+    [focusedTransactionIds],
+  );
+  const visibleTransactions = useMemo(() => {
+    if (!isFocusedChainOnly || !selectedTransaction) {
+      return orderedTransactions;
+    }
+
+    return orderedTransactions.filter((transaction) =>
+      focusedTransactionSet.has(transaction.threadId),
+    );
+  }, [
+    focusedTransactionSet,
+    isFocusedChainOnly,
+    orderedTransactions,
+    selectedTransaction,
+  ]);
 
   if (!isHydrated || !parentSession.isUnlocked) {
     return null;
@@ -145,6 +176,7 @@ export function TransactionsScreen() {
                       text: 'Clear history',
                       onPress: () => {
                         clearTransactionHistory();
+                        setIsFocusedChainOnly(false);
                         setSelectedTransactionId(null);
                       },
                     },
@@ -203,7 +235,7 @@ export function TransactionsScreen() {
           </View>
         ) : null}
 
-        {orderedTransactions.map((transaction) => {
+        {visibleTransactions.map((transaction) => {
           const isSelected = selectedTransactionId === transaction.threadId;
           const isInRevertChain =
             !isSelected && selectedRevertSet.has(transaction.threadId);
@@ -213,6 +245,11 @@ export function TransactionsScreen() {
             ? selectedActionPlan.transactionIds.length
             : 0;
           const activityEntries = getTransactionActivityEntries(transaction);
+          const selectedActionVerb =
+            selectedActionPlan.mode === 'restore' ? 'restored' : 'reverted';
+          const selectedActionDirection =
+            selectedActionPlan.mode === 'restore' ? 'below' : 'above';
+          const isSuperseded = transaction.supersededByThreadId !== null;
 
           return (
             <Tile
@@ -222,18 +259,16 @@ export function TransactionsScreen() {
               compact
               containerStyle={[
                 styles.row,
-                {
-                  borderColor: tokens.border,
-                },
+                isInRevertChain ? styles.rowLinked : styles.rowDefault,
                 isSelected && {
                   borderColor: tokens.accentText,
                   shadowColor: tokens.shadowColor,
                   shadowOpacity: 0.12,
                 },
-                isInRevertChain && styles.rowLinked,
               ]}
               initiallyCollapsed
               onCollapsedChange={(nextIsCollapsed) => {
+                setIsFocusedChainOnly(false);
                 setSelectedTransactionId(
                   nextIsCollapsed ? null : transaction.threadId,
                 );
@@ -255,8 +290,9 @@ export function TransactionsScreen() {
                     style={[
                       styles.badge,
                       {
-                        backgroundColor:
-                          transaction.status === 'reverted'
+                        backgroundColor: isSuperseded
+                          ? tokens.controlSurface
+                          : transaction.status === 'reverted'
                             ? tokens.controlSurface
                             : transaction.undoPolicy === 'reversible'
                               ? tokens.accentSurface
@@ -267,14 +303,50 @@ export function TransactionsScreen() {
                     <Text
                       style={[styles.badgeText, { color: tokens.controlText }]}
                     >
-                      {transaction.status === 'reverted'
-                        ? 'Reverted'
-                        : transaction.undoPolicy === 'reversible'
-                          ? 'Undoable'
-                          : 'Tracked'}
+                      {isSuperseded
+                        ? 'Superseded'
+                        : transaction.status === 'reverted'
+                          ? 'Reverted'
+                          : transaction.undoPolicy === 'reversible'
+                            ? 'Undoable'
+                            : 'Tracked'}
                     </Text>
                   </View>
                 </View>
+
+                {isSelected && isSuperseded ? (
+                  <Text
+                    style={[styles.supersededCopy, { color: tokens.textMuted }]}
+                  >
+                    A later archive or restore action for this child has
+                    superseded this one.
+                  </Text>
+                ) : null}
+
+                {isSelected && selectedActionCount > 1 ? (
+                  <View style={styles.selectionHint}>
+                    <Ionicons
+                      color={tokens.controlTextOnActive}
+                      name="sparkles-outline"
+                      size={14}
+                    />
+                    <Text style={styles.selectionHintText}>
+                      Highlighted actions {selectedActionDirection} will also be{' '}
+                      {selectedActionVerb}.
+                    </Text>
+                  </View>
+                ) : null}
+
+                {isSelected && isFocusedChainOnly ? (
+                  <Text
+                    style={[
+                      styles.focusedHintText,
+                      { color: tokens.textMuted },
+                    ]}
+                  >
+                    Showing only the affected actions for this chain.
+                  </Text>
+                ) : null}
 
                 {isInRevertChain ? (
                   <Text
@@ -309,6 +381,36 @@ export function TransactionsScreen() {
                 {revertable || restorable ? (
                   <View style={styles.rowActions}>
                     <Pressable
+                      accessibilityLabel={
+                        isFocusedChainOnly
+                          ? 'Show all actions'
+                          : 'Focus affected actions'
+                      }
+                      onPress={() => {
+                        setIsFocusedChainOnly((current) => !current);
+                      }}
+                      style={[
+                        styles.focusButton,
+                        { backgroundColor: tokens.controlSurface },
+                      ]}
+                    >
+                      <Ionicons
+                        color={tokens.controlText}
+                        name={
+                          isFocusedChainOnly ? 'eye-off-outline' : 'eye-outline'
+                        }
+                        size={16}
+                      />
+                      <Text
+                        style={[
+                          styles.focusButtonText,
+                          { color: tokens.controlText },
+                        ]}
+                      >
+                        {isFocusedChainOnly ? 'Show all' : 'Focus'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
                       accessibilityLabel={`${
                         restorable ? 'Restore' : 'Revert'
                       } transaction ${transaction.id}`}
@@ -328,6 +430,40 @@ export function TransactionsScreen() {
                           : restorable
                             ? 'Restore'
                             : 'Revert'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+                {!(revertable || restorable) && isSelected ? (
+                  <View style={styles.rowActions}>
+                    <Pressable
+                      accessibilityLabel={
+                        isFocusedChainOnly
+                          ? 'Show all actions'
+                          : 'Focus affected actions'
+                      }
+                      onPress={() => {
+                        setIsFocusedChainOnly((current) => !current);
+                      }}
+                      style={[
+                        styles.focusButton,
+                        { backgroundColor: tokens.controlSurface },
+                      ]}
+                    >
+                      <Ionicons
+                        color={tokens.controlText}
+                        name={
+                          isFocusedChainOnly ? 'eye-off-outline' : 'eye-outline'
+                        }
+                        size={16}
+                      />
+                      <Text
+                        style={[
+                          styles.focusButtonText,
+                          { color: tokens.controlText },
+                        ]}
+                      >
+                        {isFocusedChainOnly ? 'Show all' : 'Focus'}
                       </Text>
                     </Pressable>
                   </View>
@@ -420,6 +556,9 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     row: {
       borderWidth: 1,
     },
+    rowDefault: {
+      borderColor: tokens.border,
+    },
     headerActionButton: {
       width: 44,
       height: 44,
@@ -429,8 +568,17 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       overflow: 'hidden',
     },
     rowLinked: {
-      borderStyle: 'dashed',
-      opacity: 0.9,
+      backgroundColor: tokens.accentSurface,
+      borderColor: tokens.controlSurfaceActive,
+      borderWidth: 2,
+      shadowColor: tokens.shadowColor,
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      elevation: 3,
     },
     expandedContent: {
       gap: 8,
@@ -475,6 +623,27 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       fontSize: 12,
       fontWeight: '700',
     },
+    supersededCopy: {
+      fontSize: 12,
+      lineHeight: 16,
+      fontWeight: '600',
+    },
+    selectionHint: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      backgroundColor: tokens.controlSurfaceActive,
+    },
+    selectionHintText: {
+      flex: 1,
+      color: tokens.controlTextOnActive,
+      fontSize: 12,
+      lineHeight: 16,
+      fontWeight: '700',
+    },
     activityList: {
       gap: 4,
     },
@@ -482,9 +651,28 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       fontSize: 12,
       lineHeight: 16,
     },
+    focusedHintText: {
+      fontSize: 12,
+      lineHeight: 16,
+      fontWeight: '600',
+    },
     rowActions: {
       flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
       justifyContent: 'flex-end',
+    },
+    focusButton: {
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    focusButtonText: {
+      fontSize: 13,
+      fontWeight: '700',
     },
     revertButton: {
       borderRadius: 999,
