@@ -27,6 +27,9 @@ export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
       </View>
       <View style={styles.controlsRow}>
         <Pressable
+          accessibilityLabel={
+            parentSession.isUnlocked ? 'Lock Parent Mode' : 'Unlock Parent Mode'
+          }
           onPress={() => {
             if (parentSession.isUnlocked) {
               lockParent();
@@ -42,18 +45,19 @@ export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
               : styles.modeButtonIdle,
           ]}
         >
-          <Text
-            style={[
-              styles.modeButtonText,
+          <Ionicons
+            color={
               parentSession.isUnlocked
-                ? styles.modeButtonTextActive
-                : styles.modeButtonTextIdle,
-            ]}
-          >
-            {parentSession.isUnlocked
-              ? 'Lock Parent Mode'
-              : 'Unlock Parent Mode'}
-          </Text>
+                ? styles.modeButtonIconActive.color
+                : styles.modeButtonIconIdle.color
+            }
+            name={
+              parentSession.isUnlocked
+                ? 'lock-open-outline'
+                : 'lock-closed-outline'
+            }
+            size={20}
+          />
         </Pressable>
         <Pressable
           accessibilityLabel="Open settings"
@@ -103,11 +107,12 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       color: tokens.textMuted,
     },
     modeButton: {
-      alignSelf: 'flex-start',
-      borderRadius: 999,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       overflow: 'hidden',
-      paddingHorizontal: 18,
-      paddingVertical: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     modeButtonIdle: {
       backgroundColor: tokens.controlSurface,
@@ -115,14 +120,10 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     modeButtonActive: {
       backgroundColor: tokens.controlSurfaceActive,
     },
-    modeButtonText: {
-      fontSize: 14,
-      fontWeight: '800',
-    },
-    modeButtonTextIdle: {
+    modeButtonIconIdle: {
       color: tokens.textPrimary,
     },
-    modeButtonTextActive: {
+    modeButtonIconActive: {
       color: tokens.controlTextOnActive,
     },
     iconButton: {

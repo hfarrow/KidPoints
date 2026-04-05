@@ -101,4 +101,21 @@ describe('ScreenHeader', () => {
       view.getByLabelText('Use Dark theme').props.accessibilityState,
     ).toEqual({ selected: true });
   });
+
+  it('uses locked and unlocked icon buttons for parent mode', () => {
+    useAppStorage.mockReturnValue({
+      lockParent: mockLockParent,
+      parentSession: {
+        isUnlocked: true,
+      },
+      unlockParent: mockUnlockParent,
+    });
+
+    const view = render(<ScreenHeader title="Home" subtitle="KidPoints" />);
+
+    fireEvent.press(view.getByLabelText('Lock Parent Mode'));
+
+    expect(mockLockParent).toHaveBeenCalled();
+    expect(view.getByLabelText('lock-open-outline')).toBeTruthy();
+  });
 });
