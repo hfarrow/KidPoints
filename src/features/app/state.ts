@@ -1,9 +1,12 @@
+import { getTimerIntervalMs } from './timer';
 import type {
   ChildProfile,
+  ExpiredInterval,
   PersistedAppData,
   SharedTimerConfig,
   SharedTimerState,
   ThemeMode,
+  TimerRuntimeState,
 } from './types';
 
 export const DEFAULT_PARENT_PIN = '0000';
@@ -30,6 +33,14 @@ export type AppDataAction =
   | { type: 'startTimer'; startedAt: number }
   | { type: 'pauseTimer'; pausedAt: number }
   | { type: 'replaceTimerState'; timerState: SharedTimerState }
+  | { type: 'replaceTimerRuntimeState'; timerRuntimeState: TimerRuntimeState }
+  | { type: 'replaceExpiredIntervals'; expiredIntervals: ExpiredInterval[] }
+  | {
+      type: 'setExpiredIntervalChildStatus';
+      childId: string;
+      intervalId: string;
+      status: ExpiredInterval['childActions'][number]['status'];
+    }
   | { type: 'resetTimer' };
 
 export function createDefaultAppData(): PersistedAppData {
@@ -40,6 +51,7 @@ export function createDefaultAppData(): PersistedAppData {
     },
     timerConfig: {
       intervalMinutes: 15,
+      intervalSeconds: 0,
       notificationsEnabled: true,
       alarmSound: 'Chime',
       alarmDurationSeconds: 20,
@@ -49,6 +61,12 @@ export function createDefaultAppData(): PersistedAppData {
       isRunning: false,
       pausedRemainingMs: null,
     },
+    timerRuntimeState: {
+      sessionId: null,
+      nextTriggerAt: null,
+      lastTriggeredAt: null,
+    },
+    expiredIntervals: [],
     parentSettings: {
       pin: DEFAULT_PARENT_PIN,
     },
@@ -194,21 +212,56 @@ export function appDataReducer(
         },
       };
     case 'updateTimerConfig':
-      return {
+      return withDerivedTimerRuntimeState(state, {
         ...state,
         timerConfig: {
           ...state.timerConfig,
           ...action.patch,
         },
-      };
+      });
     case 'startTimer':
       return startTimer(state, action.startedAt);
     case 'pauseTimer':
       return pauseTimer(state, action.pausedAt);
     case 'replaceTimerState':
-      return {
+      return withDerivedTimerRuntimeState(state, {
         ...state,
         timerState: action.timerState,
+      });
+    case 'replaceTimerRuntimeState':
+      return {
+        ...state,
+        timerRuntimeState: action.timerRuntimeState,
+      };
+    case 'replaceExpiredIntervals':
+      return {
+        ...state,
+        expiredIntervals: action.expiredIntervals,
+      };
+    case 'setExpiredIntervalChildStatus':
+      return {
+        ...state,
+        expiredIntervals: state.expiredIntervals
+          .map((interval) =>
+            interval.intervalId !== action.intervalId
+              ? interval
+              : {
+                  ...interval,
+                  childActions: interval.childActions.map((childAction) =>
+                    childAction.childId === action.childId
+                      ? {
+                          ...childAction,
+                          status: action.status,
+                        }
+                      : childAction,
+                  ),
+                },
+          )
+          .filter((interval) =>
+            interval.childActions.some(
+              (childAction) => childAction.status === 'pending',
+            ),
+          ),
       };
     case 'resetTimer':
       return {
@@ -218,6 +271,8 @@ export function appDataReducer(
           isRunning: false,
           pausedRemainingMs: null,
         },
+        timerRuntimeState: createDefaultTimerRuntimeState(),
+        expiredIntervals: [],
       };
     default:
       return state;
@@ -311,12 +366,15 @@ function startTimer(
   state: PersistedAppData,
   startedAt: number,
 ): PersistedAppData {
-  const intervalMs = Math.max(state.timerConfig.intervalMinutes, 1) * 60 * 1000;
+  const intervalMs = getTimerIntervalMs(state.timerConfig);
   const resumedRemainingMs = state.timerState.pausedRemainingMs;
   const cycleStartedAt =
     resumedRemainingMs === null
       ? startedAt
       : startedAt - (intervalMs - resumedRemainingMs);
+  const isResuming =
+    resumedRemainingMs !== null && state.timerRuntimeState.sessionId !== null;
+  const nextTriggerAt = startedAt + (resumedRemainingMs ?? intervalMs);
 
   return {
     ...state,
@@ -324,6 +382,15 @@ function startTimer(
       cycleStartedAt,
       isRunning: true,
       pausedRemainingMs: null,
+    },
+    timerRuntimeState: {
+      sessionId: isResuming
+        ? state.timerRuntimeState.sessionId
+        : createSessionId(startedAt),
+      nextTriggerAt,
+      lastTriggeredAt: isResuming
+        ? state.timerRuntimeState.lastTriggeredAt
+        : null,
     },
   };
 }
@@ -339,10 +406,14 @@ function pauseTimer(
         ...state.timerState,
         isRunning: false,
       },
+      timerRuntimeState: {
+        ...state.timerRuntimeState,
+        nextTriggerAt: null,
+      },
     };
   }
 
-  const intervalMs = Math.max(state.timerConfig.intervalMinutes, 1) * 60 * 1000;
+  const intervalMs = getTimerIntervalMs(state.timerConfig);
   const elapsedMs = Math.max(pausedAt - state.timerState.cycleStartedAt, 0);
   const remainderMs = elapsedMs % intervalMs;
   const hasCompletedBoundary = elapsedMs > 0 && remainderMs === 0;
@@ -357,6 +428,50 @@ function pauseTimer(
       isRunning: false,
       pausedRemainingMs,
     },
+    timerRuntimeState: {
+      ...state.timerRuntimeState,
+      nextTriggerAt: null,
+    },
+  };
+}
+
+function withDerivedTimerRuntimeState(
+  previousState: PersistedAppData,
+  nextState: PersistedAppData,
+) {
+  if (
+    !nextState.timerState.isRunning ||
+    nextState.timerState.cycleStartedAt === null
+  ) {
+    return {
+      ...nextState,
+      timerRuntimeState: {
+        ...nextState.timerRuntimeState,
+        nextTriggerAt: null,
+      },
+    };
+  }
+
+  const intervalMs = getTimerIntervalMs(nextState.timerConfig);
+
+  return {
+    ...nextState,
+    timerRuntimeState: {
+      ...nextState.timerRuntimeState,
+      sessionId:
+        previousState.timerRuntimeState.sessionId ??
+        nextState.timerRuntimeState.sessionId ??
+        createSessionId(nextState.timerState.cycleStartedAt),
+      nextTriggerAt: nextState.timerState.cycleStartedAt + intervalMs,
+    },
+  };
+}
+
+function createDefaultTimerRuntimeState(): TimerRuntimeState {
+  return {
+    sessionId: null,
+    nextTriggerAt: null,
+    lastTriggeredAt: null,
   };
 }
 
@@ -405,4 +520,8 @@ function applyActiveChildOrder<
 
 function createId() {
   return `kid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createSessionId(timestamp: number) {
+  return `session-${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
 }

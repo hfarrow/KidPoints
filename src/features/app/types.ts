@@ -10,6 +10,7 @@ export type ChildProfile = {
 
 export type SharedTimerConfig = {
   intervalMinutes: number;
+  intervalSeconds: number;
   notificationsEnabled: boolean;
   alarmSound: 'Chime' | 'Bell';
   alarmDurationSeconds: number;
@@ -19,6 +20,28 @@ export type SharedTimerState = {
   cycleStartedAt: number | null;
   isRunning: boolean;
   pausedRemainingMs: number | null;
+};
+
+export type TimerRuntimeState = {
+  sessionId: string | null;
+  nextTriggerAt: number | null;
+  lastTriggeredAt: number | null;
+};
+
+export type ExpiredIntervalChildStatus = 'pending' | 'awarded' | 'dismissed';
+
+export type ExpiredIntervalChildAction = {
+  childId: string;
+  childName: string;
+  status: ExpiredIntervalChildStatus;
+};
+
+export type ExpiredInterval = {
+  intervalId: string;
+  notificationId: number;
+  sessionId: string;
+  triggeredAt: number;
+  childActions: ExpiredIntervalChildAction[];
 };
 
 export type ParentSettings = {
@@ -61,6 +84,8 @@ export type PersistedAppData = {
   uiPreferences: UiPreferences;
   timerConfig: SharedTimerConfig;
   timerState: SharedTimerState;
+  timerRuntimeState: TimerRuntimeState;
+  expiredIntervals: ExpiredInterval[];
   parentSettings: ParentSettings;
   shopCatalog: ShopCatalogState;
   cart: CartState;

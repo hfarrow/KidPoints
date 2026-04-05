@@ -9,7 +9,8 @@
     "check": "yarn exec biome check --write . && yarn exec eslint . --fix --cache --cache-location .cache/eslintcache && yarn exec tsc --noEmit --incremental --tsBuildInfoFile .cache/typecheck.tsbuildinfo",
     "test": "jest --runInBand --watchAll=false",
     "verify": "yarn check && yarn test",
-    "launch:as": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/launch-android-studio.ps1"
+    "launch:as": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/launch-android-studio.ps1",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

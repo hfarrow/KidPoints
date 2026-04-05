@@ -1,13 +1,25 @@
 import {
   createContext,
   type PropsWithChildren,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
 } from 'react';
-import { useColorScheme } from 'react-native';
+import { AppState, type AppStateStatus, useColorScheme } from 'react-native';
 import { resolveThemeMode } from '../theme/theme';
+import {
+  type AlarmEngineRuntimeStatus,
+  addAlarmEngineListener,
+  getAlarmRuntimeStatus,
+  pauseAlarmTimer,
+  resetAlarmTimer,
+  startAlarmTimer,
+  stopExpiredAlarmPlayback,
+  syncAlarmDocument,
+} from './alarmEngine';
+import { createInitialParentSession } from './parentSession';
 import { appRepository } from './repository';
 import { appDataReducer, sortChildren, verifyParentPin } from './state';
 import { computeTimerSnapshot } from './timer';
@@ -30,7 +42,23 @@ import type {
   ThemeMode,
 } from './types';
 
+const ALARM_DEBUG_PREFIX = '[KidPointsAlarmJS]';
+
+function logAlarmDebug(message: string, details?: unknown) {
+  if (!__DEV__) {
+    return;
+  }
+
+  if (details === undefined) {
+    console.debug(ALARM_DEBUG_PREFIX, message);
+    return;
+  }
+
+  console.debug(ALARM_DEBUG_PREFIX, message, details);
+}
+
 type AppStorageValue = {
+  alarmRuntimeStatus: AlarmEngineRuntimeStatus;
   appData: PersistedAppData;
   archivedChildren: PersistedAppData['children'];
   children: PersistedAppData['children'];
@@ -45,11 +73,15 @@ type AppStorageValue = {
   clearTransactionHistory: () => void;
   getRevertPlan: (threadId: string) => string[];
   getRestorePlan: (threadId: string) => string[];
+  reloadPersistedState: () => Promise<void>;
   restoreTransaction: (threadId: string) => void;
   revertTransaction: (threadId: string) => void;
+  refreshAlarmRuntimeStatus: () => Promise<void>;
   unlockParent: (pin: string) => boolean;
   addChild: (name: string) => void;
+  awardExpiredIntervalChild: (intervalId: string, childId: string) => void;
   decrementPoints: (childId: string) => void;
+  dismissExpiredIntervalChild: (intervalId: string, childId: string) => void;
   incrementPoints: (childId: string) => void;
   moveChild: (childId: string, direction: 'up' | 'down') => void;
   pauseTimer: () => void;
@@ -67,29 +99,68 @@ const AppStorageContext = createContext<AppStorageValue | null>(null);
 
 export function AppStorageProvider({ children }: PropsWithChildren) {
   const [document, setDocument] = useState(createDefaultAppDocument);
-  const [parentSession, setParentSession] = useState<ParentSession>({
-    isUnlocked: false,
-  });
+  const [alarmRuntimeStatus, setAlarmRuntimeStatus] =
+    useState<AlarmEngineRuntimeStatus>({
+      countdownNotificationChannelImportance: null,
+      countdownNotificationHasPromotableCharacteristics: false,
+      countdownNotificationIsOngoing: false,
+      countdownNotificationRequestedPromoted: false,
+      countdownNotificationUsesChronometer: false,
+      countdownNotificationWhen: null,
+      exactAlarmPermissionGranted: false,
+      expiredNotificationCategory: null,
+      expiredNotificationChannelImportance: null,
+      expiredNotificationHasCustomHeadsUp: false,
+      expiredNotificationHasFullScreenIntent: false,
+      fullScreenIntentPermissionGranted: false,
+      fullScreenIntentSettingsResolvable: false,
+      isAppInForeground: false,
+      isRunning: false,
+      lastTriggeredAt: null,
+      nextTriggerAt: null,
+      notificationPermissionGranted: false,
+      promotedNotificationSettingsResolvable: false,
+      promotedNotificationPermissionGranted: false,
+      sessionId: null,
+    });
+  const [parentSession, setParentSession] = useState<ParentSession>(
+    createInitialParentSession,
+  );
   const [isHydrated, setIsHydrated] = useState(false);
   const [now, setNow] = useState(Date.now());
   const systemColorScheme = useColorScheme();
+  const reloadPersistedState = useCallback(async () => {
+    logAlarmDebug('Reloading persisted alarm state');
+    const [loadedData, runtimeStatus] = await Promise.all([
+      appRepository.load(),
+      getAlarmRuntimeStatus(),
+    ]);
+
+    setDocument(loadedData);
+    setAlarmRuntimeStatus(runtimeStatus);
+    logAlarmDebug('Reloaded persisted alarm state', {
+      expiredIntervals: loadedData.head.expiredIntervals.length,
+      isRunning: runtimeStatus.isRunning,
+      sessionId: runtimeStatus.sessionId,
+    });
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
 
-    appRepository.load().then((loadedData) => {
+    reloadPersistedState().then(() => {
       if (!isMounted) {
         return;
       }
 
-      setDocument(loadedData);
       setIsHydrated(true);
+      logAlarmDebug('App storage hydrated');
     });
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [reloadPersistedState]);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -97,6 +168,7 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
     }
 
     void appRepository.save(document);
+    void syncAlarmDocument(document);
   }, [document, isHydrated]);
 
   useEffect(() => {
@@ -106,6 +178,35 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
 
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const subscription = addAlarmEngineListener((event) => {
+      logAlarmDebug('Received native alarm engine state event', {
+        expiredIntervals: event.document.head.expiredIntervals.length,
+        reason: event.reason,
+        sessionId: event.runtimeStatus.sessionId,
+      });
+      setDocument(event.document);
+      setAlarmRuntimeStatus(event.runtimeStatus);
+    });
+
+    const appStateSubscription = AppState.addEventListener(
+      'change',
+      (nextAppState: AppStateStatus) => {
+        logAlarmDebug('AppState changed', { nextAppState });
+        if (nextAppState !== 'active') {
+          return;
+        }
+
+        void reloadPersistedState();
+      },
+    );
+
+    return () => {
+      subscription?.remove();
+      appStateSubscription.remove();
+    };
+  }, [reloadPersistedState]);
 
   const value = useMemo<AppStorageValue>(() => {
     const appData = document.head;
@@ -122,19 +223,38 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
     const timerSnapshot = computeTimerSnapshot(
       appData.timerConfig,
       appData.timerState,
+      appData.timerRuntimeState,
       now,
     );
     const actorDeviceName = getTransactionActorDeviceName();
+    const refreshAlarmRuntimeStatus = async () => {
+      setAlarmRuntimeStatus(await getAlarmRuntimeStatus());
+    };
+    const updateHead = (
+      updater: (currentHead: PersistedAppData) => PersistedAppData,
+    ) => {
+      const nextDocument = {
+        ...document,
+        head: updater(document.head),
+      };
+
+      setDocument(nextDocument);
+
+      return nextDocument;
+    };
     const commit = (intent: Parameters<typeof commitSharedTransaction>[1]) => {
-      setDocument((current) =>
-        commitSharedTransaction(current, intent, {
-          actorDeviceName,
-          occurredAt: Date.now(),
-        }),
-      );
+      const nextDocument = commitSharedTransaction(document, intent, {
+        actorDeviceName,
+        occurredAt: Date.now(),
+      });
+
+      setDocument(nextDocument);
+
+      return nextDocument;
     };
 
     return {
+      alarmRuntimeStatus,
       appData,
       archivedChildren,
       children,
@@ -143,15 +263,15 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
         setParentSession({ isUnlocked: false });
       },
       parentSession,
+      reloadPersistedState,
       resolvedTheme,
       setThemeMode: (themeMode) => {
-        setDocument((current) => ({
-          ...current,
-          head: appDataReducer(current.head, {
+        updateHead((currentHead) =>
+          appDataReducer(currentHead, {
             type: 'setThemeMode',
             themeMode,
           }),
-        }));
+        );
       },
       timerSnapshot,
       themeMode: appData.uiPreferences.themeMode,
@@ -184,6 +304,7 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
           }),
         );
       },
+      refreshAlarmRuntimeStatus,
       unlockParent: (pin) => {
         const success = verifyParentPin(appData, pin);
 
@@ -200,8 +321,147 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
 
         commit({ type: 'addChild', name });
       },
+      awardExpiredIntervalChild: (intervalId, childId) => {
+        logAlarmDebug('Awarding child from check-in modal', {
+          childId,
+          intervalId,
+        });
+        void stopExpiredAlarmPlayback();
+        const targetInterval = appData.expiredIntervals.find(
+          (interval) => interval.intervalId === intervalId,
+        );
+        const targetAction = targetInterval?.childActions.find(
+          (childAction) => childAction.childId === childId,
+        );
+
+        if (
+          !targetInterval ||
+          !targetAction ||
+          targetAction.status !== 'pending'
+        ) {
+          return;
+        }
+
+        const occurredAt = Date.now();
+        let nextDocument = commitSharedTransaction(
+          document,
+          {
+            type: 'incrementPoints',
+            amount: 1,
+            childId,
+          },
+          {
+            actorDeviceName,
+            occurredAt,
+          },
+        );
+
+        nextDocument = {
+          ...nextDocument,
+          head: appDataReducer(nextDocument.head, {
+            type: 'setExpiredIntervalChildStatus',
+            childId,
+            intervalId,
+            status: 'awarded',
+          }),
+        };
+
+        const shouldRestartTimer = !nextDocument.head.timerState.isRunning;
+
+        if (shouldRestartTimer) {
+          nextDocument = commitSharedTransaction(
+            nextDocument,
+            {
+              type: 'startTimer',
+              startedAt: occurredAt,
+            },
+            {
+              actorDeviceName,
+              occurredAt,
+            },
+          );
+        }
+
+        setDocument(nextDocument);
+
+        if (shouldRestartTimer) {
+          void startAlarmTimer(nextDocument).then((serializedDocument) => {
+            setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+            void refreshAlarmRuntimeStatus();
+          });
+          return;
+        }
+
+        void syncAlarmDocument(nextDocument).then((serializedDocument) => {
+          setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+          void refreshAlarmRuntimeStatus();
+        });
+      },
       decrementPoints: (childId) => {
         commit({ type: 'decrementPoints', amount: 1, childId });
+      },
+      dismissExpiredIntervalChild: (intervalId, childId) => {
+        logAlarmDebug('Dismissing child from check-in modal', {
+          childId,
+          intervalId,
+        });
+        void stopExpiredAlarmPlayback();
+        const targetInterval = appData.expiredIntervals.find(
+          (interval) => interval.intervalId === intervalId,
+        );
+        const targetAction = targetInterval?.childActions.find(
+          (childAction) => childAction.childId === childId,
+        );
+
+        if (
+          !targetInterval ||
+          !targetAction ||
+          targetAction.status !== 'pending'
+        ) {
+          return;
+        }
+
+        const occurredAt = Date.now();
+        let nextDocument = {
+          ...document,
+          head: appDataReducer(document.head, {
+            type: 'setExpiredIntervalChildStatus',
+            childId,
+            intervalId,
+            status: 'dismissed',
+          }),
+        };
+
+        const shouldRestartTimer = !nextDocument.head.timerState.isRunning;
+
+        if (shouldRestartTimer) {
+          nextDocument = commitSharedTransaction(
+            nextDocument,
+            {
+              type: 'startTimer',
+              startedAt: occurredAt,
+            },
+            {
+              actorDeviceName,
+              occurredAt,
+            },
+          );
+        }
+
+        setDocument(nextDocument);
+
+        if (shouldRestartTimer) {
+          void startAlarmTimer(nextDocument).then((serializedDocument) => {
+            setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+            void refreshAlarmRuntimeStatus();
+          });
+          return;
+        }
+
+        void syncAlarmDocument(nextDocument).then((serializedDocument) => {
+          setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+          void refreshAlarmRuntimeStatus();
+        });
       },
       incrementPoints: (childId) => {
         commit({ type: 'incrementPoints', amount: 1, childId });
@@ -210,7 +470,16 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
         commit({ type: 'moveChild', childId, direction });
       },
       pauseTimer: () => {
-        commit({ type: 'pauseTimer', pausedAt: Date.now() });
+        logAlarmDebug('Pause timer requested from JS');
+        const nextDocument = commit({
+          type: 'pauseTimer',
+          pausedAt: Date.now(),
+        });
+
+        void pauseAlarmTimer(nextDocument).then((serializedDocument) => {
+          setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+          void refreshAlarmRuntimeStatus();
+        });
       },
       renameChild: (childId, name) => {
         if (!name.trim()) {
@@ -226,7 +495,13 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
         commit({ type: 'deleteChildPermanently', childId });
       },
       resetTimer: () => {
-        commit({ type: 'resetTimer' });
+        logAlarmDebug('Reset timer requested from JS');
+        const nextDocument = commit({ type: 'resetTimer' });
+
+        void resetAlarmTimer(nextDocument).then((serializedDocument) => {
+          setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+          void refreshAlarmRuntimeStatus();
+        });
       },
       restoreChild: (childId) => {
         commit({ type: 'restoreChild', childId });
@@ -235,19 +510,39 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
         commit({ type: 'setPoints', childId, points });
       },
       startTimer: () => {
-        commit({ type: 'startTimer', startedAt: Date.now() });
+        logAlarmDebug('Start timer requested from JS');
+        const nextDocument = commit({
+          type: 'startTimer',
+          startedAt: Date.now(),
+        });
+
+        void startAlarmTimer(nextDocument).then((serializedDocument) => {
+          setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+          void refreshAlarmRuntimeStatus();
+        });
       },
       updateTimerConfig: (patch) => {
-        setDocument((current) => ({
-          ...current,
-          head: appDataReducer(current.head, {
+        const nextDocument = updateHead((currentHead) =>
+          appDataReducer(currentHead, {
             type: 'updateTimerConfig',
             patch,
           }),
-        }));
+        );
+        void syncAlarmDocument(nextDocument).then((serializedDocument) => {
+          setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+          void refreshAlarmRuntimeStatus();
+        });
       },
     };
-  }, [document, isHydrated, now, parentSession, systemColorScheme]);
+  }, [
+    alarmRuntimeStatus,
+    document,
+    isHydrated,
+    now,
+    parentSession,
+    reloadPersistedState,
+    systemColorScheme,
+  ]);
 
   return (
     <AppStorageContext.Provider value={value}>

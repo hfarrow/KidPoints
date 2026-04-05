@@ -1,4 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  loadPersistedDocument as loadPersistedDocumentFromNative,
+  savePersistedDocument as savePersistedDocumentToNative,
+} from './alarmEngine';
 import type { AppRepository } from './repositoryTypes';
 import { createDefaultAppData, DEFAULT_PARENT_PIN } from './state';
 import {
@@ -13,7 +17,9 @@ const STORAGE_KEY = 'kidpoints.app-data.v1';
 
 class AsyncStorageAppRepository implements AppRepository {
   async load() {
-    const rawValue = await AsyncStorage.getItem(STORAGE_KEY);
+    const rawValue =
+      (await loadPersistedDocumentFromNative()) ??
+      (await AsyncStorage.getItem(STORAGE_KEY));
 
     if (!rawValue) {
       return createDefaultAppDocument();
@@ -44,7 +50,10 @@ class AsyncStorageAppRepository implements AppRepository {
   }
 
   async save(document: PersistedAppDocument) {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(document));
+    const serializedDocument = JSON.stringify(document);
+
+    await savePersistedDocumentToNative(document);
+    await AsyncStorage.setItem(STORAGE_KEY, serializedDocument);
   }
 }
 
@@ -76,6 +85,13 @@ function normalizePersistedAppData(parsedValue: Partial<PersistedAppData>) {
       ...defaultData.timerState,
       ...parsedValue.timerState,
     },
+    timerRuntimeState: {
+      ...defaultData.timerRuntimeState,
+      ...parsedValue.timerRuntimeState,
+    },
+    expiredIntervals: Array.isArray(parsedValue.expiredIntervals)
+      ? parsedValue.expiredIntervals
+      : defaultData.expiredIntervals,
     shopCatalog: {
       ...defaultData.shopCatalog,
       ...parsedValue.shopCatalog,

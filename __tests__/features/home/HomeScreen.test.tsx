@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { Alert } from 'react-native';
-
+import type { ExpiredInterval } from '../../../src/features/app/types';
 import { HomeScreen } from '../../../src/features/home/HomeScreen';
 import { getThemeTokens } from '../../../src/features/theme/theme';
 
@@ -390,11 +390,16 @@ function buildStorageState(isUnlocked: boolean) {
 
   return {
     addChild: jest.fn(),
+    appData: {
+      expiredIntervals: [] as ExpiredInterval[],
+    },
     archiveChild: jest.fn(),
     archivedChildren: [] as (typeof activeChild)[],
+    awardExpiredIntervalChild: jest.fn(),
     children: [activeChild],
     deleteChildPermanently: jest.fn(),
     decrementPoints: jest.fn(),
+    dismissExpiredIntervalChild: jest.fn(),
     incrementPoints: jest.fn(),
     isHydrated: true,
     lockParent: jest.fn(),

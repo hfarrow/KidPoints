@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/notification_expired_root"
+  android:layout_width="match_parent"
+  android:layout_height="wrap_content"
+  android:background="@drawable/kidpoints_notification_panel"
+  android:orientation="vertical"
+  android:paddingLeft="16dp"
+  android:paddingTop="14dp"
+  android:paddingRight="16dp"
+  android:paddingBottom="14dp">
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <LinearLayout
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_weight="1"
+      android:orientation="vertical">
+
+      <TextView
+        android:id="@+id/notification_expired_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+      <TextView
+        android:id="@+id/notification_expired_message"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="#D7E0F5"
+        android:textSize="13sp" />
+
+      <TextView
+        android:id="@+id/notification_expired_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="#B8C4DB"
+        android:textSize="12sp" />
+    </LinearLayout>
+  </LinearLayout>
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="14dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <TextView
+      android:id="@+id/notification_expired_check_in"
+      android:layout_width="0dp"
+      android:layout_height="40dp"
+      android:layout_weight="1"
+      android:background="@drawable/kidpoints_notification_button_primary"
+      android:gravity="center"
+      android:text="Check-in"
+      android:textColor="#FFFFFF"
+      android:textSize="14sp"
+      android:textStyle="bold" />
+
+    <TextView
+      android:id="@+id/notification_expired_stop"
+      android:layout_width="0dp"
+      android:layout_height="40dp"
+      android:layout_marginLeft="10dp"
+      android:layout_weight="1"
+      android:background="@drawable/kidpoints_notification_button"
+      android:gravity="center"
+      android:text="Stop"
+      android:textColor="#FFFFFF"
+      android:textSize="14sp"
+      android:textStyle="bold" />
+  </LinearLayout>
+</LinearLayout>

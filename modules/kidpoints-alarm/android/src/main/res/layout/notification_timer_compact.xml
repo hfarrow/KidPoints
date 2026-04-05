@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/notification_timer_root"
+  android:layout_width="match_parent"
+  android:layout_height="wrap_content"
+  android:background="@drawable/kidpoints_notification_panel"
+  android:gravity="center_vertical"
+  android:orientation="horizontal"
+  android:paddingLeft="14dp"
+  android:paddingTop="12dp"
+  android:paddingRight="14dp"
+  android:paddingBottom="12dp">
+
+  <ImageView
+    android:id="@+id/notification_timer_icon"
+    android:layout_width="40dp"
+    android:layout_height="40dp"
+    android:background="@drawable/kidpoints_notification_icon_bg"
+    android:padding="8dp"
+    android:src="@android:drawable/ic_lock_idle_alarm" />
+
+  <LinearLayout
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:layout_marginLeft="12dp"
+    android:layout_weight="1"
+    android:orientation="vertical">
+
+    <TextView
+      android:id="@+id/notification_timer_title"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:textColor="#FFFFFF"
+      android:textSize="14sp"
+      android:textStyle="bold" />
+
+    <Chronometer
+      android:id="@+id/notification_timer_chronometer"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:format="%s"
+      android:textColor="#E8EEFF"
+      android:textSize="28sp"
+      android:textStyle="bold" />
+
+    <TextView
+      android:id="@+id/notification_timer_subtitle"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:textColor="#B8C4DB"
+      android:textSize="12sp" />
+  </LinearLayout>
+
+  <TextView
+    android:id="@+id/notification_timer_stop"
+    android:layout_width="36dp"
+    android:layout_height="36dp"
+    android:background="@drawable/kidpoints_notification_button"
+    android:gravity="center"
+    android:text="X"
+    android:textColor="#FFFFFF"
+    android:textSize="15sp"
+    android:textStyle="bold" />
+
+  <TextView
+    android:id="@+id/notification_timer_pause"
+    android:layout_width="36dp"
+    android:layout_height="36dp"
+    android:layout_marginLeft="8dp"
+    android:background="@drawable/kidpoints_notification_button"
+    android:gravity="center"
+    android:text="||"
+    android:textColor="#FFFFFF"
+    android:textSize="14sp"
+    android:textStyle="bold" />
+</LinearLayout>

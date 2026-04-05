@@ -27,6 +27,13 @@ describe('appRepository', () => {
     const loaded = await appRepository.load();
 
     expect(loaded.head.uiPreferences.themeMode).toBe('system');
+    expect(loaded.head.timerRuntimeState).toEqual({
+      sessionId: null,
+      nextTriggerAt: null,
+      lastTriggeredAt: null,
+    });
+    expect(loaded.head.timerConfig.intervalSeconds).toBe(0);
+    expect(loaded.head.expiredIntervals).toEqual([]);
     expect(loaded.transactionState.transactions).toEqual([]);
     expect(loaded.transactionState.events).toEqual([]);
     expect(loaded.transactionState.clientState.deviceId).toContain('device-');
@@ -45,6 +52,7 @@ describe('appRepository', () => {
     const loaded = await appRepository.load();
 
     expect(loaded.head.uiPreferences.themeMode).toBe('system');
+    expect(loaded.head.timerConfig.intervalSeconds).toBe(0);
   });
 
   it('migrates legacy snapshot-only storage into a document with empty sync state', async () => {
