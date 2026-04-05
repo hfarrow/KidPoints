@@ -1,15 +1,12 @@
 import { Tabs, useRouter } from 'expo-router';
-import { useState } from 'react';
 
-import { ParentPinModal } from '../../src/components/ParentPinModal';
-import { useAppStorage } from '../../src/features/app/appStorage';
+import { useParentUnlockAction } from '../../src/features/app/useParentUnlockAction';
 import { useAppTheme } from '../../src/features/theme/themeContext';
 
 export default function TabsLayout() {
   const router = useRouter();
-  const { parentSession, unlockParent } = useAppStorage();
+  const { parentPinModal, requestParentUnlock } = useParentUnlockAction();
   const { tokens } = useAppTheme();
-  const [pinModalVisible, setPinModalVisible] = useState(false);
 
   return (
     <>
@@ -44,12 +41,13 @@ export default function TabsLayout() {
         <Tabs.Screen
           listeners={{
             tabPress: (event) => {
-              if (parentSession.isUnlocked) {
-                return;
-              }
+              const didProceed = requestParentUnlock(() => {
+                router.push('/alarm');
+              });
 
-              event.preventDefault();
-              setPinModalVisible(true);
+              if (!didProceed) {
+                event.preventDefault();
+              }
             },
           }}
           name="alarm"
@@ -63,19 +61,7 @@ export default function TabsLayout() {
           options={{ title: 'Shop', tabBarLabel: 'Shop' }}
         />
       </Tabs>
-      <ParentPinModal
-        visible={pinModalVisible}
-        onClose={() => setPinModalVisible(false)}
-        onSubmit={(pin) => {
-          const success = unlockParent(pin);
-
-          if (success) {
-            router.push('/alarm');
-          }
-
-          return success;
-        }}
-      />
+      {parentPinModal}
     </>
   );
 }

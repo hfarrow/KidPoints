@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAppStorage } from '../features/app/appStorage';
+import { useParentUnlockAction } from '../features/app/useParentUnlockAction';
 import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
-import { ParentPinModal } from './ParentPinModal';
 import { SettingsModal } from './SettingsModal';
 
 type ScreenHeaderProps = {
@@ -12,10 +12,10 @@ type ScreenHeaderProps = {
 };
 
 export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
-  const [pinModalVisible, setPinModalVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const { lockParent, parentSession, unlockParent } = useAppStorage();
+  const { lockParent, parentSession } = useAppStorage();
   const { setThemeMode, themeMode } = useAppTheme();
+  const { parentPinModal, requestParentUnlock } = useParentUnlockAction();
   const styles = useThemedStyles(createStyles);
 
   return (
@@ -32,7 +32,7 @@ export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
               return;
             }
 
-            setPinModalVisible(true);
+            requestParentUnlock();
           }}
           style={[
             styles.modeButton,
@@ -62,11 +62,7 @@ export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
           <Text style={styles.iconButtonText}>{'\u2699'}</Text>
         </Pressable>
       </View>
-      <ParentPinModal
-        visible={pinModalVisible}
-        onClose={() => setPinModalVisible(false)}
-        onSubmit={unlockParent}
-      />
+      {parentPinModal}
       <SettingsModal
         visible={settingsVisible}
         onClose={() => setSettingsVisible(false)}
@@ -102,7 +98,9 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       color: tokens.textMuted,
     },
     modeButton: {
+      alignSelf: 'flex-start',
       borderRadius: 999,
+      overflow: 'hidden',
       paddingHorizontal: 18,
       paddingVertical: 11,
     },
@@ -128,6 +126,7 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       borderRadius: 22,
       alignItems: 'center',
       justifyContent: 'center',
+      overflow: 'hidden',
       backgroundColor: tokens.controlSurface,
     },
     iconButtonText: {

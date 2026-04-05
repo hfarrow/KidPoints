@@ -21,6 +21,13 @@ describe('theme helpers', () => {
     expect(light.cardSurface).not.toBe(dark.cardSurface);
     expect(light.textPrimary).not.toBe(dark.textPrimary);
     expect(light.tabBarBackground).not.toBe(dark.tabBarBackground);
+    expect(light.tabBarActiveBackground).not.toBe(dark.tabBarActiveBackground);
+  });
+
+  it('uses a softer selected tab background in light mode', () => {
+    const light = getThemeTokens('light');
+
+    expect(light.tabBarActiveBackground).toBe('#eff6ff');
   });
 
   it('preserves separate child and parent surfaces in both themes', () => {

@@ -16,6 +16,7 @@ import { ScreenHeader } from '../../components/ScreenHeader';
 import { Tile } from '../../components/Tile';
 import { useAppStorage } from '../app/appStorage';
 import { formatDuration } from '../app/timer';
+import { useParentUnlockAction } from '../app/useParentUnlockAction';
 import { useAppTheme } from '../theme/themeContext';
 
 export function HomeScreen() {
@@ -43,6 +44,8 @@ export function HomeScreen() {
     displayName: string;
     value: string;
   } | null>(null);
+  const isParentUnlocked = parentSession.isUnlocked;
+  const { parentPinModal, requestParentUnlock } = useParentUnlockAction();
 
   if (!isHydrated) {
     return (
@@ -50,7 +53,7 @@ export function HomeScreen() {
         edges={['top']}
         style={[
           styles.safeArea,
-          { backgroundColor: getScreenSurface(parentSession.isUnlocked) },
+          { backgroundColor: getScreenSurface(isParentUnlocked) },
         ]}
       >
         <View style={styles.loadingState}>
@@ -70,7 +73,7 @@ export function HomeScreen() {
       edges={['top']}
       style={[
         styles.safeArea,
-        { backgroundColor: getScreenSurface(parentSession.isUnlocked) },
+        { backgroundColor: getScreenSurface(isParentUnlocked) },
       ]}
     >
       <ScrollView contentContainerStyle={styles.content}>
@@ -83,7 +86,7 @@ export function HomeScreen() {
           collapsible={false}
           floatingTitle
           headerAccessory={
-            parentSession.isUnlocked ? (
+            isParentUnlocked ? (
               <Pressable
                 onPress={() => router.push('/alarm')}
                 style={[
@@ -103,57 +106,67 @@ export function HomeScreen() {
           title="Alarm"
           collapsedSummary={
             <View style={styles.timerSummary}>
-              <Text style={[styles.timerValue, { color: tokens.textPrimary }]}>
-                {formatDuration(timerSnapshot.remainingMs)}
-              </Text>
-              <View
-                style={[
-                  styles.timerControlsRail,
-                  { backgroundColor: tokens.controlSurface },
-                ]}
+              <Pressable
+                accessibilityLabel="Open alarm settings"
+                onPress={() => requestParentUnlock()}
+                style={styles.timerValueButton}
               >
-                <Pressable
-                  onPress={() => {
-                    if (timerSnapshot.isRunning) {
-                      pauseTimer();
-                      return;
-                    }
+                <Text
+                  style={[styles.timerValue, { color: tokens.textPrimary }]}
+                >
+                  {formatDuration(timerSnapshot.remainingMs)}
+                </Text>
+              </Pressable>
+              {isParentUnlocked ? (
+                <View
+                  style={[
+                    styles.timerControlsRail,
+                    { backgroundColor: tokens.controlSurface },
+                  ]}
+                >
+                  <Pressable
+                    onPress={() => {
+                      if (timerSnapshot.isRunning) {
+                        pauseTimer();
+                        return;
+                      }
 
-                    startTimer();
-                  }}
-                  style={[
-                    styles.timerControlSegment,
-                    styles.timerControlSegmentLeft,
-                    { borderRightColor: tokens.border },
-                  ]}
-                >
-                  <Text
+                      startTimer();
+                    }}
                     style={[
-                      styles.timerActionText,
-                      { color: tokens.controlText },
+                      styles.timerControlSegment,
+                      styles.timerControlSegmentLeft,
+                      { borderRightColor: tokens.border },
                     ]}
                   >
-                    {timerSnapshot.isRunning ? 'Pause' : 'Start'}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={resetTimer}
-                  style={[
-                    styles.timerControlSegment,
-                    styles.timerControlSegmentRight,
-                    { borderLeftColor: tokens.border },
-                  ]}
-                >
-                  <Text
+                    <Text
+                      style={[
+                        styles.timerActionText,
+                        { color: tokens.controlText },
+                      ]}
+                    >
+                      {timerSnapshot.isRunning ? 'Pause' : 'Start'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={resetTimer}
                     style={[
-                      styles.timerActionText,
-                      { color: tokens.controlText },
+                      styles.timerControlSegment,
+                      styles.timerControlSegmentRight,
+                      { borderLeftColor: tokens.border },
                     ]}
                   >
-                    Reset
-                  </Text>
-                </Pressable>
-              </View>
+                    <Text
+                      style={[
+                        styles.timerActionText,
+                        { color: tokens.controlText },
+                      ]}
+                    >
+                      Reset
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           }
         />
@@ -164,7 +177,7 @@ export function HomeScreen() {
               Unlock Parent Mode to add the first child widget to this shared
               dashboard.
             </Text>
-            {parentSession.isUnlocked ? (
+            {isParentUnlocked ? (
               <Pressable
                 onPress={() => setAddModalVisible(true)}
                 style={styles.primaryAction}
@@ -178,6 +191,7 @@ export function HomeScreen() {
         {children.map((child, index) => (
           <Tile
             key={child.id}
+            collapsible={isParentUnlocked}
             collapsedSummary={
               <View style={styles.collapsedChildSummary}>
                 <View
@@ -186,24 +200,28 @@ export function HomeScreen() {
                     { backgroundColor: tokens.controlSurface },
                   ]}
                 >
+                  {isParentUnlocked ? (
+                    <Pressable
+                      disabled={!isParentUnlocked}
+                      onPress={() => decrementPoints(child.id)}
+                      style={[
+                        styles.childSegment,
+                        styles.childActionSegment,
+                        styles.childActionSegmentLeft,
+                      ]}
+                    >
+                      <Text style={styles.childActionText}>-</Text>
+                    </Pressable>
+                  ) : null}
                   <Pressable
-                    disabled={!parentSession.isUnlocked}
-                    onPress={() => decrementPoints(child.id)}
-                    style={[
-                      styles.childSegment,
-                      styles.childActionSegment,
-                      styles.childActionSegmentLeft,
-                    ]}
-                  >
-                    <Text style={styles.childActionText}>-</Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={!parentSession.isUnlocked}
+                    accessibilityLabel={`Edit ${child.displayName} points`}
                     onPress={() =>
-                      setPointEditor({
-                        childId: child.id,
-                        displayName: child.displayName,
-                        value: String(child.points),
+                      requestParentUnlock(() => {
+                        setPointEditor({
+                          childId: child.id,
+                          displayName: child.displayName,
+                          value: String(child.points),
+                        });
                       })
                     }
                     style={[
@@ -221,17 +239,19 @@ export function HomeScreen() {
                       {child.points}
                     </Text>
                   </Pressable>
-                  <Pressable
-                    disabled={!parentSession.isUnlocked}
-                    onPress={() => incrementPoints(child.id)}
-                    style={[
-                      styles.childSegment,
-                      styles.childActionSegment,
-                      styles.childActionSegmentRight,
-                    ]}
-                  >
-                    <Text style={styles.childActionText}>+</Text>
-                  </Pressable>
+                  {isParentUnlocked ? (
+                    <Pressable
+                      disabled={!isParentUnlocked}
+                      onPress={() => incrementPoints(child.id)}
+                      style={[
+                        styles.childSegment,
+                        styles.childActionSegment,
+                        styles.childActionSegmentRight,
+                      ]}
+                    >
+                      <Text style={styles.childActionText}>+</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               </View>
             }
@@ -239,7 +259,7 @@ export function HomeScreen() {
             summaryVisibleWhenExpanded
             title={child.displayName}
           >
-            {parentSession.isUnlocked ? (
+            {isParentUnlocked ? (
               <View style={styles.parentSection}>
                 <View style={styles.inlineActions}>
                   <Pressable
@@ -324,7 +344,7 @@ export function HomeScreen() {
           </Tile>
         ))}
 
-        {parentSession.isUnlocked ? (
+        {isParentUnlocked ? (
           <Tile initiallyCollapsed title="Parent tools">
             <Pressable
               onPress={() => setAddModalVisible(true)}
@@ -403,6 +423,8 @@ export function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {parentPinModal}
 
       <Modal
         animationType="fade"
@@ -585,6 +607,9 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
+  },
+  timerValueButton: {
+    flexShrink: 0,
   },
   timerControlsRail: {
     flex: 1,

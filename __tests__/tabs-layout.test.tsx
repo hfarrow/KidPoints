@@ -99,7 +99,11 @@ describe('TabsLayout', () => {
     };
 
     expect(latestModalProps.visible).toBe(true);
-    expect(latestModalProps.onSubmit('0000')).toBe(true);
+    let didUnlock = false;
+    act(() => {
+      didUnlock = latestModalProps.onSubmit('0000');
+    });
+    expect(didUnlock).toBe(true);
     expect(mockUnlockParent).toHaveBeenCalledWith('0000');
     expect(mockPush).toHaveBeenCalledWith('/alarm');
   });

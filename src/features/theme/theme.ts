@@ -46,7 +46,7 @@ const LIGHT_THEME: ThemeTokens = {
   modalSurface: '#f8fafc',
   segmentedControlSurface: '#e2e8f0',
   shadowColor: '#0f172a',
-  tabBarActiveBackground: '#e2e8f0',
+  tabBarActiveBackground: '#eff6ff',
   tabBarActiveTint: '#0f172a',
   tabBarBackground: '#f8fafc',
   tabBarInactiveTint: '#64748b',
