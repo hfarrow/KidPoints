@@ -72,6 +72,89 @@ describe('appRepository', () => {
     });
   });
 
+  it('migrates version 2 transaction documents into action threads and hidden revert events', async () => {
+    mockAsyncStorage.getItem.mockImplementation(async () =>
+      JSON.stringify({
+        head: createDefaultAppData(),
+        transactionState: {
+          nextTransactionId: 3,
+          transactions: [
+            {
+              actorDeviceName: 'Parent Phone',
+              dependsOnTransactionIds: [],
+              entityRefs: ['child:child-1'],
+              forward: {
+                childId: 'child-1',
+                childName: 'Ava',
+                delta: 1,
+                nextPoints: 1,
+                previousPoints: 0,
+                source: 'tap',
+                type: 'child-points-adjusted',
+              },
+              id: 1,
+              inverse: {
+                childId: 'child-1',
+                childName: 'Ava',
+                delta: -1,
+                nextPoints: 0,
+                previousPoints: 1,
+                source: 'tap',
+                type: 'child-points-adjusted',
+              },
+              kind: 'child-points-adjusted',
+              occurredAt: 100,
+              revertedByTransactionId: 2,
+              status: 'reverted',
+              undoPolicy: 'reversible',
+            },
+            {
+              actorDeviceName: 'Parent Phone',
+              dependsOnTransactionIds: [1],
+              entityRefs: ['child:child-1'],
+              forward: {
+                targetTransactionIds: [1],
+                type: 'revert-chain',
+              },
+              id: 2,
+              inverse: {
+                targetTransactionIds: [1],
+                type: 'reapply-transactions',
+              },
+              kind: 'revert-chain',
+              occurredAt: 101,
+              revertedByTransactionId: null,
+              status: 'applied',
+              undoPolicy: 'reversible',
+            },
+          ],
+        },
+        version: 2,
+      }),
+    );
+
+    const loaded = await appRepository.load();
+
+    expect(loaded.version).toBe(3);
+    expect(loaded.transactionState.transactions[0]).toMatchObject({
+      entryKind: 'action',
+      id: 1,
+      rootTransactionId: 1,
+    });
+    expect(loaded.transactionState.transactions[1]).toMatchObject({
+      entryKind: 'revert',
+      id: 2,
+      kind: 'revert-chain',
+      rootTransactionId: 1,
+    });
+    expect(
+      loaded.transactionState.transactions[1]?.forward.type === 'revert-chain'
+        ? loaded.transactionState.transactions[1].forward
+            .targetRootTransactionIds
+        : [],
+    ).toEqual([1]);
+  });
+
   it('persists the selected theme mode', async () => {
     const nextData = createDefaultAppDocument();
     nextData.head = {

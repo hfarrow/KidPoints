@@ -15,8 +15,11 @@ import { ScreenHeader } from '../../components/ScreenHeader';
 import { Tile } from '../../components/Tile';
 import { useAppStorage } from '../app/appStorage';
 import {
+  canRestoreTransaction,
   canRevertTransaction,
+  getTransactionActivityEntries,
   getTransactionSummary,
+  getVisibleTransactions,
 } from '../app/transactions';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 
@@ -26,8 +29,10 @@ export function TransactionsScreen() {
   const {
     clearTransactionHistory,
     getRevertPlan,
+    getRestorePlan,
     isHydrated,
     parentSession,
+    restoreTransaction,
     revertTransaction,
     transactions,
   } = useAppStorage();
@@ -49,7 +54,7 @@ export function TransactionsScreen() {
       return;
     }
 
-    const stillExists = transactions.some(
+    const stillExists = getVisibleTransactions(transactions).some(
       (transaction) => transaction.id === selectedTransactionId,
     );
 
@@ -59,19 +64,51 @@ export function TransactionsScreen() {
   }, [selectedTransactionId, transactions]);
 
   const orderedTransactions = useMemo(
-    () => [...transactions].sort((left, right) => right.id - left.id),
+    () =>
+      [...getVisibleTransactions(transactions)].sort(
+        (left, right) => right.id - left.id,
+      ),
     [transactions],
   );
-  const selectedRevertPlan = useMemo(
+  const selectedTransaction = useMemo(
     () =>
       selectedTransactionId === null
-        ? []
-        : getRevertPlan(selectedTransactionId),
-    [getRevertPlan, selectedTransactionId],
+        ? null
+        : (orderedTransactions.find(
+            (transaction) => transaction.id === selectedTransactionId,
+          ) ?? null),
+    [orderedTransactions, selectedTransactionId],
   );
+  const selectedActionPlan = useMemo(() => {
+    if (!selectedTransaction) {
+      return {
+        mode: null as 'restore' | 'revert' | null,
+        transactionIds: [] as number[],
+      };
+    }
+
+    if (canRevertTransaction(selectedTransaction)) {
+      return {
+        mode: 'revert' as const,
+        transactionIds: getRevertPlan(selectedTransaction.id),
+      };
+    }
+
+    if (canRestoreTransaction(selectedTransaction)) {
+      return {
+        mode: 'restore' as const,
+        transactionIds: getRestorePlan(selectedTransaction.id),
+      };
+    }
+
+    return {
+      mode: null as 'restore' | 'revert' | null,
+      transactionIds: [] as number[],
+    };
+  }, [getRestorePlan, getRevertPlan, selectedTransaction]);
   const selectedRevertSet = useMemo(
-    () => new Set(selectedRevertPlan),
-    [selectedRevertPlan],
+    () => new Set(selectedActionPlan.transactionIds),
+    [selectedActionPlan.transactionIds],
   );
 
   if (!isHydrated || !parentSession.isUnlocked) {
@@ -171,7 +208,14 @@ export function TransactionsScreen() {
           const isInRevertChain =
             !isSelected && selectedRevertSet.has(transaction.id);
           const revertable = canRevertTransaction(transaction);
-          const revertCount = isSelected ? selectedRevertPlan.length : 0;
+          const restorable = canRestoreTransaction(transaction);
+          const selectedActionCount = isSelected
+            ? selectedActionPlan.transactionIds.length
+            : 0;
+          const activityEntries = getTransactionActivityEntries(
+            transaction,
+            transactions,
+          ).filter((entry) => entry.kind !== 'action');
 
           return (
             <Tile
@@ -239,24 +283,54 @@ export function TransactionsScreen() {
                   <Text
                     style={[styles.linkedCopy, { color: tokens.accentText }]}
                   >
-                    Included in the selected revert chain
+                    Included in the selected{' '}
+                    {selectedActionPlan.mode === 'restore'
+                      ? 'restore'
+                      : 'revert'}{' '}
+                    chain
                   </Text>
                 ) : null}
 
-                {revertable ? (
+                {activityEntries.length > 0 ? (
+                  <View style={styles.activityList}>
+                    {activityEntries.map((entry) => (
+                      <Text
+                        key={entry.id}
+                        style={[
+                          styles.activityItem,
+                          { color: tokens.textMuted },
+                        ]}
+                      >
+                        {formatActivityLabel(entry.kind)} |{' '}
+                        {entry.actorDeviceName} |{' '}
+                        {formatTransactionTimestamp(entry.occurredAt)}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
+                {revertable || restorable ? (
                   <View style={styles.rowActions}>
                     <Pressable
-                      accessibilityLabel={`Revert transaction ${transaction.id}`}
-                      onPress={() => revertTransaction(transaction.id)}
+                      accessibilityLabel={`${
+                        restorable ? 'Restore' : 'Revert'
+                      } transaction ${transaction.id}`}
+                      onPress={() =>
+                        restorable
+                          ? restoreTransaction(transaction.id)
+                          : revertTransaction(transaction.id)
+                      }
                       style={[
                         styles.revertButton,
                         { backgroundColor: tokens.controlSurfaceActive },
                       ]}
                     >
                       <Text style={styles.revertButtonText}>
-                        {revertCount > 1
-                          ? `Revert ${revertCount} actions`
-                          : 'Revert'}
+                        {selectedActionCount > 1
+                          ? `${restorable ? 'Restore' : 'Revert'} ${selectedActionCount} actions`
+                          : restorable
+                            ? 'Restore'
+                            : 'Revert'}
                       </Text>
                     </Pressable>
                   </View>
@@ -277,6 +351,17 @@ function formatTransactionTimestamp(timestamp: number) {
     minute: '2-digit',
     month: 'short',
   });
+}
+
+function formatActivityLabel(kind: 'action' | 'restore' | 'revert') {
+  switch (kind) {
+    case 'revert':
+      return 'Reverted';
+    case 'restore':
+      return 'Restored';
+    default:
+      return 'Recorded';
+  }
 }
 
 function renderTransactionTitle(
@@ -392,6 +477,13 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     linkedCopy: {
       fontSize: 12,
       fontWeight: '700',
+    },
+    activityList: {
+      gap: 4,
+    },
+    activityItem: {
+      fontSize: 12,
+      lineHeight: 16,
     },
     rowActions: {
       flexDirection: 'row',

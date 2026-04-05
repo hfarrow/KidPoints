@@ -14,8 +14,10 @@ import { computeTimerSnapshot } from './timer';
 import {
   commitSharedTransaction,
   createDefaultAppDocument,
+  getRestorePlan,
   getRevertPlan,
   getTransactionActorDeviceName,
+  restoreTransaction as restoreSharedTransaction,
   revertTransaction as revertSharedTransaction,
   type TransactionRecord,
 } from './transactions';
@@ -41,6 +43,8 @@ type AppStorageValue = {
   transactions: TransactionRecord[];
   clearTransactionHistory: () => void;
   getRevertPlan: (transactionId: number) => number[];
+  getRestorePlan: (transactionId: number) => number[];
+  restoreTransaction: (transactionId: number) => void;
   revertTransaction: (transactionId: number) => void;
   unlockParent: (pin: string) => boolean;
   addChild: (name: string) => void;
@@ -162,6 +166,16 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
       },
       getRevertPlan: (transactionId) =>
         getRevertPlan(document.transactionState, transactionId).transactionIds,
+      getRestorePlan: (transactionId) =>
+        getRestorePlan(document.transactionState, transactionId).transactionIds,
+      restoreTransaction: (transactionId) => {
+        setDocument((current) =>
+          restoreSharedTransaction(current, transactionId, {
+            actorDeviceName,
+            occurredAt: Date.now(),
+          }),
+        );
+      },
       revertTransaction: (transactionId) => {
         setDocument((current) =>
           revertSharedTransaction(current, transactionId, {

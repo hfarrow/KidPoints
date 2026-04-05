@@ -3,7 +3,9 @@ import { describe, expect, it } from '@jest/globals';
 import {
   commitSharedTransaction,
   createDefaultAppDocument,
+  getRestorePlan,
   getRevertPlan,
+  restoreTransaction,
   revertTransaction,
 } from '../../../src/features/app/transactions';
 
@@ -261,7 +263,7 @@ describe('transactions', () => {
     ).toBe(true);
   });
 
-  it('reverting a revert transaction reapplies the original chain', () => {
+  it('restoring a reverted transaction reapplies the original chain', () => {
     let document = createDefaultAppDocument();
 
     document = commitSharedTransaction(
@@ -284,13 +286,20 @@ describe('transactions', () => {
       occurredAt: 102,
     });
 
-    const revertChainTransactionId =
-      document.transactionState.transactions.at(-1)?.id ?? 0;
+    expect(
+      getRestorePlan(document.transactionState, pointTransactionId),
+    ).toEqual({
+      target: document.transactionState.transactions[1],
+      transactionIds: [pointTransactionId],
+    });
 
-    document = revertTransaction(document, revertChainTransactionId, {
+    document = restoreTransaction(document, pointTransactionId, {
       actorDeviceName: 'Parent Phone',
       occurredAt: 103,
     });
+
+    const restoreChainTransactionId =
+      document.transactionState.transactions.at(-1)?.id ?? 0;
 
     expect(document.head.children[0]?.points).toBe(1);
     expect(
@@ -300,8 +309,13 @@ describe('transactions', () => {
     ).toBe('applied');
     expect(
       document.transactionState.transactions.find(
-        (transaction) => transaction.id === revertChainTransactionId,
+        (transaction) => transaction.id === restoreChainTransactionId,
       )?.status,
-    ).toBe('reverted');
+    ).toBe('applied');
+    expect(
+      document.transactionState.transactions.find(
+        (transaction) => transaction.id === restoreChainTransactionId,
+      )?.entryKind,
+    ).toBe('restore');
   });
 });

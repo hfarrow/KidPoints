@@ -6,6 +6,7 @@ import type { ChildProfile, PersistedAppData, SharedTimerState } from './types';
 export type TransactionStatus = 'applied' | 'reverted';
 export type TransactionUndoPolicy = 'reversible' | 'tracked_only';
 export type TransactionEntityRef = string;
+export type TransactionEntryKind = 'action' | 'revert' | 'restore';
 
 export type TransactionMutation =
   | {
@@ -75,6 +76,13 @@ export type TransactionMutation =
     }
   | {
       type: 'revert-chain';
+      targetRootTransactionIds: number[];
+      targetTransactionIds: number[];
+    }
+  | {
+      type: 'restore-chain';
+      revertedTransactionId: number;
+      targetRootTransactionIds: number[];
       targetTransactionIds: number[];
     }
   | {
@@ -82,8 +90,21 @@ export type TransactionMutation =
       targetTransactionIds: number[];
     };
 
+type LegacyChainMutation =
+  | {
+      type: 'revert-chain';
+      targetTransactionIds: number[];
+    }
+  | {
+      type: 'restore-chain';
+      revertedTransactionId: number;
+      targetTransactionIds: number[];
+    };
+
 export type TransactionRecord = {
   id: number;
+  rootTransactionId: number;
+  entryKind: TransactionEntryKind;
   kind: TransactionMutation['type'];
   occurredAt: number;
   actorDeviceName: string;
@@ -102,7 +123,7 @@ export type TransactionState = {
 };
 
 export type PersistedAppDocument = {
-  version: 2;
+  version: 3;
   head: PersistedAppData;
   transactionState: TransactionState;
 };
@@ -126,7 +147,7 @@ export type RevertPlan = {
   transactionIds: number[];
 };
 
-const DOCUMENT_VERSION = 2;
+const DOCUMENT_VERSION = 3;
 const UNKNOWN_DEVICE_NAME = 'Unknown device';
 const VALUE_CHANGE_ARROW = '\u2192';
 
@@ -167,6 +188,57 @@ export function isPersistedAppDocument(
     Array.isArray(candidate.transactionState.transactions) &&
     typeof candidate.transactionState.nextTransactionId === 'number'
   );
+}
+
+export function coercePersistedAppDocument(
+  value: unknown,
+): PersistedAppDocument | null {
+  if (isPersistedAppDocument(value)) {
+    return {
+      ...value,
+      transactionState: {
+        nextTransactionId: value.transactionState.nextTransactionId,
+        transactions: normalizeTransactions(
+          value.transactionState.transactions,
+        ),
+      },
+    };
+  }
+
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as {
+    head?: PersistedAppData;
+    transactionState?: {
+      nextTransactionId?: number;
+      transactions?: unknown[];
+    };
+    version?: number;
+  };
+
+  if (
+    typeof candidate.head !== 'object' ||
+    !candidate.head ||
+    typeof candidate.transactionState !== 'object' ||
+    !candidate.transactionState ||
+    !Array.isArray(candidate.transactionState.transactions) ||
+    typeof candidate.transactionState.nextTransactionId !== 'number'
+  ) {
+    return null;
+  }
+
+  return {
+    version: DOCUMENT_VERSION,
+    head: candidate.head,
+    transactionState: {
+      nextTransactionId: candidate.transactionState.nextTransactionId,
+      transactions: normalizeTransactions(
+        candidate.transactionState.transactions as TransactionRecord[],
+      ),
+    },
+  };
 }
 
 export function commitSharedTransaction(
@@ -278,11 +350,7 @@ export function getRevertPlan(
       (transaction) => transaction.id === transactionId,
     ) ?? null;
 
-  if (
-    !target ||
-    target.status !== 'applied' ||
-    target.undoPolicy !== 'reversible'
-  ) {
+  if (!target || !canRevertTransaction(target)) {
     return {
       target,
       transactionIds: [],
@@ -292,7 +360,10 @@ export function getRevertPlan(
   const transactionIds = new Set<number>([target.id]);
 
   for (const transaction of transactionState.transactions) {
-    if (transaction.status !== 'applied') {
+    if (
+      transaction.status !== 'applied' ||
+      transaction.entryKind !== 'action'
+    ) {
       continue;
     }
 
@@ -308,6 +379,51 @@ export function getRevertPlan(
   return {
     target,
     transactionIds: [...transactionIds].sort((left, right) => right - left),
+  };
+}
+
+export function getRestorePlan(
+  transactionState: TransactionState,
+  transactionId: number,
+): RevertPlan {
+  const target =
+    transactionState.transactions.find(
+      (transaction) => transaction.id === transactionId,
+    ) ?? null;
+
+  if (!target || !canRestoreTransaction(target)) {
+    return {
+      target,
+      transactionIds: [],
+    };
+  }
+
+  const revertEvent = transactionState.transactions.find(
+    (transaction) =>
+      transaction.id === target.revertedByTransactionId &&
+      transaction.entryKind === 'revert' &&
+      transaction.forward.type === 'revert-chain',
+  );
+
+  if (!revertEvent) {
+    return {
+      target,
+      transactionIds: [],
+    };
+  }
+
+  if (revertEvent.forward.type !== 'revert-chain') {
+    return {
+      target,
+      transactionIds: [],
+    };
+  }
+
+  return {
+    target,
+    transactionIds: [...revertEvent.forward.targetTransactionIds].sort(
+      (left, right) => right - left,
+    ),
   };
 }
 
@@ -374,7 +490,15 @@ export function revertTransaction(
     .map((targetId) =>
       nextTransactions.find((transaction) => transaction.id === targetId),
     )
-    .filter((transaction): transaction is TransactionRecord => !!transaction);
+    .filter(
+      (transaction): transaction is TransactionRecord =>
+        !!transaction && transaction.entryKind === 'action',
+    );
+  const targetRootTransactionIds = [
+    ...new Set(
+      targetTransactions.map((transaction) => transaction.rootTransactionId),
+    ),
+  ];
   const entityRefs = [
     ...new Set(
       targetTransactions.flatMap((transaction) => transaction.entityRefs),
@@ -382,27 +506,25 @@ export function revertTransaction(
   ];
   const revertRecord: TransactionRecord = {
     id: revertTransactionId,
+    rootTransactionId: plan.target.rootTransactionId,
+    entryKind: 'revert',
     kind: 'revert-chain',
     occurredAt,
     actorDeviceName,
     status: 'applied',
-    undoPolicy: 'reversible',
+    undoPolicy: 'tracked_only',
     entityRefs,
     dependsOnTransactionIds: [...plan.transactionIds].sort(
       (left, right) => left - right,
     ),
     forward: {
       type: 'revert-chain',
+      targetRootTransactionIds,
       targetTransactionIds: [...plan.transactionIds].sort(
         (left, right) => left - right,
       ),
     },
-    inverse: {
-      type: 'reapply-transactions',
-      targetTransactionIds: [...plan.transactionIds].sort(
-        (left, right) => left - right,
-      ),
-    },
+    inverse: null,
     revertedByTransactionId: null,
   };
 
@@ -416,10 +538,163 @@ export function revertTransaction(
   };
 }
 
+export function restoreTransaction(
+  document: PersistedAppDocument,
+  transactionId: number,
+  meta: {
+    actorDeviceName?: string;
+    occurredAt?: number;
+  } = {},
+): PersistedAppDocument {
+  const actorDeviceName =
+    meta.actorDeviceName ?? getTransactionActorDeviceName();
+  const occurredAt = meta.occurredAt ?? Date.now();
+  const plan = getRestorePlan(document.transactionState, transactionId);
+
+  if (!plan.target || plan.transactionIds.length === 0) {
+    return document;
+  }
+
+  const revertedByTransactionId = plan.target.revertedByTransactionId;
+
+  if (revertedByTransactionId === null) {
+    return document;
+  }
+
+  let nextHead = document.head;
+  const nextTransactions = [...document.transactionState.transactions];
+
+  for (const targetId of [...plan.transactionIds].sort(
+    (left, right) => left - right,
+  )) {
+    const transactionIndex = nextTransactions.findIndex(
+      (transaction) => transaction.id === targetId,
+    );
+
+    if (transactionIndex === -1) {
+      continue;
+    }
+
+    const transaction = nextTransactions[transactionIndex];
+
+    nextHead = applyMutation(nextHead, transaction.forward);
+    nextTransactions[transactionIndex] = {
+      ...transaction,
+      revertedByTransactionId: null,
+      status: 'applied',
+    };
+  }
+
+  const targetTransactions = plan.transactionIds
+    .map((targetId) =>
+      nextTransactions.find((transaction) => transaction.id === targetId),
+    )
+    .filter(
+      (transaction): transaction is TransactionRecord =>
+        !!transaction && transaction.entryKind === 'action',
+    );
+  const targetRootTransactionIds = [
+    ...new Set(
+      targetTransactions.map((transaction) => transaction.rootTransactionId),
+    ),
+  ];
+  const entityRefs = [
+    ...new Set(
+      targetTransactions.flatMap((transaction) => transaction.entityRefs),
+    ),
+  ];
+  const restoreEventId = document.transactionState.nextTransactionId;
+  const restoreRecord: TransactionRecord = {
+    id: restoreEventId,
+    rootTransactionId: plan.target.rootTransactionId,
+    entryKind: 'restore',
+    kind: 'restore-chain',
+    occurredAt,
+    actorDeviceName,
+    status: 'applied',
+    undoPolicy: 'tracked_only',
+    entityRefs,
+    dependsOnTransactionIds: [revertedByTransactionId],
+    forward: {
+      type: 'restore-chain',
+      revertedTransactionId: revertedByTransactionId,
+      targetRootTransactionIds,
+      targetTransactionIds: [...plan.transactionIds].sort(
+        (left, right) => left - right,
+      ),
+    },
+    inverse: null,
+    revertedByTransactionId: null,
+  };
+
+  return {
+    ...document,
+    head: nextHead,
+    transactionState: {
+      nextTransactionId: restoreEventId + 1,
+      transactions: [...nextTransactions, restoreRecord],
+    },
+  };
+}
+
 export function canRevertTransaction(transaction: TransactionRecord) {
   return (
-    transaction.undoPolicy === 'reversible' && transaction.status === 'applied'
+    transaction.entryKind === 'action' &&
+    transaction.undoPolicy === 'reversible' &&
+    transaction.status === 'applied'
   );
+}
+
+export function canRestoreTransaction(transaction: TransactionRecord) {
+  return (
+    transaction.entryKind === 'action' &&
+    transaction.undoPolicy === 'reversible' &&
+    transaction.status === 'reverted' &&
+    transaction.revertedByTransactionId !== null
+  );
+}
+
+export function isVisibleTransaction(transaction: TransactionRecord) {
+  return transaction.entryKind === 'action';
+}
+
+export type TransactionActivityEntry = {
+  actorDeviceName: string;
+  id: number;
+  kind: TransactionEntryKind;
+  occurredAt: number;
+};
+
+export function getVisibleTransactions(transactions: TransactionRecord[]) {
+  return transactions.filter(isVisibleTransaction);
+}
+
+export function getTransactionActivityEntries(
+  transaction: TransactionRecord,
+  transactions: TransactionRecord[],
+): TransactionActivityEntry[] {
+  if (!isVisibleTransaction(transaction)) {
+    return [];
+  }
+
+  return transactions
+    .filter((candidate) => {
+      if (candidate.id === transaction.id) {
+        return true;
+      }
+
+      return (
+        candidate.entryKind !== 'action' &&
+        isTransactionAffectedByEvent(candidate, transaction.id)
+      );
+    })
+    .sort((left, right) => left.id - right.id)
+    .map((candidate) => ({
+      actorDeviceName: candidate.actorDeviceName,
+      id: candidate.id,
+      kind: candidate.id === transaction.id ? 'action' : candidate.entryKind,
+      occurredAt: candidate.occurredAt,
+    }));
 }
 
 export function getTransactionSummary(
@@ -450,7 +725,9 @@ export function getTransactionSummary(
     case 'timer-reset':
       return 'Reset timer';
     case 'revert-chain':
-      return getRevertChainSummary(transaction, transactions);
+      return getChainEventSummary('Reverted', transaction, transactions);
+    case 'restore-chain':
+      return getChainEventSummary('Restored', transaction, transactions);
     case 'child-removed':
     case 'reapply-transactions':
       return 'Transaction update';
@@ -974,12 +1251,24 @@ function commitTimerReset(
 function appendTransaction(
   document: PersistedAppDocument,
   nextHead: PersistedAppData,
-  draft: Omit<TransactionRecord, 'id' | 'revertedByTransactionId' | 'status'>,
+  draft: Omit<
+    TransactionRecord,
+    | 'entryKind'
+    | 'id'
+    | 'revertedByTransactionId'
+    | 'rootTransactionId'
+    | 'status'
+  > & {
+    entryKind?: TransactionEntryKind;
+    rootTransactionId?: number;
+  },
 ) {
   const nextId = document.transactionState.nextTransactionId;
   const transaction: TransactionRecord = {
     ...draft,
+    entryKind: draft.entryKind ?? 'action',
     id: nextId,
+    rootTransactionId: draft.rootTransactionId ?? nextId,
     revertedByTransactionId: null,
     status: 'applied',
   };
@@ -991,6 +1280,108 @@ function appendTransaction(
       nextTransactionId: nextId + 1,
       transactions: [...document.transactionState.transactions, transaction],
     },
+  };
+}
+
+function normalizeTransactions(transactions: TransactionRecord[]) {
+  const rootTransactionIds = new Map<number, number>();
+
+  return transactions.map((transaction) => {
+    const normalizedRootTransactionId =
+      typeof transaction.rootTransactionId === 'number'
+        ? transaction.rootTransactionId
+        : inferRootTransactionId(transaction, rootTransactionIds);
+    const normalizedEntryKind =
+      transaction.entryKind ?? inferEntryKind(transaction);
+    const normalizedForward = normalizeLegacyMutation(
+      transaction.forward,
+      transactions,
+      rootTransactionIds,
+    );
+
+    const normalizedTransaction: TransactionRecord = {
+      ...transaction,
+      entryKind: normalizedEntryKind,
+      forward: normalizedForward,
+      rootTransactionId: normalizedRootTransactionId,
+    };
+
+    rootTransactionIds.set(transaction.id, normalizedRootTransactionId);
+
+    return normalizedTransaction;
+  });
+}
+
+function inferEntryKind(transaction: TransactionRecord): TransactionEntryKind {
+  if (transaction.kind === 'revert-chain') {
+    return 'revert';
+  }
+
+  if (transaction.kind === 'restore-chain') {
+    return 'restore';
+  }
+
+  return 'action';
+}
+
+function inferRootTransactionId(
+  transaction: TransactionRecord,
+  rootTransactionIds: Map<number, number>,
+) {
+  if (
+    transaction.forward.type === 'revert-chain' ||
+    transaction.forward.type === 'restore-chain'
+  ) {
+    const firstTargetId = transaction.forward.targetTransactionIds[0];
+
+    if (typeof firstTargetId === 'number') {
+      return rootTransactionIds.get(firstTargetId) ?? firstTargetId;
+    }
+  }
+
+  return transaction.id;
+}
+
+function normalizeLegacyMutation(
+  mutation: TransactionMutation | LegacyChainMutation,
+  transactions: TransactionRecord[],
+  rootTransactionIds: Map<number, number>,
+): TransactionMutation {
+  if (mutation.type !== 'revert-chain' && mutation.type !== 'restore-chain') {
+    return mutation;
+  }
+
+  if ('targetRootTransactionIds' in mutation) {
+    return mutation;
+  }
+
+  const targetRootTransactionIds = mutation.targetTransactionIds.map(
+    (targetTransactionId) => {
+      const existingRootTransactionId =
+        rootTransactionIds.get(targetTransactionId);
+
+      if (typeof existingRootTransactionId === 'number') {
+        return existingRootTransactionId;
+      }
+
+      const targetTransaction = transactions.find(
+        (candidate) => candidate.id === targetTransactionId,
+      );
+
+      return targetTransaction?.rootTransactionId ?? targetTransactionId;
+    },
+  );
+
+  if (mutation.type === 'restore-chain') {
+    return {
+      ...mutation,
+      targetRootTransactionIds,
+    };
+  }
+
+  return {
+    ...mutation,
+    targetRootTransactionIds,
   };
 }
 
@@ -1009,6 +1400,7 @@ function getChildLifecycleDependencies(
     .find(
       (transaction) =>
         transaction.status === 'applied' &&
+        transaction.entryKind === 'action' &&
         transaction.entityRefs.includes(`child-lifecycle:${childId}`),
     );
 
@@ -1021,6 +1413,7 @@ function getTimerDependencies(transactionState: TransactionState) {
     .find(
       (transaction) =>
         transaction.status === 'applied' &&
+        transaction.entryKind === 'action' &&
         transaction.entityRefs.includes('timer:shared'),
     );
 
@@ -1033,6 +1426,7 @@ function canMergePointTransaction(
   delta: number,
 ) {
   return (
+    transaction.entryKind === 'action' &&
     transaction.status === 'applied' &&
     transaction.undoPolicy === 'reversible' &&
     transaction.forward.type === 'child-points-adjusted' &&
@@ -1099,6 +1493,7 @@ function applyMutation(
         type: 'replaceTimerState',
         timerState: mutation.nextTimerState,
       });
+    case 'restore-chain':
     case 'reapply-transactions':
     case 'revert-chain':
       return head;
@@ -1143,11 +1538,33 @@ function isSameTimerState(left: SharedTimerState, right: SharedTimerState) {
   );
 }
 
-function getRevertChainSummary(
+function isTransactionAffectedByEvent(
+  transaction: TransactionRecord,
+  targetTransactionId: number,
+) {
+  if (transaction.entryKind === 'action') {
+    return false;
+  }
+
+  if (
+    transaction.forward.type !== 'revert-chain' &&
+    transaction.forward.type !== 'restore-chain'
+  ) {
+    return false;
+  }
+
+  return transaction.forward.targetTransactionIds.includes(targetTransactionId);
+}
+
+function getChainEventSummary(
+  prefix: 'Reverted' | 'Restored',
   transaction: TransactionRecord,
   transactions: TransactionRecord[],
 ): string {
-  if (transaction.forward.type !== 'revert-chain') {
+  if (
+    transaction.forward.type !== 'revert-chain' &&
+    transaction.forward.type !== 'restore-chain'
+  ) {
     return 'Transaction';
   }
 
@@ -1161,12 +1578,12 @@ function getRevertChainSummary(
   const primarySummary: string | undefined = targetSummaries[0];
 
   if (!primarySummary) {
-    return 'Reverted action';
+    return `${prefix} action`;
   }
 
   if (targetSummaries.length === 1) {
-    return `Reverted: ${primarySummary}`;
+    return `${prefix}: ${primarySummary}`;
   }
 
-  return `Reverted: ${primarySummary} + ${targetSummaries.length - 1} more`;
+  return `${prefix}: ${primarySummary} + ${targetSummaries.length - 1} more`;
 }

@@ -2,9 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AppRepository } from './repositoryTypes';
 import { createDefaultAppData, DEFAULT_PARENT_PIN } from './state';
 import {
+  coercePersistedAppDocument,
   createDefaultAppDocument,
   createEmptyTransactionState,
-  isPersistedAppDocument,
   type PersistedAppDocument,
 } from './transactions';
 import type { PersistedAppData } from './types';
@@ -21,20 +21,21 @@ class AsyncStorageAppRepository implements AppRepository {
 
     try {
       const parsedValue = JSON.parse(rawValue) as unknown;
+      const document = coercePersistedAppDocument(parsedValue);
 
-      if (isPersistedAppDocument(parsedValue)) {
+      if (document) {
         return {
-          ...parsedValue,
-          head: normalizePersistedAppData(parsedValue.head),
+          ...document,
+          head: normalizePersistedAppData(document.head),
           transactionState: {
-            nextTransactionId: parsedValue.transactionState.nextTransactionId,
-            transactions: parsedValue.transactionState.transactions,
+            nextTransactionId: document.transactionState.nextTransactionId,
+            transactions: document.transactionState.transactions,
           },
         } satisfies PersistedAppDocument;
       }
 
       return {
-        version: 2 as const,
+        version: 3 as const,
         head: normalizePersistedAppData(
           parsedValue as Partial<PersistedAppData>,
         ),

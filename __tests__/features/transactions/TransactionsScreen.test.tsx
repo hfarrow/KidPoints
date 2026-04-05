@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render } from '@testing-library/react-native';
 import { Alert } from 'react-native';
+
 import { getThemeTokens } from '../../../src/features/theme/theme';
 import { TransactionsScreen } from '../../../src/features/transactions/TransactionsScreen';
 
@@ -110,14 +111,16 @@ describe('TransactionsScreen', () => {
     expect(mockReplace).toHaveBeenCalledWith('/');
   });
 
-  it('shows compact collapsed rows and only reveals actions when a row is expanded', () => {
+  it('shows action threads, hides raw revert events, and restores reverted actions', () => {
     const revertTransaction = jest.fn();
+    const restoreTransaction = jest.fn();
     const clearTransactionHistory = jest.fn();
     mockUseAppStorage.mockReturnValue(
       createStorageState({
         clearTransactionHistory,
-        getRevertPlan: (transactionId: number) =>
+        getRestorePlan: (transactionId: number) =>
           transactionId === 1 ? [3, 1] : [],
+        restoreTransaction,
         revertTransaction,
         transactions: [
           createTransaction({
@@ -143,6 +146,9 @@ describe('TransactionsScreen', () => {
               type: 'child-points-adjusted',
             },
             kind: 'child-points-adjusted',
+            revertedByTransactionId: 4,
+            rootTransactionId: 1,
+            status: 'reverted',
             undoPolicy: 'reversible',
           }),
           createTransaction({
@@ -160,24 +166,8 @@ describe('TransactionsScreen', () => {
             id: 2,
             inverse: null,
             kind: 'timer-started',
+            rootTransactionId: 2,
             undoPolicy: 'tracked_only',
-          }),
-          createTransaction({
-            actorDeviceName: 'Parent Phone',
-            dependsOnTransactionIds: [1, 3],
-            entityRefs: ['child:child-1'],
-            forward: {
-              targetTransactionIds: [1, 3],
-              type: 'revert-chain',
-            },
-            id: 4,
-            inverse: {
-              targetTransactionIds: [1, 3],
-              type: 'reapply-transactions',
-            },
-            kind: 'revert-chain',
-            status: 'applied',
-            undoPolicy: 'reversible',
           }),
           createTransaction({
             actorDeviceName: 'Parent Phone',
@@ -192,6 +182,26 @@ describe('TransactionsScreen', () => {
             id: 3,
             inverse: null,
             kind: 'child-renamed',
+            revertedByTransactionId: 4,
+            rootTransactionId: 3,
+            status: 'reverted',
+            undoPolicy: 'tracked_only',
+          }),
+          createTransaction({
+            actorDeviceName: 'Parent Phone',
+            dependsOnTransactionIds: [1, 3],
+            entryKind: 'revert',
+            entityRefs: ['child:child-1'],
+            forward: {
+              targetRootTransactionIds: [1, 3],
+              targetTransactionIds: [1, 3],
+              type: 'revert-chain',
+            },
+            id: 4,
+            inverse: null,
+            kind: 'revert-chain',
+            rootTransactionId: 1,
+            status: 'applied',
             undoPolicy: 'tracked_only',
           }),
         ],
@@ -223,20 +233,19 @@ describe('TransactionsScreen', () => {
     expect(view.getByLabelText('chevron-forward')).toBeTruthy();
     expect(view.getByText('5)')).toBeTruthy();
     expect(view.getByText('Ava renamed to Rowan')).toBeTruthy();
-    expect(
-      view.getByText('Reverted: Ava +5 points (0 → 5) + 1 more'),
-    ).toBeTruthy();
+    expect(view.queryByText(/Reverted:/)).toBeNull();
     expect(view.queryByLabelText('Revert transaction 2')).toBeNull();
-    expect(view.queryByLabelText('Revert transaction 1')).toBeNull();
+    expect(view.queryByLabelText('Restore transaction 1')).toBeNull();
 
     fireEvent.press(view.getByLabelText('Select transaction 1'));
 
-    expect(view.getByText('Revert 2 actions')).toBeTruthy();
-    expect(view.getByText(/Parent Phone/)).toBeTruthy();
+    expect(view.getByText('Restore 2 actions')).toBeTruthy();
+    expect(view.getByText(/Reverted \| Parent Phone \|/)).toBeTruthy();
 
-    fireEvent.press(view.getByLabelText('Revert transaction 1'));
+    fireEvent.press(view.getByLabelText('Restore transaction 1'));
 
-    expect(revertTransaction).toHaveBeenCalledWith(1);
+    expect(restoreTransaction).toHaveBeenCalledWith(1);
+    expect(revertTransaction).not.toHaveBeenCalled();
   });
 });
 
@@ -244,10 +253,12 @@ function createStorageState(
   overrides: Partial<{
     clearTransactionHistory: () => void;
     getRevertPlan: (transactionId: number) => number[];
+    getRestorePlan: (transactionId: number) => number[];
     isHydrated: boolean;
     parentSession: {
       isUnlocked: boolean;
     };
+    restoreTransaction: (transactionId: number) => void;
     revertTransaction: (transactionId: number) => void;
     transactions: ReturnType<typeof createTransaction>[];
   }> = {},
@@ -255,10 +266,12 @@ function createStorageState(
   return {
     clearTransactionHistory: jest.fn(),
     getRevertPlan: jest.fn(() => []),
+    getRestorePlan: jest.fn(() => []),
     isHydrated: true,
     parentSession: {
       isUnlocked: true,
     },
+    restoreTransaction: jest.fn(),
     revertTransaction: jest.fn(),
     transactions: [],
     ...overrides,
@@ -269,6 +282,7 @@ function createTransaction(
   overrides: Partial<{
     actorDeviceName: string;
     dependsOnTransactionIds: number[];
+    entryKind: 'action' | 'restore' | 'revert';
     entityRefs: string[];
     forward: object;
     id: number;
@@ -276,6 +290,7 @@ function createTransaction(
     kind: string;
     occurredAt: number;
     revertedByTransactionId: number | null;
+    rootTransactionId: number;
     status: 'applied' | 'reverted';
     undoPolicy: 'reversible' | 'tracked_only';
   }>,
@@ -283,6 +298,7 @@ function createTransaction(
   return {
     actorDeviceName: 'Parent Phone',
     dependsOnTransactionIds: [],
+    entryKind: 'action' as const,
     entityRefs: [],
     forward: {
       type: 'timer-reset',
@@ -292,6 +308,7 @@ function createTransaction(
     kind: 'timer-reset',
     occurredAt: 1_000,
     revertedByTransactionId: null,
+    rootTransactionId: 1,
     status: 'applied' as const,
     undoPolicy: 'tracked_only' as const,
     ...overrides,
