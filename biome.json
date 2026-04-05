@@ -10,12 +10,10 @@
     "includes": [
       "**",
       "!android",
-      "!ios",
       "!.expo",
       "!.cache",
       "!node_modules",
-      "!dist",
-      "!web-build"
+      "!dist"
     ]
   },
   "formatter": {

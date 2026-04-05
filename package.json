@@ -5,7 +5,6 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios",
     "clean:cache": "node -e \"require('fs').rmSync('.cache', { recursive: true, force: true })\"",
     "check": "yarn exec biome check --write . && yarn exec eslint . --fix --cache --cache-location .cache/eslintcache && yarn exec tsc --noEmit --incremental --tsBuildInfoFile .cache/typecheck.tsbuildinfo",
     "test": "jest --runInBand --watchAll=false",

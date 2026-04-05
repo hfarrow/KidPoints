@@ -10,7 +10,6 @@ export default defineConfig([
       'coverage/**',
       'dist/**',
       'node_modules/**',
-      'web-build/**',
     ],
   },
   expoConfig,
