@@ -5,13 +5,12 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "launch:as": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/launch-android-studio.ps1",
     "ios": "expo run:ios",
-    "web": "expo start --web",
+    "clean:cache": "node -e \"require('fs').rmSync('.cache', { recursive: true, force: true })\"",
     "check": "yarn exec biome check --write . && yarn exec eslint . --fix --cache --cache-location .cache/eslintcache && yarn exec tsc --noEmit --incremental --tsBuildInfoFile .cache/typecheck.tsbuildinfo",
     "test": "jest --runInBand --watchAll=false",
     "verify": "yarn check && yarn test",
-    "clean:tooling": "node -e \"require('fs').rmSync('.cache', { recursive: true, force: true })\""
+    "launch:as": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/launch-android-studio.ps1"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
