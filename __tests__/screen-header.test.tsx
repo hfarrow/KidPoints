@@ -4,6 +4,25 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { ScreenHeader } from '../src/components/ScreenHeader';
 import { getThemeTokens } from '../src/features/theme/theme';
 
+jest.mock('@expo/vector-icons', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const { Text } =
+    jest.requireActual<typeof import('react-native')>('react-native');
+
+  const Ionicons = ({ name, ...props }: { name: string }) =>
+    React.createElement(
+      Text,
+      { ...props, accessibilityLabel: name },
+      'Ionicon',
+    );
+
+  Ionicons.displayName = 'Ionicons';
+
+  return {
+    Ionicons,
+  };
+});
+
 const mockLockParent = jest.fn();
 const mockUnlockParent = jest.fn();
 let currentThemeMode: 'light' | 'dark' | 'system' = 'system';

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
 import { Alert } from 'react-native';
 
 import { HomeScreen } from '../src/features/home/HomeScreen';
@@ -14,6 +15,31 @@ jest.mock('expo-router', () => ({
     push: mockPush,
   }),
 }));
+
+jest.mock('@expo/vector-icons', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const { Text } =
+    jest.requireActual<typeof import('react-native')>('react-native');
+
+  const createIcon = (displayName: string) => {
+    const Icon = ({ name, ...props }: { name: string; children?: ReactNode }) =>
+      React.createElement(
+        Text,
+        { ...props, accessibilityLabel: name },
+        displayName,
+      );
+
+    Icon.displayName = displayName;
+
+    return Icon;
+  };
+
+  return {
+    Feather: createIcon('FeatherIcon'),
+    Ionicons: createIcon('IoniconsIcon'),
+    MaterialIcons: createIcon('MaterialIconsIcon'),
+  };
+});
 
 jest.mock('../src/features/app/appStorage', () => ({
   useAppStorage: () => mockUseAppStorage(),
@@ -52,8 +78,8 @@ describe('HomeScreen', () => {
     expect(view.queryByText('Start')).toBeNull();
     expect(view.queryByText('Pause')).toBeNull();
     expect(view.queryByText('Reset')).toBeNull();
-    expect(view.queryByText('-')).toBeNull();
-    expect(view.queryByText('+')).toBeNull();
+    expect(view.queryByLabelText('Decrease Ava points')).toBeNull();
+    expect(view.queryByLabelText('Increase Ava points')).toBeNull();
     expect(view.queryByLabelText('Open Ava settings')).toBeNull();
     expect(view.queryByText('v')).toBeNull();
     expect(view.queryByText('>')).toBeNull();
@@ -112,13 +138,13 @@ describe('HomeScreen', () => {
 
     fireEvent.press(view.getByLabelText('Open Ava settings'));
 
-    expect(view.getByText('Ava settings')).toBeTruthy();
+    expect(view.getByText('Ava Settings')).toBeTruthy();
 
     fireEvent.changeText(view.getByLabelText('Child name for Ava'), 'Rowan');
     fireEvent(view.getByLabelText('Child name for Ava'), 'blur');
 
     expect(renameChild).toHaveBeenCalledWith('child-1', 'Rowan');
-    expect(view.getByText('Ava settings')).toBeTruthy();
+    expect(view.getByText('Ava Settings')).toBeTruthy();
   });
 
   it('closes the child settings tile from the Save action', () => {
@@ -136,7 +162,7 @@ describe('HomeScreen', () => {
     fireEvent.press(view.getByText('Save'));
 
     expect(renameChild).toHaveBeenCalledWith('child-1', 'Rowan');
-    expect(view.queryByText('Ava settings')).toBeNull();
+    expect(view.queryByText('Ava Settings')).toBeNull();
   });
 
   it('shows a settings gear instead of an expander on child tiles when parent mode is unlocked', () => {
@@ -146,8 +172,8 @@ describe('HomeScreen', () => {
 
     expect(view.getByText('Start')).toBeTruthy();
     expect(view.getByText('Reset')).toBeTruthy();
-    expect(view.getByText('-')).toBeTruthy();
-    expect(view.getByText('+')).toBeTruthy();
+    expect(view.getByLabelText('Decrease Ava points')).toBeTruthy();
+    expect(view.getByLabelText('Increase Ava points')).toBeTruthy();
     expect(view.getByLabelText('Open Ava settings')).toBeTruthy();
     expect(view.queryByText('v')).toBeNull();
     expect(view.queryByText('Move up')).toBeNull();

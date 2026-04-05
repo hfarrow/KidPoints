@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { type ReactNode, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -112,7 +113,11 @@ export function Tile({
               ]}
             >
               <View style={styles.chevronButton}>
-                <Text style={styles.chevron}>{isCollapsed ? '>' : 'v'}</Text>
+                <Feather
+                  color={styles.chevron.color}
+                  name={isCollapsed ? 'chevron-right' : 'chevron-down'}
+                  size={18}
+                />
               </View>
             </View>
           ) : null}

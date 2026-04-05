@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -59,7 +60,11 @@ export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
           onPress={() => setSettingsVisible(true)}
           style={styles.iconButton}
         >
-          <Text style={styles.iconButtonText}>{'\u2699'}</Text>
+          <Ionicons
+            color={styles.iconButtonText.color}
+            name="settings-outline"
+            size={18}
+          />
         </Pressable>
       </View>
       {parentPinModal}

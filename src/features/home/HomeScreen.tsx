@@ -1,3 +1,4 @@
+import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -19,6 +20,8 @@ import { useAppStorage } from '../app/appStorage';
 import { formatDuration } from '../app/timer';
 import { useParentUnlockAction } from '../app/useParentUnlockAction';
 import { useAppTheme } from '../theme/themeContext';
+
+const CHILD_ACTION_ICON_COLOR = '#0f172a';
 
 export function HomeScreen() {
   const router = useRouter();
@@ -121,17 +124,18 @@ export function HomeScreen() {
           headerAccessory={
             isParentUnlocked ? (
               <Pressable
+                accessibilityLabel="Open alarm settings panel"
                 onPress={() => router.push('/alarm')}
                 style={[
                   styles.iconAction,
                   { backgroundColor: tokens.controlSurface },
                 ]}
               >
-                <Text
-                  style={[styles.iconActionText, { color: tokens.controlText }]}
-                >
-                  {'\u2699'}
-                </Text>
+                <Ionicons
+                  color={tokens.controlText}
+                  name="settings-outline"
+                  size={18}
+                />
               </Pressable>
             ) : null
           }
@@ -231,7 +235,7 @@ export function HomeScreen() {
                 collapsible={false}
                 floatingTitle
                 summaryVisibleWhenExpanded
-                title={`${child.displayName} settings`}
+                title={`${child.displayName} Settings`}
               >
                 <View style={styles.settingsList}>
                   <View style={styles.settingsActionRow}>
@@ -386,14 +390,11 @@ export function HomeScreen() {
                       { backgroundColor: tokens.controlSurface },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.iconActionText,
-                        { color: tokens.controlText },
-                      ]}
-                    >
-                      {'\u2699'}
-                    </Text>
+                    <Ionicons
+                      color={tokens.controlText}
+                      name="settings-outline"
+                      size={18}
+                    />
                   </Pressable>
                 ) : null
               }
@@ -407,6 +408,7 @@ export function HomeScreen() {
                   >
                     {isParentUnlocked ? (
                       <Pressable
+                        accessibilityLabel={`Decrease ${child.displayName} points`}
                         disabled={!isParentUnlocked}
                         onPress={() => decrementPoints(child.id)}
                         style={[
@@ -415,7 +417,11 @@ export function HomeScreen() {
                           styles.childActionSegmentLeft,
                         ]}
                       >
-                        <Text style={styles.childActionText}>-</Text>
+                        <Feather
+                          color={CHILD_ACTION_ICON_COLOR}
+                          name="minus"
+                          size={20}
+                        />
                       </Pressable>
                     ) : null}
                     <Pressable
@@ -449,6 +455,7 @@ export function HomeScreen() {
                     </Pressable>
                     {isParentUnlocked ? (
                       <Pressable
+                        accessibilityLabel={`Increase ${child.displayName} points`}
                         disabled={!isParentUnlocked}
                         onPress={() => incrementPoints(child.id)}
                         style={[
@@ -457,7 +464,11 @@ export function HomeScreen() {
                           styles.childActionSegmentRight,
                         ]}
                       >
-                        <Text style={styles.childActionText}>+</Text>
+                        <Feather
+                          color={CHILD_ACTION_ICON_COLOR}
+                          name="plus"
+                          size={20}
+                        />
                       </Pressable>
                     ) : null}
                   </View>
@@ -603,14 +614,11 @@ export function HomeScreen() {
                   { backgroundColor: tokens.controlSurface },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.archivedChildIconButtonText,
-                    { color: tokens.controlText },
-                  ]}
-                >
-                  {'\u21ba'}
-                </Text>
+                <MaterialIcons
+                  color={tokens.controlText}
+                  name="restore"
+                  size={20}
+                />
               </Pressable>
               <Pressable
                 accessibilityLabel={`Delete ${child.displayName} permanently`}
@@ -635,9 +643,7 @@ export function HomeScreen() {
                   styles.archivedChildDeleteButton,
                 ]}
               >
-                <Text style={styles.archivedChildDeleteButtonText}>
-                  {'\ud83d\uddd1'}
-                </Text>
+                <Feather color="#b91c1c" name="trash-2" size={18} />
               </Pressable>
             </View>
           </View>
@@ -791,9 +797,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconActionText: {
-    fontSize: 16,
-  },
   disabledAction: {
     opacity: 0.45,
   },
@@ -932,11 +935,6 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderLeftColor: '#bbf7d0',
   },
-  childActionText: {
-    color: '#1e293b',
-    fontSize: 22,
-    fontWeight: '900',
-  },
   childPointsSegment: {
     flexBasis: 0,
     flexGrow: 6,
@@ -983,15 +981,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  archivedChildIconButtonText: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
   archivedChildDeleteButton: {
     backgroundColor: '#fee2e2',
-  },
-  archivedChildDeleteButtonText: {
-    fontSize: 18,
   },
   modalBackdrop: {
     flex: 1,

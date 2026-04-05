@@ -1,3 +1,4 @@
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs, useRouter } from 'expo-router';
 
 import { useParentUnlockAction } from '../../src/features/app/useParentUnlockAction';
@@ -36,7 +37,13 @@ export default function TabsLayout() {
       >
         <Tabs.Screen
           name="index"
-          options={{ title: 'Home', tabBarLabel: 'Home' }}
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons color={color} name="home-outline" size={size} />
+            ),
+            tabBarLabel: 'Home',
+          }}
         />
         <Tabs.Screen
           listeners={{
@@ -53,12 +60,25 @@ export default function TabsLayout() {
           name="alarm"
           options={{
             title: 'Alarm',
+            tabBarIcon: ({ color, size }) => (
+              <Feather color={color} name="clock" size={size} />
+            ),
             tabBarLabel: 'Alarm',
           }}
         />
         <Tabs.Screen
           name="shop"
-          options={{ title: 'Shop', tabBarLabel: 'Shop' }}
+          options={{
+            title: 'Shop',
+            tabBarIcon: ({ color, size }) => (
+              <MaterialCommunityIcons
+                color={color}
+                name="shopping-outline"
+                size={size}
+              />
+            ),
+            tabBarLabel: 'Shop',
+          }}
         />
       </Tabs>
       {parentPinModal}

@@ -4,6 +4,31 @@ import type { ReactNode } from 'react';
 
 import TabsLayout from '../app/(tabs)/_layout';
 
+jest.mock('@expo/vector-icons', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const { Text } =
+    jest.requireActual<typeof import('react-native')>('react-native');
+
+  const createIcon = (displayName: string) => {
+    const Icon = ({ name, ...props }: { name: string }) =>
+      React.createElement(
+        Text,
+        { ...props, accessibilityLabel: name },
+        displayName,
+      );
+
+    Icon.displayName = displayName;
+
+    return Icon;
+  };
+
+  return {
+    Feather: createIcon('FeatherIcon'),
+    Ionicons: createIcon('IoniconsIcon'),
+    MaterialCommunityIcons: createIcon('MaterialCommunityIconsIcon'),
+  };
+});
+
 const mockPush = jest.fn();
 const mockParentPinModal = jest.fn();
 const mockTabsScreen = jest.fn();
