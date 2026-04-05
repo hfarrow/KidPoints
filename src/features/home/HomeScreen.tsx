@@ -15,13 +15,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ListModal } from '../../components/ListModal';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { Tile } from '../../components/Tile';
+import { AlarmTile } from '../alarm/AlarmTile';
 import { useAppStorage } from '../app/appStorage';
-import { formatDuration } from '../app/timer';
 import { useParentUnlockAction } from '../app/useParentUnlockAction';
 import { useAppTheme } from '../theme/themeContext';
-
-const CHILD_ACTION_ICON_COLOR = '#0f172a';
+import { ChildSettingsTile } from './ChildSettingsTile';
+import { ChildSummaryTile } from './ChildSummaryTile';
+import { EmptyChildrenTile } from './EmptyChildrenTile';
+import { ParentToolsTile } from './ParentToolsTile';
 
 export function HomeScreen() {
   const router = useRouter();
@@ -112,15 +113,12 @@ export function HomeScreen() {
         { backgroundColor: getScreenSurface(isParentUnlocked) },
       ]}
     >
-      <ScrollView contentContainerStyle={styles.content}>
-        <ScreenHeader
-          title="Home"
-          subtitle="Track the shared interval and keep each kid's points in view."
-        />
+      <ScrollView
+        contentContainerStyle={[styles.content, tokens.layout.tabScreenContent]}
+      >
+        <ScreenHeader title="Home" />
 
-        <Tile
-          collapsible={false}
-          floatingTitle
+        <AlarmTile
           headerAccessory={
             isParentUnlocked ? (
               <Pressable
@@ -139,90 +137,20 @@ export function HomeScreen() {
               </Pressable>
             ) : null
           }
-          summaryVisibleWhenExpanded
-          title="Alarm"
-          collapsedSummary={
-            <View style={styles.timerSummary}>
-              <Pressable
-                accessibilityLabel="Open alarm settings"
-                onPress={() => requestParentUnlock()}
-                style={styles.timerValueButton}
-              >
-                <Text
-                  style={[styles.timerValue, { color: tokens.textPrimary }]}
-                >
-                  {formatDuration(timerSnapshot.remainingMs)}
-                </Text>
-              </Pressable>
-              {isParentUnlocked ? (
-                <View
-                  style={[
-                    styles.timerControlsRail,
-                    { backgroundColor: tokens.controlSurface },
-                  ]}
-                >
-                  <Pressable
-                    onPress={() => {
-                      if (timerSnapshot.isRunning) {
-                        pauseTimer();
-                        return;
-                      }
-
-                      startTimer();
-                    }}
-                    style={[
-                      styles.timerControlSegment,
-                      styles.timerControlSegmentLeft,
-                      { borderRightColor: tokens.border },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.timerActionText,
-                        { color: tokens.controlText },
-                      ]}
-                    >
-                      {timerSnapshot.isRunning ? 'Pause' : 'Start'}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={resetTimer}
-                    style={[
-                      styles.timerControlSegment,
-                      styles.timerControlSegmentRight,
-                      { borderLeftColor: tokens.border },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.timerActionText,
-                        { color: tokens.controlText },
-                      ]}
-                    >
-                      Reset
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : null}
-            </View>
-          }
+          isParentUnlocked={isParentUnlocked}
+          onLockedPress={() => requestParentUnlock()}
+          onPause={pauseTimer}
+          onReset={resetTimer}
+          onStart={startTimer}
+          remainingMs={timerSnapshot.remainingMs}
+          running={timerSnapshot.isRunning}
         />
 
         {children.length === 0 ? (
-          <Tile title="No child widgets yet">
-            <Text style={[styles.supportingText, { color: tokens.textMuted }]}>
-              Unlock Parent Mode to add the first child widget to this shared
-              dashboard.
-            </Text>
-            {isParentUnlocked ? (
-              <Pressable
-                onPress={() => setAddModalVisible(true)}
-                style={styles.primaryAction}
-              >
-                <Text style={styles.primaryActionText}>Add a child</Text>
-              </Pressable>
-            ) : null}
-          </Tile>
+          <EmptyChildrenTile
+            isParentUnlocked={isParentUnlocked}
+            onAddChild={() => setAddModalVisible(true)}
+          />
         ) : null}
 
         {children.map((child, index) => {
@@ -230,286 +158,97 @@ export function HomeScreen() {
 
           if (isEditingSettings) {
             return (
-              <Tile
+              <ChildSettingsTile
                 key={child.id}
-                collapsible={false}
-                floatingTitle
-                summaryVisibleWhenExpanded
-                title={`${child.displayName} Settings`}
-              >
-                <View style={styles.settingsList}>
-                  <View style={styles.settingsActionRow}>
-                    <Pressable
-                      accessibilityLabel={`Save ${child.displayName} settings`}
-                      onPress={() => {
-                        saveChildSettingsName({
-                          childId: child.id,
-                          currentName: child.displayName,
-                          nextName: childSettingsEditor.value,
-                        });
-                        setChildSettingsEditor(null);
-                      }}
-                      style={[
-                        styles.settingsSaveAction,
-                        { backgroundColor: tokens.controlSurface },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.settingsSaveActionText,
-                          { color: tokens.controlText },
-                        ]}
-                      >
-                        Save
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      disabled={index === 0}
-                      onPress={() => moveChild(child.id, 'up')}
-                      style={[
-                        styles.secondaryAction,
-                        styles.settingsCompactAction,
-                        { backgroundColor: tokens.controlSurface },
-                        index === 0 && styles.disabledAction,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.secondaryActionText,
-                          { color: tokens.controlText },
-                        ]}
-                      >
-                        Move up
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      disabled={index === children.length - 1}
-                      onPress={() => moveChild(child.id, 'down')}
-                      style={[
-                        styles.secondaryAction,
-                        styles.settingsCompactAction,
-                        { backgroundColor: tokens.controlSurface },
-                        index === children.length - 1 && styles.disabledAction,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.secondaryActionText,
-                          { color: tokens.controlText },
-                        ]}
-                      >
-                        Move down
-                      </Text>
-                    </Pressable>
-                  </View>
-                  <View
-                    style={[styles.settingRow, { borderColor: tokens.border }]}
-                  >
-                    <Text
-                      style={[
-                        styles.settingLabel,
-                        { color: tokens.textPrimary },
-                      ]}
-                    >
-                      Name:
-                    </Text>
-                    <TextInput
-                      accessibilityLabel={`Child name for ${child.displayName}`}
-                      onBlur={() =>
-                        saveChildSettingsName({
-                          childId: child.id,
-                          currentName: child.displayName,
-                          nextName: childSettingsEditor.value,
-                        })
-                      }
-                      onChangeText={(value) =>
-                        setChildSettingsEditor((current) =>
-                          current
-                            ? {
-                                ...current,
-                                value,
-                              }
-                            : null,
-                        )
-                      }
-                      placeholder="Child name"
-                      placeholderTextColor={tokens.textMuted}
-                      style={[
-                        styles.settingInput,
-                        {
-                          backgroundColor: tokens.inputSurface,
-                          color: tokens.textPrimary,
+                childDisplayName={child.displayName}
+                childIndex={index}
+                childNameValue={childSettingsEditor.value}
+                isLastChild={index === children.length - 1}
+                onArchiveChild={() =>
+                  Alert.alert(
+                    'Archive child',
+                    `${child.displayName} will be removed from the dashboard, but all of their data will be preserved so you can restore them later.`,
+                    [
+                      { style: 'cancel', text: 'Cancel' },
+                      {
+                        style: 'destructive',
+                        text: 'Archive',
+                        onPress: () => {
+                          archiveChild(child.id);
+                          setChildSettingsEditor(null);
                         },
-                      ]}
-                      value={childSettingsEditor.value}
-                    />
-                  </View>
-                  <Pressable
-                    onPress={() =>
-                      Alert.alert(
-                        'Archive child',
-                        `${child.displayName} will be removed from the dashboard, but all of their data will be preserved so you can restore them later.`,
-                        [
-                          { style: 'cancel', text: 'Cancel' },
-                          {
-                            style: 'destructive',
-                            text: 'Archive',
-                            onPress: () => {
-                              archiveChild(child.id);
-                              setChildSettingsEditor(null);
-                            },
-                          },
-                        ],
-                      )
-                    }
-                    style={styles.dangerAction}
-                  >
-                    <Text style={styles.dangerActionText}>Archive child</Text>
-                  </Pressable>
-                </View>
-              </Tile>
+                      },
+                    ],
+                  )
+                }
+                onChangeName={(value) =>
+                  setChildSettingsEditor((current) =>
+                    current
+                      ? {
+                          ...current,
+                          value,
+                        }
+                      : null,
+                  )
+                }
+                onMoveDown={() => moveChild(child.id, 'down')}
+                onMoveUp={() => moveChild(child.id, 'up')}
+                onNameBlur={() =>
+                  saveChildSettingsName({
+                    childId: child.id,
+                    currentName: child.displayName,
+                    nextName: childSettingsEditor.value,
+                  })
+                }
+                onSave={() => {
+                  saveChildSettingsName({
+                    childId: child.id,
+                    currentName: child.displayName,
+                    nextName: childSettingsEditor.value,
+                  });
+                  setChildSettingsEditor(null);
+                }}
+              />
             );
           }
 
           return (
-            <Tile
+            <ChildSummaryTile
               key={child.id}
-              collapsible={false}
-              headerAccessory={
-                isParentUnlocked ? (
-                  <Pressable
-                    accessibilityLabel={`Open ${child.displayName} settings`}
-                    onPress={() =>
-                      setChildSettingsEditor({
-                        childId: child.id,
-                        value: child.displayName,
-                      })
-                    }
-                    style={[
-                      styles.iconAction,
-                      { backgroundColor: tokens.controlSurface },
-                    ]}
-                  >
-                    <Ionicons
-                      color={tokens.controlText}
-                      name="settings-outline"
-                      size={18}
-                    />
-                  </Pressable>
-                ) : null
-              }
-              collapsedSummary={
-                <View style={styles.collapsedChildSummary}>
-                  <View
-                    style={[
-                      styles.childControlsRail,
-                      { backgroundColor: tokens.controlSurface },
-                    ]}
-                  >
-                    {isParentUnlocked ? (
-                      <Pressable
-                        accessibilityLabel={`Decrease ${child.displayName} points`}
-                        disabled={!isParentUnlocked}
-                        onPress={() => decrementPoints(child.id)}
-                        style={[
-                          styles.childSegment,
-                          styles.childActionSegment,
-                          styles.childActionSegmentLeft,
-                        ]}
-                      >
-                        <Feather
-                          color={CHILD_ACTION_ICON_COLOR}
-                          name="minus"
-                          size={20}
-                        />
-                      </Pressable>
-                    ) : null}
-                    <Pressable
-                      accessibilityLabel={`Edit ${child.displayName} points`}
-                      onPress={() => {
-                        if (!isParentUnlocked) {
-                          requestParentUnlock();
-                          return;
-                        }
+              childDisplayName={child.displayName}
+              childId={child.id}
+              isParentUnlocked={isParentUnlocked}
+              onDecrementPoints={decrementPoints}
+              onEditPoints={(childId) => {
+                if (!isParentUnlocked) {
+                  requestParentUnlock();
+                  return;
+                }
 
-                        setPointEditor({
-                          childId: child.id,
-                          displayName: child.displayName,
-                          value: String(child.points),
-                        });
-                      }}
-                      style={[
-                        styles.childSegment,
-                        styles.childPointsSegment,
-                        { backgroundColor: tokens.inputSurface },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.childPointsValue,
-                          { color: tokens.textPrimary },
-                        ]}
-                      >
-                        {child.points}
-                      </Text>
-                    </Pressable>
-                    {isParentUnlocked ? (
-                      <Pressable
-                        accessibilityLabel={`Increase ${child.displayName} points`}
-                        disabled={!isParentUnlocked}
-                        onPress={() => incrementPoints(child.id)}
-                        style={[
-                          styles.childSegment,
-                          styles.childActionSegment,
-                          styles.childActionSegmentRight,
-                        ]}
-                      >
-                        <Feather
-                          color={CHILD_ACTION_ICON_COLOR}
-                          name="plus"
-                          size={20}
-                        />
-                      </Pressable>
-                    ) : null}
-                  </View>
-                </View>
+                setPointEditor({
+                  childId,
+                  displayName: child.displayName,
+                  value: String(child.points),
+                });
+              }}
+              onIncrementPoints={incrementPoints}
+              onOpenSettings={(childId, displayName) =>
+                setChildSettingsEditor({
+                  childId,
+                  value: displayName,
+                })
               }
-              floatingTitle
-              summaryVisibleWhenExpanded
-              title={child.displayName}
+              points={child.points}
             />
           );
         })}
 
         {isParentUnlocked ? (
-          <Tile initiallyCollapsed title="Parent tools">
-            <View style={styles.parentToolsActions}>
-              <Pressable
-                onPress={() => setAddModalVisible(true)}
-                style={styles.primaryAction}
-              >
-                <Text style={styles.primaryActionText}>Add child widget</Text>
-              </Pressable>
-              {archivedChildren.length > 0 ? (
-                <Pressable
-                  onPress={() => setArchivedChildrenVisible(true)}
-                  style={[
-                    styles.secondaryAction,
-                    { backgroundColor: tokens.controlSurface },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.secondaryActionText,
-                      { color: tokens.controlText },
-                    ]}
-                  >
-                    Show archived children
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </Tile>
+          <ParentToolsTile
+            archivedChildrenCount={archivedChildren.length}
+            onAddChild={() => setAddModalVisible(true)}
+            onShowArchivedChildren={() => setArchivedChildrenVisible(true)}
+          />
         ) : null}
       </ScrollView>
 
@@ -740,12 +479,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  content: {
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 32,
-    gap: 12,
-  },
+  content: {},
   loadingState: {
     flex: 1,
     alignItems: 'center',
@@ -759,10 +493,6 @@ const styles = StyleSheet.create({
   },
   loadingBody: {
     textAlign: 'center',
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  supportingText: {
     fontSize: 15,
     lineHeight: 22,
   },
@@ -796,160 +526,6 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  disabledAction: {
-    opacity: 0.45,
-  },
-  dangerAction: {
-    borderRadius: 999,
-    backgroundColor: '#fee2e2',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  dangerActionText: {
-    color: '#b91c1c',
-    fontWeight: '800',
-  },
-  settingsSaveAction: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  settingsSaveActionText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  settingsList: {
-    gap: 8,
-  },
-  settingsActionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
-  },
-  settingsCompactAction: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  settingRow: {
-    minHeight: 52,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  settingLabel: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  settingInput: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  collapsedTimerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    flexShrink: 0,
-    gap: 6,
-  },
-  timerSummary: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  timerValue: {
-    flexShrink: 0,
-    fontSize: 30,
-    fontWeight: '900',
-    fontVariant: ['tabular-nums'],
-  },
-  timerValueButton: {
-    flexShrink: 0,
-  },
-  timerControlsRail: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    overflow: 'hidden',
-    borderRadius: 999,
-  },
-  timerControlSegment: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 0,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-  },
-  timerControlSegmentLeft: {
-    borderRightWidth: 1,
-  },
-  timerControlSegmentRight: {
-    borderLeftWidth: 1,
-  },
-  timerActionText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  collapsedChildSummary: {
-    flex: 1,
-    minWidth: 0,
-  },
-  childControlsRail: {
-    minHeight: 46,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    overflow: 'hidden',
-    borderRadius: 23,
-  },
-  childSegment: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 0,
-    paddingVertical: 10,
-  },
-  childActionSegment: {
-    flexBasis: 0,
-    flexGrow: 2,
-    backgroundColor: '#d1dbe8',
-    paddingHorizontal: 8,
-  },
-  childActionSegmentLeft: {
-    backgroundColor: '#fee2e2',
-    borderRightWidth: 1,
-    borderRightColor: '#fbcfe8',
-  },
-  childActionSegmentRight: {
-    backgroundColor: '#dcfce7',
-    borderLeftWidth: 1,
-    borderLeftColor: '#bbf7d0',
-  },
-  childPointsSegment: {
-    flexBasis: 0,
-    flexGrow: 6,
-    paddingHorizontal: 14,
-  },
-  childPointsValue: {
-    fontSize: 24,
-    fontWeight: '900',
-    fontVariant: ['tabular-nums'],
-  },
-  parentSection: {
-    gap: 8,
-  },
-  parentToolsActions: {
-    gap: 10,
   },
   archivedChildRow: {
     flexDirection: 'row',

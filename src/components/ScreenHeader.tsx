@@ -8,8 +8,8 @@ import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
 import { SettingsModal } from './SettingsModal';
 
 type ScreenHeaderProps = {
+  subtitle?: string;
   title: string;
-  subtitle: string;
 };
 
 export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
@@ -23,7 +23,7 @@ export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
     <View style={styles.header}>
       <View style={styles.copy}>
         <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
       <View style={styles.controlsRow}>
         <Pressable

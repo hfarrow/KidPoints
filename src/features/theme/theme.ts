@@ -26,6 +26,35 @@ export type ThemeTokens = {
   tabBarInactiveTint: string;
   textMuted: string;
   textPrimary: string;
+  layout: LayoutTokens;
+};
+
+type LayoutTokens = {
+  screenPaddingHorizontal: number;
+  screenPaddingTop: number;
+  screenPaddingBottom: number;
+  sectionGapSm: number;
+  sectionGapMd: number;
+  tabScreenContent: {
+    gap: number;
+    paddingBottom: number;
+    paddingHorizontal: number;
+    paddingTop: number;
+  };
+};
+
+const BASE_LAYOUT_TOKENS: LayoutTokens = {
+  screenPaddingHorizontal: 18,
+  screenPaddingTop: 12,
+  screenPaddingBottom: 32,
+  sectionGapSm: 12,
+  sectionGapMd: 16,
+  tabScreenContent: {
+    gap: 12,
+    paddingBottom: 32,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+  },
 };
 
 const LIGHT_THEME: ThemeTokens = {
@@ -52,6 +81,7 @@ const LIGHT_THEME: ThemeTokens = {
   tabBarInactiveTint: '#64748b',
   textMuted: '#475569',
   textPrimary: '#0f172a',
+  layout: BASE_LAYOUT_TOKENS,
 };
 
 const DARK_THEME: ThemeTokens = {
@@ -78,6 +108,7 @@ const DARK_THEME: ThemeTokens = {
   tabBarInactiveTint: '#94a3b8',
   textMuted: '#cbd5e1',
   textPrimary: '#f8fafc',
+  layout: BASE_LAYOUT_TOKENS,
 };
 
 export function resolveThemeMode(
