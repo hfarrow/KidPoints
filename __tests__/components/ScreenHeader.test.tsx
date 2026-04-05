@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render } from '@testing-library/react-native';
+import { Text } from 'react-native';
 
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { getThemeTokens } from '../../src/features/theme/theme';
@@ -117,5 +118,34 @@ describe('ScreenHeader', () => {
 
     expect(mockLockParent).toHaveBeenCalled();
     expect(view.getByLabelText('lock-open-outline')).toBeTruthy();
+  });
+
+  it('renders screen-specific actions in the controls row', () => {
+    const view = render(
+      <ScreenHeader
+        actions={<Text accessibilityLabel="Extra screen action">Action</Text>}
+        subtitle="KidPoints"
+        title="Home"
+      />,
+    );
+
+    expect(view.getByLabelText('Extra screen action')).toBeTruthy();
+    expect(view.getByLabelText('Open settings')).toBeTruthy();
+    expect(view.getByLabelText('Unlock Parent Mode')).toBeTruthy();
+  });
+
+  it('renders a screen-specific leading control next to the title', () => {
+    const view = render(
+      <ScreenHeader
+        leadingControl={
+          <Text accessibilityLabel="Back control">Back control</Text>
+        }
+        subtitle="KidPoints"
+        title="Home"
+      />,
+    );
+
+    expect(view.getByLabelText('Back control')).toBeTruthy();
+    expect(view.getByText('Home')).toBeTruthy();
   });
 });

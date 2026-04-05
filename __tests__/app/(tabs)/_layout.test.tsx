@@ -132,4 +132,41 @@ describe('TabsLayout', () => {
     expect(mockUnlockParent).toHaveBeenCalledWith('0000');
     expect(mockPush).toHaveBeenCalledWith('/alarm');
   });
+
+  it('registers the transactions route as a hidden tab screen', () => {
+    mockTabsScreen.mockReset();
+    mockUseAppTheme.mockReturnValue({
+      tokens: {
+        border: '#cbd5e1',
+        tabBarActiveBackground: '#e2e8f0',
+        tabBarActiveTint: '#0f172a',
+        tabBarBackground: '#f8fafc',
+        tabBarInactiveTint: '#64748b',
+      },
+    });
+
+    useAppStorage.mockReturnValue({
+      parentSession: {
+        isUnlocked: true,
+      },
+      unlockParent: jest.fn(),
+    });
+
+    render(<TabsLayout />);
+
+    const transactionsScreenProps = mockTabsScreen.mock.calls
+      .map(
+        ([props]) =>
+          props as {
+            name: string;
+            options?: {
+              href?: null;
+            };
+          },
+      )
+      .find((props) => props.name === 'transactions');
+
+    expect(transactionsScreenProps).toBeDefined();
+    expect(transactionsScreenProps?.options?.href).toBeNull();
+  });
 });

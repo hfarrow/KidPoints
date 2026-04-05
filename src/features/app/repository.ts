@@ -1,6 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AppRepository, PersistedAppData } from './repositoryTypes';
+import type { AppRepository } from './repositoryTypes';
 import { createDefaultAppData, DEFAULT_PARENT_PIN } from './state';
+import {
+  createDefaultAppDocument,
+  createEmptyTransactionState,
+  isPersistedAppDocument,
+  type PersistedAppDocument,
+} from './transactions';
+import type { PersistedAppData } from './types';
 
 const STORAGE_KEY = 'kidpoints.app-data.v1';
 
@@ -9,53 +16,75 @@ class AsyncStorageAppRepository implements AppRepository {
     const rawValue = await AsyncStorage.getItem(STORAGE_KEY);
 
     if (!rawValue) {
-      return createDefaultAppData();
+      return createDefaultAppDocument();
     }
 
     try {
-      const parsedValue = JSON.parse(rawValue) as Partial<PersistedAppData>;
-      const defaultData = createDefaultAppData();
+      const parsedValue = JSON.parse(rawValue) as unknown;
+
+      if (isPersistedAppDocument(parsedValue)) {
+        return {
+          ...parsedValue,
+          head: normalizePersistedAppData(parsedValue.head),
+          transactionState: {
+            nextTransactionId: parsedValue.transactionState.nextTransactionId,
+            transactions: parsedValue.transactionState.transactions,
+          },
+        } satisfies PersistedAppDocument;
+      }
 
       return {
-        ...defaultData,
-        ...parsedValue,
-        uiPreferences: {
-          ...defaultData.uiPreferences,
-          ...parsedValue.uiPreferences,
-        },
-        parentSettings: {
-          ...defaultData.parentSettings,
-          ...parsedValue.parentSettings,
-          pin:
-            parsedValue.parentSettings?.pin === '2468'
-              ? DEFAULT_PARENT_PIN
-              : (parsedValue.parentSettings?.pin ?? DEFAULT_PARENT_PIN),
-        },
-        timerConfig: {
-          ...defaultData.timerConfig,
-          ...parsedValue.timerConfig,
-        },
-        timerState: {
-          ...defaultData.timerState,
-          ...parsedValue.timerState,
-        },
-        shopCatalog: {
-          ...defaultData.shopCatalog,
-          ...parsedValue.shopCatalog,
-        },
-        cart: {
-          ...defaultData.cart,
-          ...parsedValue.cart,
-        },
-      } satisfies PersistedAppData;
+        version: 2 as const,
+        head: normalizePersistedAppData(
+          parsedValue as Partial<PersistedAppData>,
+        ),
+        transactionState: createEmptyTransactionState(),
+      };
     } catch {
-      return createDefaultAppData();
+      return createDefaultAppDocument();
     }
   }
 
-  async save(data: PersistedAppData) {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  async save(document: PersistedAppDocument) {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(document));
   }
 }
 
 export const appRepository: AppRepository = new AsyncStorageAppRepository();
+
+function normalizePersistedAppData(parsedValue: Partial<PersistedAppData>) {
+  const defaultData = createDefaultAppData();
+
+  return {
+    ...defaultData,
+    ...parsedValue,
+    uiPreferences: {
+      ...defaultData.uiPreferences,
+      ...parsedValue.uiPreferences,
+    },
+    parentSettings: {
+      ...defaultData.parentSettings,
+      ...parsedValue.parentSettings,
+      pin:
+        parsedValue.parentSettings?.pin === '2468'
+          ? DEFAULT_PARENT_PIN
+          : (parsedValue.parentSettings?.pin ?? DEFAULT_PARENT_PIN),
+    },
+    timerConfig: {
+      ...defaultData.timerConfig,
+      ...parsedValue.timerConfig,
+    },
+    timerState: {
+      ...defaultData.timerState,
+      ...parsedValue.timerState,
+    },
+    shopCatalog: {
+      ...defaultData.shopCatalog,
+      ...parsedValue.shopCatalog,
+    },
+    cart: {
+      ...defaultData.cart,
+      ...parsedValue.cart,
+    },
+  } satisfies PersistedAppData;
+}

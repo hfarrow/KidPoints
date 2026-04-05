@@ -4,19 +4,21 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useReducer,
   useState,
 } from 'react';
 import { useColorScheme } from 'react-native';
 import { resolveThemeMode } from '../theme/theme';
 import { appRepository } from './repository';
-import {
-  appDataReducer,
-  createDefaultAppData,
-  sortChildren,
-  verifyParentPin,
-} from './state';
+import { appDataReducer, sortChildren, verifyParentPin } from './state';
 import { computeTimerSnapshot } from './timer';
+import {
+  commitSharedTransaction,
+  createDefaultAppDocument,
+  getRevertPlan,
+  getTransactionActorDeviceName,
+  revertTransaction as revertSharedTransaction,
+  type TransactionRecord,
+} from './transactions';
 import type {
   ParentSession,
   PersistedAppData,
@@ -36,6 +38,10 @@ type AppStorageValue = {
   setThemeMode: (mode: ThemeMode) => void;
   timerSnapshot: ReturnType<typeof computeTimerSnapshot>;
   themeMode: ThemeMode;
+  transactions: TransactionRecord[];
+  clearTransactionHistory: () => void;
+  getRevertPlan: (transactionId: number) => number[];
+  revertTransaction: (transactionId: number) => void;
   unlockParent: (pin: string) => boolean;
   addChild: (name: string) => void;
   decrementPoints: (childId: string) => void;
@@ -55,11 +61,7 @@ type AppStorageValue = {
 const AppStorageContext = createContext<AppStorageValue | null>(null);
 
 export function AppStorageProvider({ children }: PropsWithChildren) {
-  const [appData, dispatch] = useReducer(
-    appDataReducer,
-    undefined,
-    createDefaultAppData,
-  );
+  const [document, setDocument] = useState(createDefaultAppDocument);
   const [parentSession, setParentSession] = useState<ParentSession>({
     isUnlocked: false,
   });
@@ -75,7 +77,7 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
         return;
       }
 
-      dispatch({ type: 'hydrate', payload: loadedData });
+      setDocument(loadedData);
       setIsHydrated(true);
     });
 
@@ -89,8 +91,8 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    void appRepository.save(appData);
-  }, [appData, isHydrated]);
+    void appRepository.save(document);
+  }, [document, isHydrated]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -101,6 +103,7 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
   }, []);
 
   const value = useMemo<AppStorageValue>(() => {
+    const appData = document.head;
     const children = sortChildren(
       appData.children.filter((child) => !child.isArchived),
     );
@@ -116,6 +119,15 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
       appData.timerState,
       now,
     );
+    const actorDeviceName = getTransactionActorDeviceName();
+    const commit = (intent: Parameters<typeof commitSharedTransaction>[1]) => {
+      setDocument((current) =>
+        commitSharedTransaction(current, intent, {
+          actorDeviceName,
+          occurredAt: Date.now(),
+        }),
+      );
+    };
 
     return {
       appData,
@@ -128,10 +140,36 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
       parentSession,
       resolvedTheme,
       setThemeMode: (themeMode) => {
-        dispatch({ type: 'setThemeMode', themeMode });
+        setDocument((current) => ({
+          ...current,
+          head: appDataReducer(current.head, {
+            type: 'setThemeMode',
+            themeMode,
+          }),
+        }));
       },
       timerSnapshot,
       themeMode: appData.uiPreferences.themeMode,
+      transactions: [...document.transactionState.transactions],
+      clearTransactionHistory: () => {
+        setDocument((current) => ({
+          ...current,
+          transactionState: {
+            nextTransactionId: 1,
+            transactions: [],
+          },
+        }));
+      },
+      getRevertPlan: (transactionId) =>
+        getRevertPlan(document.transactionState, transactionId).transactionIds,
+      revertTransaction: (transactionId) => {
+        setDocument((current) =>
+          revertSharedTransaction(current, transactionId, {
+            actorDeviceName,
+            occurredAt: Date.now(),
+          }),
+        );
+      },
       unlockParent: (pin) => {
         const success = verifyParentPin(appData, pin);
 
@@ -146,50 +184,56 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
           return;
         }
 
-        dispatch({ type: 'addChild', name });
+        commit({ type: 'addChild', name });
       },
       decrementPoints: (childId) => {
-        dispatch({ type: 'decrementPoints', amount: 1, childId });
+        commit({ type: 'decrementPoints', amount: 1, childId });
       },
       incrementPoints: (childId) => {
-        dispatch({ type: 'incrementPoints', amount: 1, childId });
+        commit({ type: 'incrementPoints', amount: 1, childId });
       },
       moveChild: (childId, direction) => {
-        dispatch({ type: 'moveChild', childId, direction });
+        commit({ type: 'moveChild', childId, direction });
       },
       pauseTimer: () => {
-        dispatch({ type: 'pauseTimer', pausedAt: Date.now() });
+        commit({ type: 'pauseTimer', pausedAt: Date.now() });
       },
       renameChild: (childId, name) => {
         if (!name.trim()) {
           return;
         }
 
-        dispatch({ type: 'renameChild', childId, name });
+        commit({ type: 'renameChild', childId, name });
       },
       archiveChild: (childId) => {
-        dispatch({ type: 'archiveChild', childId, archivedAt: Date.now() });
+        commit({ type: 'archiveChild', childId, archivedAt: Date.now() });
       },
       deleteChildPermanently: (childId) => {
-        dispatch({ type: 'deleteChildPermanently', childId });
+        commit({ type: 'deleteChildPermanently', childId });
       },
       resetTimer: () => {
-        dispatch({ type: 'resetTimer' });
+        commit({ type: 'resetTimer' });
       },
       restoreChild: (childId) => {
-        dispatch({ type: 'restoreChild', childId });
+        commit({ type: 'restoreChild', childId });
       },
       setPoints: (childId, points) => {
-        dispatch({ type: 'setPoints', childId, points });
+        commit({ type: 'setPoints', childId, points });
       },
       startTimer: () => {
-        dispatch({ type: 'startTimer', startedAt: Date.now() });
+        commit({ type: 'startTimer', startedAt: Date.now() });
       },
       updateTimerConfig: (patch) => {
-        dispatch({ type: 'updateTimerConfig', patch });
+        setDocument((current) => ({
+          ...current,
+          head: appDataReducer(current.head, {
+            type: 'updateTimerConfig',
+            patch,
+          }),
+        }));
       },
     };
-  }, [appData, isHydrated, now, parentSession, systemColorScheme]);
+  }, [document, isHydrated, now, parentSession, systemColorScheme]);
 
   return (
     <AppStorageContext.Provider value={value}>

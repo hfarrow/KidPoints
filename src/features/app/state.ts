@@ -1,4 +1,10 @@
-import type { PersistedAppData, SharedTimerConfig, ThemeMode } from './types';
+import type {
+  ChildProfile,
+  PersistedAppData,
+  SharedTimerConfig,
+  SharedTimerState,
+  ThemeMode,
+} from './types';
 
 export const DEFAULT_PARENT_PIN = '0000';
 
@@ -7,18 +13,23 @@ const AVATAR_COLORS = ['#fb7185', '#38bdf8', '#34d399', '#f59e0b', '#a78bfa'];
 export type AppDataAction =
   | { type: 'hydrate'; payload: PersistedAppData }
   | { type: 'addChild'; name: string }
+  | { type: 'addChildRecord'; child: ChildProfile }
   | { type: 'renameChild'; childId: string; name: string }
   | { type: 'archiveChild'; childId: string; archivedAt: number }
   | { type: 'restoreChild'; childId: string }
+  | { type: 'restoreChildToOrder'; childId: string; sortOrder: number }
   | { type: 'deleteChildPermanently'; childId: string }
   | { type: 'moveChild'; childId: string; direction: 'up' | 'down' }
   | { type: 'incrementPoints'; childId: string; amount: number }
   | { type: 'decrementPoints'; childId: string; amount: number }
+  | { type: 'adjustPoints'; childId: string; delta: number }
   | { type: 'setPoints'; childId: string; points: number }
+  | { type: 'replaceChildren'; children: PersistedAppData['children'] }
   | { type: 'setThemeMode'; themeMode: ThemeMode }
   | { type: 'updateTimerConfig'; patch: Partial<SharedTimerConfig> }
   | { type: 'startTimer'; startedAt: number }
   | { type: 'pauseTimer'; pausedAt: number }
+  | { type: 'replaceTimerState'; timerState: SharedTimerState }
   | { type: 'resetTimer' };
 
 export function createDefaultAppData(): PersistedAppData {
@@ -55,6 +66,23 @@ export function sortChildren<T extends { sortOrder: number }>(children: T[]) {
   return [...children].sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
+export function createChildProfile(
+  currentChildren: PersistedAppData['children'],
+  name: string,
+): ChildProfile {
+  const nextIndex = getActiveChildren(currentChildren).length;
+
+  return {
+    id: createId(),
+    displayName: name.trim(),
+    points: 0,
+    sortOrder: nextIndex,
+    avatarColor: AVATAR_COLORS[nextIndex % AVATAR_COLORS.length],
+    isArchived: false,
+    archivedAt: null,
+  };
+}
+
 export function verifyParentPin(
   appData: PersistedAppData,
   attemptedPin: string,
@@ -70,28 +98,25 @@ export function appDataReducer(
     case 'hydrate':
       return action.payload;
     case 'addChild': {
-      const nextIndex = getActiveChildren(state.children).length;
-
       return {
         ...state,
         children: [
           ...state.children,
-          {
-            id: createId(),
-            displayName: action.name.trim(),
-            points: 0,
-            sortOrder: nextIndex,
-            avatarColor: AVATAR_COLORS[nextIndex % AVATAR_COLORS.length],
-            isArchived: false,
-            archivedAt: null,
-          },
+          createChildProfile(state.children, action.name),
         ],
       };
     }
+    case 'addChildRecord':
+      return {
+        ...state,
+        children: [...state.children, action.child],
+      };
     case 'archiveChild':
       return archiveChild(state, action.childId, action.archivedAt);
     case 'restoreChild':
       return restoreChild(state, action.childId);
+    case 'restoreChildToOrder':
+      return restoreChildToOrder(state, action.childId, action.sortOrder);
     case 'deleteChildPermanently':
       return {
         ...state,
@@ -141,6 +166,8 @@ export function appDataReducer(
       return updatePoints(state, action.childId, action.amount);
     case 'decrementPoints':
       return updatePoints(state, action.childId, -action.amount);
+    case 'adjustPoints':
+      return updatePoints(state, action.childId, action.delta);
     case 'setPoints':
       return {
         ...state,
@@ -152,6 +179,11 @@ export function appDataReducer(
               }
             : child,
         ),
+      };
+    case 'replaceChildren':
+      return {
+        ...state,
+        children: action.children,
       };
     case 'setThemeMode':
       return {
@@ -173,6 +205,11 @@ export function appDataReducer(
       return startTimer(state, action.startedAt);
     case 'pauseTimer':
       return pauseTimer(state, action.pausedAt);
+    case 'replaceTimerState':
+      return {
+        ...state,
+        timerState: action.timerState,
+      };
     case 'resetTimer':
       return {
         ...state,
@@ -232,18 +269,41 @@ function restoreChild(
 ): PersistedAppData {
   const nextSortOrder = getActiveChildren(state.children).length;
 
+  return restoreChildToOrder(state, childId, nextSortOrder);
+}
+
+function restoreChildToOrder(
+  state: PersistedAppData,
+  childId: string,
+  requestedSortOrder: number,
+): PersistedAppData {
+  const activeChildren = getActiveChildren(state.children);
+  const nextSortOrder = Math.max(
+    0,
+    Math.min(requestedSortOrder, activeChildren.length),
+  );
+
   return {
     ...state,
-    children: state.children.map((child) =>
-      child.id === childId
-        ? {
-            ...child,
-            isArchived: false,
-            archivedAt: null,
-            sortOrder: nextSortOrder,
-          }
-        : child,
-    ),
+    children: state.children.map((child) => {
+      if (child.id === childId) {
+        return {
+          ...child,
+          isArchived: false,
+          archivedAt: null,
+          sortOrder: nextSortOrder,
+        };
+      }
+
+      if (!child.isArchived && child.sortOrder >= nextSortOrder) {
+        return {
+          ...child,
+          sortOrder: child.sortOrder + 1,
+        };
+      }
+
+      return child;
+    }),
   };
 }
 

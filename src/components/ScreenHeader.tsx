@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAppStorage } from '../features/app/appStorage';
@@ -8,11 +8,18 @@ import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
 import { SettingsModal } from './SettingsModal';
 
 type ScreenHeaderProps = {
+  actions?: ReactNode;
+  leadingControl?: ReactNode;
   subtitle?: string;
   title: string;
 };
 
-export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
+export function ScreenHeader({
+  actions,
+  leadingControl,
+  title,
+  subtitle,
+}: ScreenHeaderProps) {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const { lockParent, parentSession } = useAppStorage();
   const { setThemeMode, themeMode } = useAppTheme();
@@ -22,7 +29,12 @@ export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
   return (
     <View style={styles.header}>
       <View style={styles.copy}>
-        <Text style={styles.title}>{title}</Text>
+        <View style={styles.titleRow}>
+          {leadingControl ? (
+            <View style={styles.leadingControlWrap}>{leadingControl}</View>
+          ) : null}
+          <Text style={styles.title}>{title}</Text>
+        </View>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
       <View style={styles.controlsRow}>
@@ -70,6 +82,7 @@ export function ScreenHeader({ title, subtitle }: ScreenHeaderProps) {
             size={18}
           />
         </Pressable>
+        {actions ? <View style={styles.actionsWrap}>{actions}</View> : null}
       </View>
       {parentPinModal}
       <SettingsModal
@@ -90,7 +103,21 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     copy: {
       gap: 6,
     },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    leadingControlWrap: {
+      flexShrink: 0,
+    },
     controlsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: 10,
+    },
+    actionsWrap: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       alignItems: 'center',

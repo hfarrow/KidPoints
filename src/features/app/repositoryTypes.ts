@@ -1,8 +1,6 @@
-import type { PersistedAppData } from './types';
+import type { PersistedAppDocument } from './transactions';
 
 export interface AppRepository {
-  load(): Promise<PersistedAppData>;
-  save(data: PersistedAppData): Promise<void>;
+  load(): Promise<PersistedAppDocument>;
+  save(document: PersistedAppDocument): Promise<void>;
 }
-
-export type { PersistedAppData };

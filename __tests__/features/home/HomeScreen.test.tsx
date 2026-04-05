@@ -200,9 +200,21 @@ describe('HomeScreen', () => {
 
     const view = render(<HomeScreen />);
 
-    fireEvent.press(view.getByText('Parent tools'));
+    fireEvent.press(view.getByText('Parent Tools'));
 
+    expect(view.getByText('Transaction log')).toBeTruthy();
     expect(view.getByText('Show archived children')).toBeTruthy();
+  });
+
+  it('opens the transaction log from parent tools', () => {
+    mockUseAppStorage.mockReturnValue(createStorageState(true));
+
+    const view = render(<HomeScreen />);
+
+    fireEvent.press(view.getByText('Parent Tools'));
+    fireEvent.press(view.getByText('Transaction log'));
+
+    expect(mockPush).toHaveBeenCalledWith('/transactions');
   });
 
   it('archives a child from the settings tile instead of deleting immediately', () => {
@@ -249,7 +261,7 @@ describe('HomeScreen', () => {
 
     const view = render(<HomeScreen />);
 
-    fireEvent.press(view.getByText('Parent tools'));
+    fireEvent.press(view.getByText('Parent Tools'));
     fireEvent.press(view.getByText('Show archived children'));
 
     expect(view.getByText('Archived children')).toBeTruthy();
@@ -291,7 +303,7 @@ describe('HomeScreen', () => {
 
     const view = render(<HomeScreen />);
 
-    fireEvent.press(view.getByText('Parent tools'));
+    fireEvent.press(view.getByText('Parent Tools'));
     fireEvent.press(view.getByText('Show archived children'));
 
     fireEvent.press(view.getByLabelText('Delete Noah permanently'));
@@ -326,7 +338,7 @@ describe('HomeScreen', () => {
 
     const view = render(<HomeScreen />);
 
-    fireEvent.press(view.getByText('Parent tools'));
+    fireEvent.press(view.getByText('Parent Tools'));
     fireEvent.press(view.getByText('Show archived children'));
 
     const deleteAlertCallsBefore = (Alert.alert as jest.Mock).mock.calls.length;

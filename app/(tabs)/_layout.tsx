@@ -80,6 +80,12 @@ export default function TabsLayout() {
             tabBarLabel: 'Shop',
           }}
         />
+        <Tabs.Screen
+          name="transactions"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
       {parentPinModal}
     </>

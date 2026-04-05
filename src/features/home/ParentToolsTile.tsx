@@ -7,12 +7,14 @@ type ParentToolsTileProps = {
   archivedChildrenCount: number;
   onAddChild: () => void;
   onShowArchivedChildren: () => void;
+  onShowTransactions: () => void;
 };
 
 export function ParentToolsTile({
   archivedChildrenCount,
   onAddChild,
   onShowArchivedChildren,
+  onShowTransactions,
 }: ParentToolsTileProps) {
   const { tokens } = useAppTheme();
 
@@ -21,6 +23,19 @@ export function ParentToolsTile({
       <View style={styles.parentToolsActions}>
         <Pressable onPress={onAddChild} style={styles.primaryAction}>
           <Text style={styles.primaryActionText}>Add child widget</Text>
+        </Pressable>
+        <Pressable
+          onPress={onShowTransactions}
+          style={[
+            styles.secondaryAction,
+            { backgroundColor: tokens.controlSurface },
+          ]}
+        >
+          <Text
+            style={[styles.secondaryActionText, { color: tokens.controlText }]}
+          >
+            Transaction log
+          </Text>
         </Pressable>
         {archivedChildrenCount > 0 ? (
           <Pressable

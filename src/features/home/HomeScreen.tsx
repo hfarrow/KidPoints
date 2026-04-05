@@ -248,6 +248,7 @@ export function HomeScreen() {
             archivedChildrenCount={archivedChildren.length}
             onAddChild={() => setAddModalVisible(true)}
             onShowArchivedChildren={() => setArchivedChildrenVisible(true)}
+            onShowTransactions={() => router.push('/transactions')}
           />
         ) : null}
       </ScrollView>
