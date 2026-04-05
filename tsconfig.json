@@ -4,8 +4,9 @@
     "strict": true,
     "incremental": true,
     "noEmit": true,
+    "jsx": "react-jsx",
     "tsBuildInfoFile": "./.cache/typecheck.tsbuildinfo"
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
+  "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["android", "node_modules"]
 }
