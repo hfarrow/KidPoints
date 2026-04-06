@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { AppState, type AppStateStatus, useColorScheme } from 'react-native';
@@ -19,6 +20,10 @@ import {
   stopExpiredAlarmPlayback,
   syncAlarmDocument,
 } from './alarmEngine';
+import {
+  buildResetTimerDocument,
+  resolveExpiredInterval,
+} from './expiredIntervalResolution';
 import { createInitialParentSession } from './parentSession';
 import { appRepository } from './repository';
 import { appDataReducer, sortChildren, verifyParentPin } from './state';
@@ -74,6 +79,7 @@ type AppStorageValue = {
   getRevertPlan: (threadId: string) => string[];
   getRestorePlan: (threadId: string) => string[];
   reloadPersistedState: () => Promise<void>;
+  suppressNextActiveReload: () => void;
   restoreTransaction: (threadId: string) => void;
   revertTransaction: (threadId: string) => void;
   refreshAlarmRuntimeStatus: () => Promise<void>;
@@ -128,9 +134,9 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
   );
   const [isHydrated, setIsHydrated] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const skipNextActiveReloadRef = useRef(false);
   const systemColorScheme = useColorScheme();
   const reloadPersistedState = useCallback(async () => {
-    logAlarmDebug('Reloading persisted alarm state');
     const [loadedData, runtimeStatus] = await Promise.all([
       appRepository.load(),
       getAlarmRuntimeStatus(),
@@ -138,11 +144,6 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
 
     setDocument(loadedData);
     setAlarmRuntimeStatus(runtimeStatus);
-    logAlarmDebug('Reloaded persisted alarm state', {
-      expiredIntervals: loadedData.head.expiredIntervals.length,
-      isRunning: runtimeStatus.isRunning,
-      sessionId: runtimeStatus.sessionId,
-    });
   }, []);
 
   useEffect(() => {
@@ -154,7 +155,6 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
       }
 
       setIsHydrated(true);
-      logAlarmDebug('App storage hydrated');
     });
 
     return () => {
@@ -193,8 +193,15 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
     const appStateSubscription = AppState.addEventListener(
       'change',
       (nextAppState: AppStateStatus) => {
-        logAlarmDebug('AppState changed', { nextAppState });
         if (nextAppState !== 'active') {
+          return;
+        }
+
+        if (skipNextActiveReloadRef.current) {
+          skipNextActiveReloadRef.current = false;
+          logAlarmDebug(
+            'Skipped app storage active-state reload because a live check-in event was already handled',
+          );
           return;
         }
 
@@ -230,6 +237,9 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
     const refreshAlarmRuntimeStatus = async () => {
       setAlarmRuntimeStatus(await getAlarmRuntimeStatus());
     };
+    const suppressNextActiveReload = () => {
+      skipNextActiveReloadRef.current = true;
+    };
     const updateHead = (
       updater: (currentHead: PersistedAppData) => PersistedAppData,
     ) => {
@@ -264,6 +274,7 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
       },
       parentSession,
       reloadPersistedState,
+      suppressNextActiveReload,
       resolvedTheme,
       setThemeMode: (themeMode) => {
         updateHead((currentHead) =>
@@ -343,57 +354,60 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
         }
 
         const occurredAt = Date.now();
-        let nextDocument = commitSharedTransaction(
-          document,
-          {
-            type: 'incrementPoints',
-            amount: 1,
-            childId,
-          },
-          {
+        const { document: nextDocument, shouldRestartTimer } =
+          resolveExpiredInterval(document, {
             actorDeviceName,
-            occurredAt,
-          },
-        );
-
-        nextDocument = {
-          ...nextDocument,
-          head: appDataReducer(nextDocument.head, {
-            type: 'setExpiredIntervalChildStatus',
             childId,
             intervalId,
+            occurredAt,
             status: 'awarded',
-          }),
-        };
+          });
 
-        const shouldRestartTimer = !nextDocument.head.timerState.isRunning;
-
-        if (shouldRestartTimer) {
-          nextDocument = commitSharedTransaction(
-            nextDocument,
-            {
-              type: 'startTimer',
-              startedAt: occurredAt,
-            },
-            {
-              actorDeviceName,
-              occurredAt,
-            },
-          );
-        }
+        logAlarmDebug('Resolved awarded check-in interval state', {
+          intervalId,
+          nextExpiredIntervals: nextDocument.head.expiredIntervals.length,
+          nextTriggerAt: nextDocument.head.timerRuntimeState.nextTriggerAt,
+          shouldRestartTimer,
+          timerCycleStartedAt: nextDocument.head.timerState.cycleStartedAt,
+          timerIsRunning: nextDocument.head.timerState.isRunning,
+        });
 
         setDocument(nextDocument);
 
         if (shouldRestartTimer) {
           void startAlarmTimer(nextDocument).then((serializedDocument) => {
-            setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+            const parsedDocument = JSON.parse(
+              serializedDocument,
+            ) as typeof nextDocument;
+            logAlarmDebug('Started timer after awarded check-in action', {
+              intervalId,
+              nextTriggerAt:
+                parsedDocument.head.timerRuntimeState.nextTriggerAt,
+              timerCycleStartedAt:
+                parsedDocument.head.timerState.cycleStartedAt,
+              timerIsRunning: parsedDocument.head.timerState.isRunning,
+            });
+            setDocument(parsedDocument);
             void refreshAlarmRuntimeStatus();
           });
           return;
         }
 
         void syncAlarmDocument(nextDocument).then((serializedDocument) => {
-          setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+          const parsedDocument = JSON.parse(
+            serializedDocument,
+          ) as typeof nextDocument;
+          logAlarmDebug(
+            'Synced awarded check-in state without restarting timer',
+            {
+              intervalId,
+              nextExpiredIntervals: parsedDocument.head.expiredIntervals.length,
+              nextTriggerAt:
+                parsedDocument.head.timerRuntimeState.nextTriggerAt,
+              timerIsRunning: parsedDocument.head.timerState.isRunning,
+            },
+          );
+          setDocument(parsedDocument);
           void refreshAlarmRuntimeStatus();
         });
       },
@@ -422,44 +436,60 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
         }
 
         const occurredAt = Date.now();
-        let nextDocument = {
-          ...document,
-          head: appDataReducer(document.head, {
-            type: 'setExpiredIntervalChildStatus',
+        const { document: nextDocument, shouldRestartTimer } =
+          resolveExpiredInterval(document, {
+            actorDeviceName,
             childId,
             intervalId,
+            occurredAt,
             status: 'dismissed',
-          }),
-        };
+          });
 
-        const shouldRestartTimer = !nextDocument.head.timerState.isRunning;
-
-        if (shouldRestartTimer) {
-          nextDocument = commitSharedTransaction(
-            nextDocument,
-            {
-              type: 'startTimer',
-              startedAt: occurredAt,
-            },
-            {
-              actorDeviceName,
-              occurredAt,
-            },
-          );
-        }
+        logAlarmDebug('Resolved dismissed check-in interval state', {
+          intervalId,
+          nextExpiredIntervals: nextDocument.head.expiredIntervals.length,
+          nextTriggerAt: nextDocument.head.timerRuntimeState.nextTriggerAt,
+          shouldRestartTimer,
+          timerCycleStartedAt: nextDocument.head.timerState.cycleStartedAt,
+          timerIsRunning: nextDocument.head.timerState.isRunning,
+        });
 
         setDocument(nextDocument);
 
         if (shouldRestartTimer) {
           void startAlarmTimer(nextDocument).then((serializedDocument) => {
-            setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+            const parsedDocument = JSON.parse(
+              serializedDocument,
+            ) as typeof nextDocument;
+            logAlarmDebug('Started timer after dismissed check-in action', {
+              intervalId,
+              nextTriggerAt:
+                parsedDocument.head.timerRuntimeState.nextTriggerAt,
+              timerCycleStartedAt:
+                parsedDocument.head.timerState.cycleStartedAt,
+              timerIsRunning: parsedDocument.head.timerState.isRunning,
+            });
+            setDocument(parsedDocument);
             void refreshAlarmRuntimeStatus();
           });
           return;
         }
 
         void syncAlarmDocument(nextDocument).then((serializedDocument) => {
-          setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+          const parsedDocument = JSON.parse(
+            serializedDocument,
+          ) as typeof nextDocument;
+          logAlarmDebug(
+            'Synced dismissed check-in state without restarting timer',
+            {
+              intervalId,
+              nextExpiredIntervals: parsedDocument.head.expiredIntervals.length,
+              nextTriggerAt:
+                parsedDocument.head.timerRuntimeState.nextTriggerAt,
+              timerIsRunning: parsedDocument.head.timerState.isRunning,
+            },
+          );
+          setDocument(parsedDocument);
           void refreshAlarmRuntimeStatus();
         });
       },
@@ -496,10 +526,32 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
       },
       resetTimer: () => {
         logAlarmDebug('Reset timer requested from JS');
-        const nextDocument = commit({ type: 'resetTimer' });
+        const occurredAt = Date.now();
+        const nextDocument = buildResetTimerDocument(document, {
+          actorDeviceName,
+          occurredAt,
+        });
+
+        logAlarmDebug('Prepared reset timer document', {
+          expiredIntervals: nextDocument.head.expiredIntervals.length,
+          nextTriggerAt: nextDocument.head.timerRuntimeState.nextTriggerAt,
+          timerCycleStartedAt: nextDocument.head.timerState.cycleStartedAt,
+          timerIsRunning: nextDocument.head.timerState.isRunning,
+        });
+
+        setDocument(nextDocument);
 
         void resetAlarmTimer(nextDocument).then((serializedDocument) => {
-          setDocument(JSON.parse(serializedDocument) as typeof nextDocument);
+          const parsedDocument = JSON.parse(
+            serializedDocument,
+          ) as typeof nextDocument;
+          logAlarmDebug('Reset timer completed after native sync', {
+            expiredIntervals: parsedDocument.head.expiredIntervals.length,
+            nextTriggerAt: parsedDocument.head.timerRuntimeState.nextTriggerAt,
+            timerCycleStartedAt: parsedDocument.head.timerState.cycleStartedAt,
+            timerIsRunning: parsedDocument.head.timerState.isRunning,
+          });
+          setDocument(parsedDocument);
           void refreshAlarmRuntimeStatus();
         });
       },

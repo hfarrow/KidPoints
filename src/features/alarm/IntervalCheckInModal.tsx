@@ -6,21 +6,6 @@ import { stopExpiredAlarmPlayback } from '../app/alarmEngine';
 import { useAppStorage } from '../app/appStorage';
 import { useAppTheme } from '../theme/themeContext';
 
-const ALARM_DEBUG_PREFIX = '[KidPointsAlarmJS]';
-
-function logAlarmDebug(message: string, details?: unknown) {
-  if (!__DEV__) {
-    return;
-  }
-
-  if (details === undefined) {
-    console.debug(ALARM_DEBUG_PREFIX, message);
-    return;
-  }
-
-  console.debug(ALARM_DEBUG_PREFIX, message, details);
-}
-
 export function IntervalCheckInModal({
   intervalId,
   onClose,
@@ -53,37 +38,11 @@ export function IntervalCheckInModal({
 
           return interval.intervalId === intervalId;
         }) ?? null);
-  const pendingChildCount =
-    activeInterval?.childActions.filter(
-      (childAction) => childAction.status === 'pending',
-    ).length ?? 0;
-
   useEffect(() => {
-    if (intervalId === undefined) {
-      return;
-    }
-
-    if (intervalId !== null && intervalId !== undefined && !activeInterval) {
+    if (intervalId !== undefined && intervalId !== null && !activeInterval) {
       onClose();
-      return;
     }
-
-    if (activeInterval == null) {
-      return;
-    }
-
-    logAlarmDebug('IntervalCheckInModal visible', {
-      intervalId: activeInterval.intervalId,
-      pendingChildren: pendingChildCount,
-      triggeredAt: activeInterval.triggeredAt,
-    });
-
-    return () => {
-      logAlarmDebug('IntervalCheckInModal hidden', {
-        intervalId: activeInterval.intervalId,
-      });
-    };
-  }, [activeInterval, intervalId, onClose, pendingChildCount]);
+  }, [activeInterval, intervalId, onClose]);
 
   if (
     intervalId === undefined ||
@@ -136,10 +95,6 @@ export function IntervalCheckInModal({
                   <Pressable
                     accessibilityLabel={`Award ${childAction.childName}`}
                     onPress={() => {
-                      logAlarmDebug('Thumbs up pressed', {
-                        childId: childAction.childId,
-                        intervalId: activeInterval.intervalId,
-                      });
                       void stopExpiredAlarmPlayback();
                       awardExpiredIntervalChild(
                         activeInterval.intervalId,
@@ -157,10 +112,6 @@ export function IntervalCheckInModal({
                   <Pressable
                     accessibilityLabel={`Dismiss ${childAction.childName}`}
                     onPress={() => {
-                      logAlarmDebug('Thumbs down pressed', {
-                        childId: childAction.childId,
-                        intervalId: activeInterval.intervalId,
-                      });
                       void stopExpiredAlarmPlayback();
                       dismissExpiredIntervalChild(
                         activeInterval.intervalId,
@@ -186,9 +137,6 @@ export function IntervalCheckInModal({
           <View style={styles.footerActions}>
             <Pressable
               onPress={() => {
-                logAlarmDebug('Stop timer pressed from check-in modal', {
-                  intervalId: activeInterval.intervalId,
-                });
                 void stopExpiredAlarmPlayback();
                 resetTimer();
               }}

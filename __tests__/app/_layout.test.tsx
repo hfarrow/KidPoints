@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { Alert, Linking, PermissionsAndroid, Platform } from 'react-native';
 
@@ -24,6 +24,15 @@ const mockIsAlarmEngineAvailable = jest.fn();
 const mockOpenExactAlarmSettings = jest.fn(async () => undefined);
 const mockOpenPromotedNotificationSettings = jest.fn(async () => undefined);
 const mockStopExpiredAlarmPlayback = jest.fn(async () => undefined);
+let alarmLaunchActionListener:
+  | ((action: {
+      intervalId: string | null;
+      notificationId: number | null;
+      sessionId: string | null;
+      triggeredAt: number | null;
+      type: 'check-in';
+    }) => void)
+  | null = null;
 
 jest.mock('expo-router', () => ({
   Stack: Object.assign(({ children }: { children: ReactNode }) => children, {
@@ -105,8 +114,14 @@ describe('AlarmPermissionBootstrap', () => {
     jest
       .spyOn(PermissionsAndroid, 'request')
       .mockResolvedValue('granted' as never);
-    mockAddAlarmLaunchActionListener.mockReturnValue({
-      remove: jest.fn(),
+    alarmLaunchActionListener = null;
+    mockAddAlarmLaunchActionListener.mockImplementation((listener) => {
+      alarmLaunchActionListener = listener as typeof alarmLaunchActionListener;
+      return {
+        remove: jest.fn(() => {
+          alarmLaunchActionListener = null;
+        }),
+      };
     });
     mockConsumePendingAlarmLaunchAction.mockResolvedValue(null);
     Object.defineProperty(Platform, 'OS', {
@@ -396,6 +411,95 @@ describe('AlarmPermissionBootstrap', () => {
       expect(mockConsumePendingAlarmLaunchAction).toHaveBeenCalled();
       expect(reloadPersistedState).toHaveBeenCalled();
     });
+  });
+
+  it('opens the check-in modal from a live native launch action event even when persisted recovery is empty', async () => {
+    const reloadPersistedState = jest.fn(async () => undefined);
+    mockConsumePendingAlarmLaunchAction.mockResolvedValue(null);
+
+    mockUseAppStorage.mockReturnValue({
+      alarmRuntimeStatus: {
+        countdownNotificationChannelImportance: null,
+        countdownNotificationHasPromotableCharacteristics: false,
+        countdownNotificationIsOngoing: false,
+        countdownNotificationRequestedPromoted: false,
+        countdownNotificationUsesChronometer: false,
+        countdownNotificationWhen: null,
+        exactAlarmPermissionGranted: false,
+        expiredNotificationCategory: null,
+        expiredNotificationChannelImportance: null,
+        expiredNotificationHasCustomHeadsUp: false,
+        expiredNotificationHasFullScreenIntent: false,
+        fullScreenIntentPermissionGranted: false,
+        fullScreenIntentSettingsResolvable: false,
+        isAppInForeground: false,
+        isRunning: false,
+        lastTriggeredAt: null,
+        nextTriggerAt: null,
+        notificationPermissionGranted: false,
+        promotedNotificationSettingsResolvable: false,
+        promotedNotificationPermissionGranted: false,
+        sessionId: null,
+      },
+      appData: {
+        expiredIntervals: [
+          {
+            childActions: [
+              {
+                childId: 'child-1',
+                childName: 'Ava',
+                status: 'pending',
+              },
+            ],
+            intervalId: 'interval-1',
+            notificationId: 5010,
+            sessionId: 'session-1',
+            triggeredAt: 1_000,
+          },
+        ],
+        timerConfig: {
+          alarmDurationSeconds: 20,
+          alarmSound: 'Chime',
+          intervalMinutes: 15,
+          intervalSeconds: 0,
+          notificationsEnabled: true,
+        },
+      },
+      isHydrated: true,
+      reloadPersistedState,
+      refreshAlarmRuntimeStatus: mockRefreshAlarmRuntimeStatus,
+    });
+
+    const view = render(<RootLayout />);
+
+    await waitFor(() => {
+      expect(alarmLaunchActionListener).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(mockConsumePendingAlarmLaunchAction).toHaveBeenCalledTimes(1);
+    });
+
+    mockConsumePendingAlarmLaunchAction.mockClear();
+    reloadPersistedState.mockClear();
+    mockStopExpiredAlarmPlayback.mockClear();
+
+    await act(async () => {
+      alarmLaunchActionListener?.({
+        intervalId: 'interval-1',
+        notificationId: 5010,
+        sessionId: 'session-1',
+        triggeredAt: 1_000,
+        type: 'check-in',
+      });
+    });
+
+    await waitFor(() => {
+      expect(view.getByText('Timer complete')).toBeTruthy();
+    });
+
+    expect(mockStopExpiredAlarmPlayback).toHaveBeenCalled();
+    expect(reloadPersistedState).not.toHaveBeenCalled();
   });
 
   it('reloads persisted state when launched from a check-in deep link', async () => {

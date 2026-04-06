@@ -159,4 +159,65 @@ describe('appRepository', () => {
       expect.stringContaining('"themeMode":"dark"'),
     );
   });
+
+  it('preserves authoritative stopped timer state from the persisted head on cold start', async () => {
+    const storedDocument = createDefaultAppDocument();
+
+    storedDocument.head = {
+      ...storedDocument.head,
+      expiredIntervals: [],
+      timerRuntimeState: {
+        lastTriggeredAt: 16_000,
+        nextTriggerAt: null,
+        sessionId: 'session-1',
+      },
+      timerState: {
+        cycleStartedAt: null,
+        isRunning: false,
+        pausedRemainingMs: null,
+      },
+    };
+    storedDocument.transactionState.events = [
+      {
+        actorDeviceName: 'Parent Phone',
+        dependsOnThreadIds: [],
+        deviceId: 'device-a',
+        deviceSequence: 1,
+        entityRefs: ['timer:shared'],
+        eventHash: 'hash-1',
+        eventId: 'evt:device-a:00000001',
+        eventKind: 'action',
+        mutation: {
+          nextTimerState: {
+            cycleStartedAt: 1_000,
+            isRunning: true,
+            pausedRemainingMs: null,
+          },
+          startedAt: 1_000,
+          type: 'timer-started',
+        },
+        occurredAt: 1_000,
+        threadId: 'thr:device-a:00000001',
+        undoPolicy: 'tracked_only',
+      },
+    ];
+
+    mockAsyncStorage.getItem.mockImplementation(async () =>
+      JSON.stringify(storedDocument),
+    );
+
+    const loaded = await appRepository.load();
+
+    expect(loaded.head.timerState).toEqual({
+      cycleStartedAt: null,
+      isRunning: false,
+      pausedRemainingMs: null,
+    });
+    expect(loaded.head.timerRuntimeState).toEqual({
+      lastTriggeredAt: 16_000,
+      nextTriggerAt: null,
+      sessionId: 'session-1',
+    });
+    expect(loaded.head.expiredIntervals).toEqual([]);
+  });
 });

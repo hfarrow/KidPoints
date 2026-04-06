@@ -101,7 +101,11 @@ object KidPointsAlarmEngine {
     prefs(context).getString(STORAGE_KEY, null)
 
   fun getPendingLaunchAction(context: Context): String? =
-    prefs(context).getString(PENDING_LAUNCH_ACTION_KEY, null)
+    prefs(context).getString(PENDING_LAUNCH_ACTION_KEY, null).also { pendingLaunchAction ->
+      logIntent(
+        "Read pending launch action hasValue=${pendingLaunchAction != null} payload=$pendingLaunchAction",
+      )
+    }
 
   fun consumePendingLaunchAction(context: Context): String? {
     val pendingLaunchAction = getPendingLaunchAction(context)
@@ -227,17 +231,23 @@ object KidPointsAlarmEngine {
     val document = JSONObject(documentJson)
     val head = getHead(document)
 
+    getOrCreateObject(head, "timerState").apply {
+      put("cycleStartedAt", JSONObject.NULL)
+      put("isRunning", false)
+      put("pausedRemainingMs", JSONObject.NULL)
+    }
     getOrCreateObject(head, "timerRuntimeState").apply {
       put("sessionId", JSONObject.NULL)
       put("nextTriggerAt", JSONObject.NULL)
       put("lastTriggeredAt", JSONObject.NULL)
     }
+    head.put("expiredIntervals", JSONArray())
 
     persistDocument(context, document.toString())
     cancelExactTrigger(context)
     NotificationManagerCompat.from(context).cancelAll()
     stopForegroundService(context)
-    logDebug("Reset timer from JS")
+    logDebug("Reset timer from JS and cleared expired intervals")
     emitState(document, "timer-reset", context)
 
     return document.toString()
@@ -550,7 +560,15 @@ object KidPointsAlarmEngine {
   }
 
   fun handleActivityIntent(context: Context, intent: Intent?) {
-    val actionJson = intent?.getStringExtra(EXTRA_LAUNCH_ACTION_JSON) ?: return
+    logIntent(
+      "Received activity intent ${describeIntent(intent)} moduleAttached=${KidPointsAlarmModule.instance != null}",
+    )
+    val actionJson = intent?.getStringExtra(EXTRA_LAUNCH_ACTION_JSON)
+
+    if (actionJson == null) {
+      logIntent("Ignored activity intent because no launch action payload was present")
+      return
+    }
 
     stopExpiredAlarmPlayback()
     persistPendingLaunchAction(context, actionJson)
@@ -559,9 +577,14 @@ object KidPointsAlarmEngine {
     val notificationId = JSONObject(actionJson).optIntOrNull("notificationId")
     if (notificationId != null) {
       NotificationManagerCompat.from(context).cancel(notificationId)
+      logNotification(
+        "Cancelled notification from activity intent notificationId=$notificationId",
+      )
     }
 
-    logIntent("Handled activity launch intent notificationId=$notificationId payload=$actionJson")
+    logIntent(
+      "Handled activity launch intent notificationId=$notificationId emittedEvent=${KidPointsAlarmModule.instance != null} payload=$actionJson",
+    )
   }
 
   fun stopExpiredAlarmPlayback() {
@@ -589,7 +612,6 @@ object KidPointsAlarmEngine {
 
   fun setAppInForeground(isForeground: Boolean) {
     isAppInForeground = isForeground
-    logIntent("App foreground changed isForeground=$isForeground")
   }
 
   fun logService(message: String) {
@@ -630,6 +652,7 @@ object KidPointsAlarmEngine {
       .setContentTitle("Time to Check-in!")
       .setContentIntent(createCheckInPendingIntent(context, expiredInterval))
       .setCustomHeadsUpContentView(headsUpRemoteViews)
+      .setDeleteIntent(createExpiredStopPendingIntent(context, expiredInterval))
       .setFullScreenIntent(createCheckInPendingIntent(context, expiredInterval), true)
       .setOnlyAlertOnce(false)
       .setOngoing(true)
@@ -774,6 +797,16 @@ object KidPointsAlarmEngine {
     logIntent("Persisted pending launch action payload=$actionJson")
   }
 
+  private fun describeIntent(intent: Intent?): String {
+    if (intent == null) {
+      return "intent=null"
+    }
+
+    val launchPayload = intent.getStringExtra(EXTRA_LAUNCH_ACTION_JSON)
+
+    return "intent.action=${intent.action} intent.flags=${intent.flags} hasLaunchPayload=${launchPayload != null} launchPayload=$launchPayload"
+  }
+
   private fun prefs(context: Context) =
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -853,12 +886,17 @@ object KidPointsAlarmEngine {
   ): PendingIntent {
     val notificationId = expiredInterval.optInt("notificationId")
     val requestCode = CHECK_IN_REQUEST_CODE_BASE + (notificationId % 1_000)
+    val actionJson = createCheckInLaunchAction(expiredInterval)
+
+    logIntent(
+      "Creating check-in pending intent requestCode=$requestCode notificationId=$notificationId intervalId=${expiredInterval.optString("intervalId")} payload=$actionJson",
+    )
 
     return PendingIntent.getActivity(
       context,
       requestCode,
       createLaunchIntent(context).apply {
-        putExtra(EXTRA_LAUNCH_ACTION_JSON, createCheckInLaunchAction(expiredInterval))
+        putExtra(EXTRA_LAUNCH_ACTION_JSON, actionJson)
       },
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       createBackgroundActivityStartOptionsBundle(),

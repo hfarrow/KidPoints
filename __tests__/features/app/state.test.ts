@@ -320,4 +320,21 @@ describe('computeTimerSnapshot', () => {
     expect(snapshot.remainingMs).toBe(12_000);
     expect(formatDuration(snapshot.remainingMs)).toBe('00:12');
   });
+
+  it('does not display more than one full interval right after a timer starts', () => {
+    const state = createDefaultAppData();
+    const snapshot = computeTimerSnapshot(
+      state.timerConfig,
+      { cycleStartedAt: 10_000, isRunning: true, pausedRemainingMs: null },
+      {
+        sessionId: 'session-1',
+        nextTriggerAt: 910_000,
+        lastTriggeredAt: null,
+      },
+      9_250,
+    );
+
+    expect(snapshot.remainingMs).toBe(900_000);
+    expect(formatDuration(snapshot.remainingMs)).toBe('15:00');
+  });
 });

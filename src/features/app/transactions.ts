@@ -324,7 +324,7 @@ export function coercePersistedAppDocument(
   value: unknown,
 ): PersistedAppDocument | null {
   if (isPersistedAppDocument(value)) {
-    return rebuildDocument({
+    const rebuiltDocument = rebuildDocument({
       ...value,
       transactionState: {
         ...value.transactionState,
@@ -338,6 +338,8 @@ export function coercePersistedAppDocument(
         },
       },
     });
+
+    return preserveAuthoritativeAlarmState(rebuiltDocument, value.head);
   }
 
   if (!value || typeof value !== 'object') {
@@ -359,7 +361,7 @@ export function coercePersistedAppDocument(
     return null;
   }
 
-  return rebuildDocument({
+  const rebuiltDocument = rebuildDocument({
     version: DOCUMENT_VERSION,
     head: candidate.head,
     transactionState: {
@@ -375,6 +377,8 @@ export function coercePersistedAppDocument(
       transactions: [],
     },
   });
+
+  return preserveAuthoritativeAlarmState(rebuiltDocument, candidate.head);
 }
 
 export function commitSharedTransaction(
@@ -868,6 +872,27 @@ function rebuildDocument(document: PersistedAppDocument): PersistedAppDocument {
     version: DOCUMENT_VERSION,
     head: rebuilt.head,
     transactionState: rebuilt.transactionState,
+  };
+}
+
+function preserveAuthoritativeAlarmState(
+  document: PersistedAppDocument,
+  persistedHead: PersistedAppData,
+): PersistedAppDocument {
+  const nextHead = {
+    ...document.head,
+    expiredIntervals: persistedHead.expiredIntervals,
+    timerRuntimeState: persistedHead.timerRuntimeState,
+    timerState: persistedHead.timerState,
+  };
+
+  return {
+    ...document,
+    head: nextHead,
+    transactionState: {
+      ...document.transactionState,
+      headHash: hashSharedHead(nextHead),
+    },
   };
 }
 

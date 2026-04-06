@@ -48,27 +48,31 @@ export default function RootLayout() {
   const [checkInIntervalId, setCheckInIntervalId] = useState<
     string | null | undefined
   >(undefined);
+  const handleRequestCheckInFromLaunchAction = useCallback(
+    (intervalId: string | null) => {
+      setCheckInIntervalId(intervalId);
+    },
+    [],
+  );
+  const handleRequestCheckInFromUrl = useCallback(() => {
+    setCheckInIntervalId(null);
+  }, []);
+  const handleCloseCheckInModal = useCallback(() => {
+    setCheckInIntervalId(undefined);
+  }, []);
 
   return (
     <AppStorageProvider>
       <AppThemeProvider>
         <AlarmPermissionBootstrap />
         <CheckInLaunchActionBootstrap
-          onRequestCheckIn={(intervalId) => {
-            setCheckInIntervalId(intervalId);
-          }}
+          onRequestCheckIn={handleRequestCheckInFromLaunchAction}
         />
-        <CheckInLinkBootstrap
-          onRequestCheckIn={() => {
-            setCheckInIntervalId(null);
-          }}
-        />
+        <CheckInLinkBootstrap onRequestCheckIn={handleRequestCheckInFromUrl} />
         <RootNavigator />
         <IntervalCheckInModal
           intervalId={checkInIntervalId}
-          onClose={() => {
-            setCheckInIntervalId(undefined);
-          }}
+          onClose={handleCloseCheckInModal}
         />
       </AppThemeProvider>
     </AppStorageProvider>
@@ -96,17 +100,12 @@ export function AlarmPermissionBootstrap() {
     didHandleStartupPromptRef.current = true;
 
     if (!appData.timerConfig.notificationsEnabled) {
-      logAlarmDebug(
-        'Skipped startup prompts because notifications are disabled',
-      );
       return;
     }
 
     let isCancelled = false;
 
     void (async () => {
-      logAlarmDebug('Running Android alarm permission bootstrap');
-
       if (
         Platform.Version >= 33 &&
         !alarmRuntimeStatus.notificationPermissionGranted
@@ -114,7 +113,6 @@ export function AlarmPermissionBootstrap() {
         await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
         );
-        logAlarmDebug('Requested POST_NOTIFICATIONS permission');
       }
 
       if (isCancelled) {
@@ -141,9 +139,6 @@ export function AlarmPermissionBootstrap() {
             {
               text: 'Open settings',
               onPress: () => {
-                logAlarmDebug(
-                  'Opening exact alarm settings from startup prompt',
-                );
                 void openExactAlarmSettings().then(() => {
                   void refreshAlarmRuntimeStatus();
                 });
@@ -154,13 +149,8 @@ export function AlarmPermissionBootstrap() {
         return;
       }
 
-      logAlarmDebug('Exact alarm access already granted');
-
       if (!runtimeStatus.fullScreenIntentPermissionGranted) {
         if (!runtimeStatus.fullScreenIntentSettingsResolvable) {
-          logAlarmDebug(
-            'Skipping alarm popup prompt because full-screen intent settings are unavailable on this system build',
-          );
         } else {
           Alert.alert(
             'Enable alarm popup',
@@ -173,9 +163,6 @@ export function AlarmPermissionBootstrap() {
               {
                 text: 'Open settings',
                 onPress: () => {
-                  logAlarmDebug(
-                    'Opening full-screen intent settings from startup prompt',
-                  );
                   void openFullScreenIntentSettings().then(() => {
                     void refreshAlarmRuntimeStatus();
                   });
@@ -188,14 +175,10 @@ export function AlarmPermissionBootstrap() {
       }
 
       if (runtimeStatus.promotedNotificationPermissionGranted) {
-        logAlarmDebug('Promoted notification access already granted');
         return;
       }
 
       if (!runtimeStatus.promotedNotificationSettingsResolvable) {
-        logAlarmDebug(
-          'Skipping live update prompt because promoted notification settings are unavailable on this system build',
-        );
         return;
       }
 
@@ -210,9 +193,6 @@ export function AlarmPermissionBootstrap() {
           {
             text: 'Open settings',
             onPress: () => {
-              logAlarmDebug(
-                'Opening promoted notification settings from startup prompt',
-              );
               void openPromotedNotificationSettings().then(() => {
                 void refreshAlarmRuntimeStatus();
               });
@@ -240,12 +220,21 @@ function CheckInLaunchActionBootstrap({
 }: {
   onRequestCheckIn: (intervalId: string | null) => void;
 }) {
-  const { isHydrated, reloadPersistedState } = useAppStorage();
+  const {
+    isHydrated,
+    reloadPersistedState,
+    suppressNextActiveReload = () => {},
+  } = useAppStorage();
+  const skipNextResumeConsumeRef = useRef(false);
+  const didConsumeStartupActionRef = useRef(false);
 
-  const consumeAndReloadPendingCheckIn = useCallback(
-    async (source: 'startup' | 'event' | 'resume') => {
-      const pendingLaunchAction = await consumePendingAlarmLaunchAction();
-
+  const handleLaunchAction = useCallback(
+    async (
+      pendingLaunchAction: Awaited<
+        ReturnType<typeof consumePendingAlarmLaunchAction>
+      >,
+      source: 'event' | 'startup' | 'resume',
+    ) => {
       if (!pendingLaunchAction || pendingLaunchAction.type !== 'check-in') {
         return;
       }
@@ -255,10 +244,34 @@ function CheckInLaunchActionBootstrap({
         source,
       });
       await stopExpiredAlarmPlayback();
-      await reloadPersistedState();
+
+      if (source === 'event') {
+        skipNextResumeConsumeRef.current = true;
+        suppressNextActiveReload();
+        logAlarmDebug(
+          'Skipped persisted reload for live launch action event to preserve in-memory expired interval state',
+          {
+            intervalId: pendingLaunchAction.intervalId,
+          },
+        );
+      } else {
+        await reloadPersistedState();
+      }
+
+      logAlarmDebug('Requesting check-in modal from launch action', {
+        intervalId: pendingLaunchAction.intervalId,
+        source,
+      });
       onRequestCheckIn(pendingLaunchAction.intervalId);
     },
-    [onRequestCheckIn, reloadPersistedState],
+    [onRequestCheckIn, reloadPersistedState, suppressNextActiveReload],
+  );
+
+  const consumeAndReloadPendingCheckIn = useCallback(
+    async (source: 'startup' | 'resume') => {
+      await handleLaunchAction(await consumePendingAlarmLaunchAction(), source);
+    },
+    [handleLaunchAction],
   );
 
   useEffect(() => {
@@ -268,7 +281,10 @@ function CheckInLaunchActionBootstrap({
 
     let isCancelled = false;
 
-    void consumeAndReloadPendingCheckIn('startup');
+    if (!didConsumeStartupActionRef.current) {
+      didConsumeStartupActionRef.current = true;
+      void consumeAndReloadPendingCheckIn('startup');
+    }
 
     const subscription = addAlarmLaunchActionListener((launchAction) => {
       if (isCancelled) {
@@ -276,7 +292,7 @@ function CheckInLaunchActionBootstrap({
       }
 
       logAlarmDebug('Received native launch action event', launchAction);
-      void consumeAndReloadPendingCheckIn('event');
+      void handleLaunchAction(launchAction, 'event');
     });
     const appStateSubscription = AppState.addEventListener(
       'change',
@@ -285,7 +301,11 @@ function CheckInLaunchActionBootstrap({
           return;
         }
 
-        logAlarmDebug('Checking pending launch action on app resume');
+        if (skipNextResumeConsumeRef.current) {
+          skipNextResumeConsumeRef.current = false;
+          return;
+        }
+
         void consumeAndReloadPendingCheckIn('resume');
       },
     );
@@ -295,7 +315,7 @@ function CheckInLaunchActionBootstrap({
       appStateSubscription.remove();
       subscription?.remove();
     };
-  }, [consumeAndReloadPendingCheckIn, isHydrated]);
+  }, [consumeAndReloadPendingCheckIn, handleLaunchAction, isHydrated]);
 
   return null;
 }
@@ -317,7 +337,6 @@ function CheckInLinkBootstrap({
         return;
       }
 
-      logAlarmDebug('Handling check-in URL fallback', { url });
       void reloadPersistedState().then(() => {
         onRequestCheckIn();
       });

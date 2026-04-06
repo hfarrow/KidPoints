@@ -29,15 +29,13 @@ class KidPointsAlarmModule : Module() {
     }
 
     AsyncFunction("getPendingLaunchAction") {
-      KidPointsAlarmEngine.getPendingLaunchAction(
-        appContext.reactContext ?: return@AsyncFunction null,
-      )
+      val context = appContext.reactContext ?: return@AsyncFunction null
+      KidPointsAlarmEngine.getPendingLaunchAction(context)
     }
 
     AsyncFunction("consumePendingLaunchAction") {
-      KidPointsAlarmEngine.consumePendingLaunchAction(
-        appContext.reactContext ?: return@AsyncFunction null,
-      )
+      val context = appContext.reactContext ?: return@AsyncFunction null
+      KidPointsAlarmEngine.consumePendingLaunchAction(context)
     }
 
     AsyncFunction("saveDocument") { documentJson: String ->

@@ -42,7 +42,10 @@ export function computeTimerSnapshot(
   }
 
   if (runtimeState.nextTriggerAt !== null) {
-    const remainingMs = Math.max(runtimeState.nextTriggerAt - now, 0);
+    const remainingMs = Math.min(
+      Math.max(runtimeState.nextTriggerAt - now, 0),
+      intervalMs,
+    );
 
     return {
       currentCycleStartedAt: runtimeState.nextTriggerAt - intervalMs,
