@@ -32,11 +32,10 @@ import {
   commitSharedTransaction,
   createDefaultAppDocument,
   createEmptyTransactionState,
-  getRestorePlan,
-  getRevertPlan,
+  getRestorePreview,
   getTransactionActorDeviceName,
+  type RestorePreview,
   restoreTransaction as restoreSharedTransaction,
-  revertTransaction as revertSharedTransaction,
   type TransactionRecord,
 } from './transactions';
 import type {
@@ -76,12 +75,10 @@ type AppStorageValue = {
   themeMode: ThemeMode;
   transactions: TransactionRecord[];
   clearTransactionHistory: () => void;
-  getRevertPlan: (threadId: string) => string[];
-  getRestorePlan: (threadId: string) => string[];
+  getRestorePreview: (actionEventId: string) => RestorePreview;
   reloadPersistedState: () => Promise<void>;
   suppressNextActiveReload: () => void;
-  restoreTransaction: (threadId: string) => void;
-  revertTransaction: (threadId: string) => void;
+  restoreTransaction: (actionEventId: string) => void;
   refreshAlarmRuntimeStatus: () => Promise<void>;
   unlockParent: (pin: string) => boolean;
   addChild: (name: string) => void;
@@ -295,21 +292,11 @@ export function AppStorageProvider({ children }: PropsWithChildren) {
           ),
         }));
       },
-      getRevertPlan: (threadId) =>
-        getRevertPlan(document.transactionState, threadId).transactionIds,
-      getRestorePlan: (threadId) =>
-        getRestorePlan(document.transactionState, threadId).transactionIds,
-      restoreTransaction: (threadId) => {
+      getRestorePreview: (actionEventId) =>
+        getRestorePreview(document.transactionState, actionEventId),
+      restoreTransaction: (actionEventId) => {
         setDocument((current) =>
-          restoreSharedTransaction(current, threadId, {
-            actorDeviceName,
-            occurredAt: Date.now(),
-          }),
-        );
-      },
-      revertTransaction: (threadId) => {
-        setDocument((current) =>
-          revertSharedTransaction(current, threadId, {
+          restoreSharedTransaction(current, actionEventId, {
             actorDeviceName,
             occurredAt: Date.now(),
           }),

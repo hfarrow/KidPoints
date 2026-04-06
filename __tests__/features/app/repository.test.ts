@@ -26,11 +26,12 @@ describe('appRepository', () => {
 
     const loaded = await appRepository.load();
 
+    expect(loaded.version).toBe(5);
     expect(loaded.head.uiPreferences.themeMode).toBe('system');
     expect(loaded.head.timerRuntimeState).toEqual({
-      sessionId: null,
-      nextTriggerAt: null,
       lastTriggeredAt: null,
+      nextTriggerAt: null,
+      sessionId: null,
     });
     expect(loaded.head.timerConfig.intervalSeconds).toBe(0);
     expect(loaded.head.expiredIntervals).toEqual([]);
@@ -75,70 +76,50 @@ describe('appRepository', () => {
 
     const loaded = await appRepository.load();
 
+    expect(loaded.version).toBe(5);
     expect(loaded.head.children[0]?.displayName).toBe('Ava');
     expect(loaded.transactionState.events).toEqual([]);
     expect(loaded.transactionState.transactions).toEqual([]);
     expect(loaded.transactionState.clientState.nextDeviceSequence).toBe(1);
   });
 
-  it('migrates legacy transaction documents into immutable events and derived threads', async () => {
+  it('drops legacy transaction history while preserving the stored head', async () => {
     mockAsyncStorage.getItem.mockImplementation(async () =>
       JSON.stringify({
-        head: createDefaultAppData(),
-        transactionState: {
-          nextTransactionId: 3,
-          transactions: [
+        head: {
+          ...createDefaultAppData(),
+          children: [
             {
-              actorDeviceName: 'Parent Phone',
-              dependsOnTransactionIds: [],
-              entityRefs: ['child:child-1'],
-              forward: {
-                childId: 'child-1',
-                childName: 'Ava',
-                delta: 1,
-                nextPoints: 1,
-                previousPoints: 0,
-                source: 'tap',
-                type: 'child-points-adjusted',
-              },
-              id: 1,
-              kind: 'child-points-adjusted',
-              occurredAt: 100,
-              rootTransactionId: 1,
-              undoPolicy: 'reversible',
-            },
-            {
-              actorDeviceName: 'Parent Phone',
-              dependsOnTransactionIds: [1],
-              entityRefs: ['child:child-1'],
-              forward: {
-                targetRootTransactionIds: [1],
-                type: 'revert-chain',
-              },
-              id: 2,
-              kind: 'revert-chain',
-              occurredAt: 101,
-              rootTransactionId: 1,
-              undoPolicy: 'tracked_only',
+              archivedAt: null,
+              avatarColor: '#93c5fd',
+              displayName: 'Ava',
+              id: 'child-1',
+              isArchived: false,
+              points: 5,
+              sortOrder: 0,
             },
           ],
         },
-        version: 3,
+        transactionState: {
+          transactions: [
+            {
+              id: 1,
+            },
+          ],
+        },
+        version: 4,
       }),
     );
 
     const loaded = await appRepository.load();
 
-    expect(loaded.version).toBe(4);
-    expect(loaded.transactionState.events).toHaveLength(2);
-    expect(loaded.transactionState.transactions).toHaveLength(1);
-    expect(loaded.transactionState.transactions[0]).toMatchObject({
-      id: 1,
-      status: 'reverted',
-      undoPolicy: 'reversible',
+    expect(loaded.version).toBe(5);
+    expect(loaded.head.children[0]).toMatchObject({
+      displayName: 'Ava',
+      points: 5,
     });
-    expect(loaded.transactionState.canonicalHash).toContain('h');
-    expect(loaded.transactionState.headHash).toContain('h');
+    expect(loaded.transactionState.events).toEqual([]);
+    expect(loaded.transactionState.transactions).toEqual([]);
   });
 
   it('persists the selected theme mode', async () => {
@@ -180,7 +161,6 @@ describe('appRepository', () => {
     storedDocument.transactionState.events = [
       {
         actorDeviceName: 'Parent Phone',
-        dependsOnThreadIds: [],
         deviceId: 'device-a',
         deviceSequence: 1,
         entityRefs: ['timer:shared'],
@@ -197,8 +177,8 @@ describe('appRepository', () => {
           type: 'timer-started',
         },
         occurredAt: 1_000,
+        parentActionEventId: null,
         threadId: 'thr:device-a:00000001',
-        undoPolicy: 'tracked_only',
       },
     ];
 

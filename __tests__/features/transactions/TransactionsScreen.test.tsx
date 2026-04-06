@@ -111,21 +111,30 @@ describe('TransactionsScreen', () => {
     expect(mockReplace).toHaveBeenCalledWith('/');
   });
 
-  it('shows action threads, hides raw control events, and restores reverted actions', () => {
-    const revertTransaction = jest.fn();
+  it('shows restore points, restore events, and focused rollback paths', () => {
     const restoreTransaction = jest.fn();
     const clearTransactionHistory = jest.fn();
 
     mockUseAppStorage.mockReturnValue(
       createStorageState({
         clearTransactionHistory,
-        getRestorePlan: (threadId: string) =>
-          threadId === 'thread-3' ? ['thread-3', 'thread-1'] : [],
+        getRestorePreview: (actionEventId: string) =>
+          actionEventId === 'evt-3'
+            ? {
+                affectedActionEventIds: ['evt-4'],
+                isReachable: true,
+                mode: 'backward',
+                target: null,
+              }
+            : {
+                affectedActionEventIds: [],
+                isReachable: false,
+                mode: null,
+                target: null,
+              },
         restoreTransaction,
-        revertTransaction,
         transactions: [
-          createTransaction({
-            entityRefs: ['child:child-1', 'child-lifecycle:child-1'],
+          createActionTransaction({
             forward: {
               child: {
                 archivedAt: null,
@@ -139,12 +148,13 @@ describe('TransactionsScreen', () => {
               type: 'child-added',
             },
             id: 1,
-            status: 'reverted',
-            threadId: 'thread-1',
-            undoPolicy: 'reversible',
+            isReachableRestorePoint: true,
+            latestEventId: 'evt-1',
+            restoreDirection: 'backward',
+            rowId: 'action:thr-1',
+            threadId: 'thr-1',
           }),
-          createTransaction({
-            entityRefs: ['timer:shared'],
+          createActionTransaction({
             forward: {
               nextTimerState: {
                 cycleStartedAt: 1_000,
@@ -155,20 +165,13 @@ describe('TransactionsScreen', () => {
               type: 'timer-started',
             },
             id: 2,
-            threadId: 'thread-2',
-            undoPolicy: 'tracked_only',
+            isReachableRestorePoint: false,
+            kind: 'timer-started',
+            latestEventId: 'evt-2',
+            rowId: 'action:thr-2',
+            threadId: 'thr-2',
           }),
-          createTransaction({
-            activity: [
-              {
-                actorDeviceName: 'Parent Phone',
-                eventId: 'evt-revert',
-                kind: 'revert',
-                occurredAt: 1_000,
-              },
-            ],
-            dependsOnThreadIds: ['thread-1'],
-            entityRefs: ['child:child-1', 'child-lifecycle:child-1'],
+          createActionTransaction({
             forward: {
               childId: 'child-1',
               childName: 'Ava',
@@ -179,10 +182,32 @@ describe('TransactionsScreen', () => {
               type: 'child-points-adjusted',
             },
             id: 3,
-            latestControlTargetThreadIds: ['thread-3', 'thread-1'],
-            status: 'reverted',
-            threadId: 'thread-3',
-            undoPolicy: 'reversible',
+            isReachableRestorePoint: true,
+            latestEventId: 'evt-3',
+            restoreDirection: 'backward',
+            rowId: 'action:thr-3',
+            threadId: 'thr-3',
+          }),
+          createActionTransaction({
+            forward: {
+              childId: 'child-1',
+              nextName: 'Rowan',
+              previousName: 'Ava',
+              type: 'child-renamed',
+            },
+            id: 4,
+            isCurrent: true,
+            isReachableRestorePoint: false,
+            kind: 'child-renamed',
+            latestEventId: 'evt-4',
+            rowId: 'action:thr-4',
+            threadId: 'thr-4',
+          }),
+          createRestoreTransaction({
+            id: 5,
+            rowId: 'restore:evt-5',
+            targetActionEventId: 'evt-1',
+            targetSummary: 'Added Ava',
           }),
         ],
       }),
@@ -209,20 +234,15 @@ describe('TransactionsScreen', () => {
     clearDialog[2]?.[1]?.onPress?.();
 
     expect(clearTransactionHistory).toHaveBeenCalled();
-    expect(view.getByText('Ava +5 points (0')).toBeTruthy();
-    expect(view.getByLabelText('chevron-forward')).toBeTruthy();
-    expect(view.getByText('5)')).toBeTruthy();
-    expect(view.getByText('Added Ava')).toBeTruthy();
-    expect(view.queryByText(/Reverted:/)).toBeNull();
-    expect(view.queryByLabelText('Restore transaction 3')).toBeNull();
+    expect(view.getByText('Restored to Added Ava')).toBeTruthy();
+    expect(view.queryByLabelText('Restore transaction 5')).toBeNull();
 
     fireEvent.press(view.getByLabelText('Select transaction 3'));
 
-    expect(view.getByText('Restore 2 actions')).toBeTruthy();
+    expect(view.getByText('Restore here')).toBeTruthy();
     expect(
-      view.getByText('Highlighted actions below will also be restored.'),
+      view.getByText('Highlighted actions above will be rolled back.'),
     ).toBeTruthy();
-    expect(view.getByText(/Reverted \| Parent Phone \|/)).toBeTruthy();
     expect(view.getByText('Started timer')).toBeTruthy();
 
     fireEvent.press(view.getByLabelText('Focus affected actions'));
@@ -231,7 +251,7 @@ describe('TransactionsScreen', () => {
       view.getByText('Showing only the affected actions for this chain.'),
     ).toBeTruthy();
     expect(view.queryByText('Started timer')).toBeNull();
-    expect(view.getByText('Added Ava')).toBeTruthy();
+    expect(view.getByText('Ava renamed to Rowan')).toBeTruthy();
 
     fireEvent.press(view.getByLabelText('Show all actions'));
 
@@ -239,39 +259,42 @@ describe('TransactionsScreen', () => {
 
     fireEvent.press(view.getByLabelText('Restore transaction 3'));
 
-    expect(restoreTransaction).toHaveBeenCalledWith('thread-3');
-    expect(revertTransaction).not.toHaveBeenCalled();
+    expect(restoreTransaction).toHaveBeenCalledWith('evt-3');
   });
 
-  it('shows superseded lifecycle actions as historical only', () => {
+  it('shows forward restore copy for reapplying actions', () => {
     mockUseAppStorage.mockReturnValue(
       createStorageState({
+        getRestorePreview: (actionEventId: string) =>
+          actionEventId === 'evt-2'
+            ? {
+                affectedActionEventIds: ['evt-2'],
+                isReachable: true,
+                mode: 'forward',
+                target: null,
+              }
+            : {
+                affectedActionEventIds: [],
+                isReachable: false,
+                mode: null,
+                target: null,
+              },
         transactions: [
-          createTransaction({
-            forward: {
-              childId: 'child-1',
-              childName: 'Ava',
-              archivedAt: 1_000,
-              previousSortOrder: 0,
-              type: 'child-archived',
-            },
+          createActionTransaction({
             id: 1,
-            status: 'reverted',
-            supersededByThreadId: 'thread-2',
-            threadId: 'thread-1',
-            undoPolicy: 'reversible',
+            isCurrent: true,
+            isReachableRestorePoint: false,
+            latestEventId: 'evt-1',
+            rowId: 'action:thr-1',
+            threadId: 'thr-1',
           }),
-          createTransaction({
-            forward: {
-              childId: 'child-1',
-              childName: 'Ava',
-              archivedAt: 1_100,
-              previousSortOrder: 0,
-              type: 'child-archived',
-            },
+          createActionTransaction({
             id: 2,
-            threadId: 'thread-2',
-            undoPolicy: 'reversible',
+            isReachableRestorePoint: true,
+            latestEventId: 'evt-2',
+            restoreDirection: 'forward',
+            rowId: 'action:thr-2',
+            threadId: 'thr-2',
           }),
         ],
       }),
@@ -279,90 +302,116 @@ describe('TransactionsScreen', () => {
 
     const view = render(<TransactionsScreen />);
 
-    fireEvent.press(view.getByLabelText('Select transaction 1'));
+    fireEvent.press(view.getByLabelText('Select transaction 2'));
 
-    expect(view.getByText('Superseded')).toBeTruthy();
     expect(
-      view.getByText(
-        'A later archive or restore action for this child has superseded this one.',
-      ),
+      view.getByText('Highlighted actions below will be reapplied.'),
     ).toBeTruthy();
-    expect(view.queryByLabelText('Restore transaction 1')).toBeNull();
-    expect(view.queryByLabelText('Revert transaction 1')).toBeNull();
   });
 });
 
 function createStorageState(
   overrides: Partial<{
     clearTransactionHistory: () => void;
-    getRevertPlan: (threadId: string) => string[];
-    getRestorePlan: (threadId: string) => string[];
+    getRestorePreview: (actionEventId: string) => {
+      affectedActionEventIds: string[];
+      isReachable: boolean;
+      mode: 'backward' | 'forward' | null;
+      target: null;
+    };
     isHydrated: boolean;
     parentSession: {
       isUnlocked: boolean;
     };
-    restoreTransaction: (threadId: string) => void;
-    revertTransaction: (threadId: string) => void;
-    transactions: ReturnType<typeof createTransaction>[];
+    restoreTransaction: (actionEventId: string) => void;
+    transactions: (
+      | ReturnType<typeof createActionTransaction>
+      | ReturnType<typeof createRestoreTransaction>
+    )[];
   }> = {},
 ) {
   return {
     clearTransactionHistory: jest.fn(),
-    getRevertPlan: jest.fn(() => []),
-    getRestorePlan: jest.fn(() => []),
+    getRestorePreview: jest.fn(() => ({
+      affectedActionEventIds: [],
+      isReachable: false,
+      mode: null,
+      target: null,
+    })),
     isHydrated: true,
     parentSession: {
       isUnlocked: true,
     },
     restoreTransaction: jest.fn(),
-    revertTransaction: jest.fn(),
     transactions: [],
     ...overrides,
   };
 }
 
-function createTransaction(
+function createActionTransaction(
   overrides: Partial<{
-    activity: {
-      actorDeviceName: string;
-      eventId: string;
-      kind: 'restore' | 'revert';
-      occurredAt: number;
-    }[];
     actorDeviceName: string;
-    dependsOnThreadIds: string[];
-    entityRefs: string[];
-    explicitStatus: 'applied' | 'reverted';
     forward: object;
     id: number;
+    isCurrent: boolean;
+    isReachableRestorePoint: boolean;
     kind: string;
-    latestControlTargetThreadIds: string[];
+    latestEventId: string;
     occurredAt: number;
-    rootEventId: string;
-    status: 'applied' | 'reverted';
-    supersededByThreadId: string | null;
+    restoreDirection: 'backward' | 'forward' | null;
+    rowId: string;
     threadId: string;
-    undoPolicy: 'reversible' | 'tracked_only';
-  }>,
+  }> = {},
 ) {
   return {
-    activity: [],
     actorDeviceName: 'Parent Phone',
-    dependsOnThreadIds: [],
-    entityRefs: [],
-    explicitStatus: 'reverted' as const,
     forward: {
-      type: 'timer-reset',
+      type: 'child-added',
+      child: {
+        archivedAt: null,
+        avatarColor: '#abcdef',
+        displayName: 'Ava',
+        id: 'child-1',
+        isArchived: false,
+        points: 0,
+        sortOrder: 0,
+      },
     },
     id: 1,
-    kind: 'timer-reset',
-    latestControlTargetThreadIds: ['thread-1'],
+    isCurrent: false,
+    isReachableRestorePoint: true,
+    kind: 'child-added',
+    latestEventId: 'evt-1',
     occurredAt: 1_000,
-    rootEventId: 'evt-root',
-    status: 'applied' as const,
-    supersededByThreadId: null,
-    threadId: 'thread-1',
-    undoPolicy: 'tracked_only' as const,
+    restoreDirection: 'backward' as const,
+    rowId: 'action:thr-1',
+    rowKind: 'action' as const,
+    threadId: 'thr-1',
+    ...overrides,
+  };
+}
+
+function createRestoreTransaction(
+  overrides: Partial<{
+    actorDeviceName: string;
+    eventId: string;
+    id: number;
+    occurredAt: number;
+    rowId: string;
+    targetActionEventId: string;
+    targetSummary: string;
+  }> = {},
+) {
+  return {
+    actorDeviceName: 'Parent Phone',
+    eventId: 'evt-restore-1',
+    id: 1,
+    kind: 'restore-event' as const,
+    occurredAt: 1_000,
+    rowId: 'restore:evt-restore-1',
+    rowKind: 'restore' as const,
+    targetActionEventId: 'evt-1',
+    targetSummary: 'Added Ava',
     ...overrides,
   };
 }

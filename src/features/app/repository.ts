@@ -38,7 +38,7 @@ class AsyncStorageAppRepository implements AppRepository {
       }
 
       return {
-        version: 4 as const,
+        version: 5 as const,
         head: normalizePersistedAppData(
           parsedValue as Partial<PersistedAppData>,
         ),

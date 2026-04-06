@@ -7,10 +7,9 @@ import {
 } from './state';
 import type { ChildProfile, PersistedAppData, SharedTimerState } from './types';
 
-export type TransactionStatus = 'applied' | 'reverted';
-export type TransactionUndoPolicy = 'reversible' | 'tracked_only';
 export type TransactionEntityRef = string;
-export type TransactionEntryKind = 'action' | 'revert' | 'restore';
+export type TransactionEntryKind = 'action' | 'restore';
+export type RestoreDirection = 'backward' | 'forward';
 
 export type TransactionActionMutation =
   | {
@@ -75,58 +74,70 @@ export type TransactionActionMutation =
       nextTimerState: SharedTimerState;
     };
 
-export type TransactionControlMutation =
-  | {
-      type: 'revert-threads';
-      targetThreadIds: string[];
-    }
-  | {
-      type: 'restore-threads';
-      targetThreadIds: string[];
-    };
-
-export type TransactionMutation =
-  | TransactionActionMutation
-  | TransactionControlMutation;
-
-export type TransactionEvent = {
-  eventId: string;
-  eventHash: string;
-  threadId: string;
+export type ActionTransactionEvent = {
+  actorDeviceName: string;
   deviceId: string;
   deviceSequence: number;
-  eventKind: TransactionEntryKind;
-  occurredAt: number;
-  actorDeviceName: string;
-  undoPolicy: TransactionUndoPolicy;
   entityRefs: TransactionEntityRef[];
-  dependsOnThreadIds: string[];
-  mutation: TransactionMutation;
+  eventHash: string;
+  eventId: string;
+  eventKind: 'action';
+  mutation: TransactionActionMutation;
+  occurredAt: number;
+  parentActionEventId: string | null;
+  threadId: string;
 };
 
-export type TransactionActivityEntry = {
+export type RestoreTransactionEvent = {
+  actorDeviceName: string;
+  deviceId: string;
+  deviceSequence: number;
+  eventHash: string;
+  eventId: string;
+  eventKind: 'restore';
+  occurredAt: number;
+  targetActionEventId: string;
+  windowTipActionEventId: string | null;
+};
+
+export type TransactionEvent = ActionTransactionEvent | RestoreTransactionEvent;
+
+export type ActionTransactionRecord = {
+  actorDeviceName: string;
+  forward: TransactionActionMutation;
+  id: number;
+  isCurrent: boolean;
+  isReachableRestorePoint: boolean;
+  kind: TransactionActionMutation['type'];
+  latestEventId: string;
+  occurredAt: number;
+  restoreDirection: RestoreDirection | null;
+  rowId: string;
+  rowKind: 'action';
+  threadId: string;
+};
+
+export type RestoreTransactionRecord = {
   actorDeviceName: string;
   eventId: string;
-  kind: Exclude<TransactionEntryKind, 'action'>;
+  id: number;
+  kind: 'restore-event';
   occurredAt: number;
+  rowId: string;
+  rowKind: 'restore';
+  targetActionEventId: string;
+  targetSummary: string;
 };
 
-export type TransactionRecord = {
-  id: number;
-  threadId: string;
-  rootEventId: string;
-  kind: TransactionActionMutation['type'];
-  occurredAt: number;
-  actorDeviceName: string;
-  status: TransactionStatus;
-  undoPolicy: TransactionUndoPolicy;
-  entityRefs: TransactionEntityRef[];
-  dependsOnThreadIds: string[];
-  forward: TransactionActionMutation;
-  activity: TransactionActivityEntry[];
-  explicitStatus: TransactionStatus;
-  latestControlTargetThreadIds: string[];
-  supersededByThreadId: string | null;
+export type TransactionRecord =
+  | ActionTransactionRecord
+  | RestoreTransactionRecord;
+
+export type RestorePreview = {
+  affectedActionEventIds: string[];
+  isReachable: boolean;
+  mode: RestoreDirection | null;
+  target: ActionTransactionRecord | null;
 };
 
 export type TransactionClientState = {
@@ -141,15 +152,17 @@ export type TransactionSyncSnapshot = {
 };
 
 export type TransactionState = {
+  activeRestoreWindowTipActionEventId: string | null;
   canonicalHash: string;
   clientState: TransactionClientState;
+  currentActionEventId: string | null;
   events: TransactionEvent[];
   headHash: string;
   transactions: TransactionRecord[];
 };
 
 export type PersistedAppDocument = {
-  version: 4;
+  version: 5;
   head: PersistedAppData;
   transactionState: TransactionState;
 };
@@ -168,89 +181,63 @@ export type SharedTransactionIntent =
   | { type: 'pauseTimer'; pausedAt: number }
   | { type: 'resetTimer' };
 
-export type RevertPlan = {
-  target: TransactionRecord | null;
-  transactionIds: string[];
-};
-
 export type ReconciliationResult = {
   canonicalHashMismatches: string[];
   document: PersistedAppDocument;
 };
 
-type LegacyTransactionMutation =
-  | TransactionActionMutation
-  | {
-      type: 'revert-chain';
-      targetRootTransactionIds?: number[];
-      targetTransactionIds?: number[];
-    }
-  | {
-      type: 'restore-chain';
-      targetRootTransactionIds?: number[];
-      targetTransactionIds?: number[];
-    }
-  | {
-      type: 'reapply-transactions';
-      targetTransactionIds: number[];
-    };
-
-type LegacyTransactionRecord = {
-  actorDeviceName: string;
-  dependsOnTransactionIds: number[];
-  entityRefs: TransactionEntityRef[];
-  forward: LegacyTransactionMutation;
-  id: number;
-  occurredAt: number;
-  rootTransactionId?: number;
-  undoPolicy: TransactionUndoPolicy;
-};
-
-type LegacyTransactionState = {
-  nextTransactionId: number;
-  transactions: LegacyTransactionRecord[];
-};
-
-type ThreadAccumulator = {
-  actionEvents: TransactionEvent[];
-  activity: TransactionActivityEntry[];
-  actorDeviceName: string;
-  dependsOnThreadIds: string[];
-  entityRefs: TransactionEntityRef[];
-  explicitStatus: TransactionStatus;
-  latestControlTargetThreadIds: string[];
-  occurredAt: number;
-  rootEventId: string;
-  threadId: string;
-  undoPolicy: TransactionUndoPolicy;
-};
-
-type ThreadProjectionDraft = {
-  activity: TransactionActivityEntry[];
-  actorDeviceName: string;
-  dependsOnThreadIds: string[];
-  entityRefs: TransactionEntityRef[];
-  explicitStatus: TransactionStatus;
-  forward: TransactionActionMutation;
-  id: number;
-  kind: TransactionActionMutation['type'];
-  latestControlTargetThreadIds: string[];
-  occurredAt: number;
-  rootEventId: string;
-  status: TransactionStatus;
-  threadId: string;
-  undoPolicy: TransactionUndoPolicy;
-};
-
 type ActionDraft = {
-  dependsOnThreadIds: string[];
   entityRefs: TransactionEntityRef[];
   mutation: TransactionActionMutation;
   threadId?: string;
-  undoPolicy: TransactionUndoPolicy;
 };
 
-const DOCUMENT_VERSION = 4;
+type ActionThreadAccumulator = {
+  actionEvents: ActionTransactionEvent[];
+  actorDeviceName: string;
+  anchorIndex: number;
+  latestEventId: string;
+  latestOccurredAt: number;
+  rootEventId: string;
+  threadId: string;
+};
+
+type RestoreEntryAccumulator = {
+  actorDeviceName: string;
+  anchorIndex: number;
+  eventId: string;
+  occurredAt: number;
+  targetActionEventId: string;
+};
+
+type ActionRowDraft = {
+  actorDeviceName: string;
+  anchorIndex: number;
+  forward: TransactionActionMutation;
+  isCurrent: boolean;
+  isReachableRestorePoint: boolean;
+  kind: TransactionActionMutation['type'];
+  latestEventId: string;
+  occurredAt: number;
+  restoreDirection: RestoreDirection | null;
+  rowId: string;
+  rowKind: 'action';
+  threadId: string;
+};
+
+type RestoreRowDraft = {
+  actorDeviceName: string;
+  anchorIndex: number;
+  eventId: string;
+  kind: 'restore-event';
+  occurredAt: number;
+  rowId: string;
+  rowKind: 'restore';
+  targetActionEventId: string;
+  targetSummary: string;
+};
+
+const DOCUMENT_VERSION = 5;
 const UNKNOWN_DEVICE_NAME = 'Unknown device';
 const VALUE_CHANGE_ARROW = '\u2192';
 
@@ -258,11 +245,13 @@ export function createEmptyTransactionState(
   deviceId = createDeviceId(),
 ): TransactionState {
   return {
+    activeRestoreWindowTipActionEventId: null,
     canonicalHash: hashString(''),
     clientState: {
       deviceId,
       nextDeviceSequence: 1,
     },
+    currentActionEventId: null,
     events: [],
     headHash: hashSharedHead(createDefaultAppData()),
     transactions: [],
@@ -348,34 +337,16 @@ export function coercePersistedAppDocument(
 
   const candidate = value as {
     head?: PersistedAppData;
-    transactionState?: LegacyTransactionState;
   };
 
-  if (
-    typeof candidate.head !== 'object' ||
-    !candidate.head ||
-    typeof candidate.transactionState !== 'object' ||
-    !candidate.transactionState ||
-    !Array.isArray(candidate.transactionState.transactions)
-  ) {
+  if (typeof candidate.head !== 'object' || !candidate.head) {
     return null;
   }
 
   const rebuiltDocument = rebuildDocument({
     version: DOCUMENT_VERSION,
     head: candidate.head,
-    transactionState: {
-      canonicalHash: hashString(''),
-      clientState: {
-        deviceId: createDeviceId(),
-        nextDeviceSequence: 1,
-      },
-      events: convertLegacyTransactionsToEvents(
-        candidate.transactionState.transactions,
-      ),
-      headHash: hashSharedHead(candidate.head),
-      transactions: [],
-    },
+    transactionState: createEmptyTransactionState(),
   });
 
   return preserveAuthoritativeAlarmState(rebuiltDocument, candidate.head);
@@ -529,186 +500,101 @@ export function reconcileTransactionDocuments(
   };
 }
 
-export function getRevertPlan(
+export function getRestorePreview(
   transactionState: TransactionState,
-  threadId: string,
-): RevertPlan {
-  const target =
-    transactionState.transactions.find(
-      (transaction) => transaction.threadId === threadId,
-    ) ?? null;
+  actionEventId: string,
+): RestorePreview {
+  const target = transactionState.transactions.find(
+    (transaction): transaction is ActionTransactionRecord =>
+      transaction.rowKind === 'action' &&
+      transaction.latestEventId === actionEventId,
+  );
 
-  if (!target || !canRevertTransaction(target)) {
+  if (!target?.isReachableRestorePoint) {
     return {
-      target,
-      transactionIds: [],
+      affectedActionEventIds: [],
+      isReachable: false,
+      mode: null,
+      target: target ?? null,
     };
   }
 
-  const transactionIds = new Set<string>([target.threadId]);
+  const actionEventsById = new Map(
+    transactionState.events
+      .filter(isActionEvent)
+      .map((event) => [event.eventId, event]),
+  );
+  const currentActionEventId = transactionState.currentActionEventId;
 
-  for (const transaction of transactionState.transactions) {
-    if (
-      transaction.status === 'applied' &&
-      transaction.dependsOnThreadIds.some((dependencyThreadId) =>
-        transactionIds.has(dependencyThreadId),
-      )
-    ) {
-      transactionIds.add(transaction.threadId);
-    }
-  }
-
-  return {
-    target,
-    transactionIds: sortThreadIdsForDisplay(
-      [...transactionIds],
-      transactionState.transactions,
-    ),
-  };
-}
-
-export function getRestorePlan(
-  transactionState: TransactionState,
-  threadId: string,
-): RevertPlan {
-  const target =
-    transactionState.transactions.find(
-      (transaction) => transaction.threadId === threadId,
-    ) ?? null;
-
-  if (!target || !canRestoreTransaction(target)) {
+  if (!currentActionEventId) {
     return {
+      affectedActionEventIds: [],
+      isReachable: false,
+      mode: null,
       target,
-      transactionIds: [],
     };
   }
 
-  const transactionIds = new Set<string>();
-  const transactionByThreadId = new Map(
-    transactionState.transactions.map((transaction) => [
-      transaction.threadId,
-      transaction,
-    ]),
-  );
-  const collectRevertedDependencies = (dependencyThreadId: string) => {
-    const dependency = transactionByThreadId.get(dependencyThreadId);
-
-    if (!dependency || transactionIds.has(dependencyThreadId)) {
-      return;
-    }
-
-    if (dependency.status !== 'reverted') {
-      return;
-    }
-
-    transactionIds.add(dependencyThreadId);
-
-    for (const nestedDependencyThreadId of dependency.dependsOnThreadIds) {
-      collectRevertedDependencies(nestedDependencyThreadId);
-    }
-  };
-
-  transactionIds.add(target.threadId);
-
-  for (const dependencyThreadId of target.dependsOnThreadIds) {
-    collectRevertedDependencies(dependencyThreadId);
-  }
-
   return {
+    affectedActionEventIds:
+      target.restoreDirection === 'backward'
+        ? collectRollbackActionEventIds(
+            currentActionEventId,
+            target.latestEventId,
+            actionEventsById,
+          )
+        : collectForwardActionEventIds(
+            currentActionEventId,
+            target.latestEventId,
+            actionEventsById,
+          ),
+    isReachable: true,
+    mode: target.restoreDirection,
     target,
-    transactionIds: sortThreadIdsForDisplay(
-      [...transactionIds],
-      transactionState.transactions,
-    ),
   };
-}
-
-export function revertTransaction(
-  document: PersistedAppDocument,
-  threadId: string,
-  meta: {
-    actorDeviceName?: string;
-    occurredAt?: number;
-  } = {},
-): PersistedAppDocument {
-  const plan = getRevertPlan(document.transactionState, threadId);
-
-  if (!plan.target || plan.transactionIds.length === 0) {
-    return document;
-  }
-
-  return appendControlEvent(
-    document,
-    'revert',
-    {
-      type: 'revert-threads',
-      targetThreadIds: plan.transactionIds,
-    },
-    meta.actorDeviceName ?? getTransactionActorDeviceName(),
-    meta.occurredAt ?? Date.now(),
-    [
-      ...new Set(
-        plan.transactionIds.flatMap(
-          (targetThreadId) =>
-            document.transactionState.transactions.find(
-              (transaction) => transaction.threadId === targetThreadId,
-            )?.entityRefs ?? [],
-        ),
-      ),
-    ],
-  );
 }
 
 export function restoreTransaction(
   document: PersistedAppDocument,
-  threadId: string,
+  actionEventId: string,
   meta: {
     actorDeviceName?: string;
     occurredAt?: number;
   } = {},
 ): PersistedAppDocument {
-  const plan = getRestorePlan(document.transactionState, threadId);
+  const preview = getRestorePreview(document.transactionState, actionEventId);
 
-  if (!plan.target || plan.transactionIds.length === 0) {
+  if (!preview.target || !preview.isReachable) {
     return document;
   }
 
-  return appendControlEvent(
-    document,
-    'restore',
+  const { event, nextClientState } = createRestoreEvent(
+    document.transactionState,
     {
-      type: 'restore-threads',
-      targetThreadIds: plan.transactionIds,
+      actorDeviceName: meta.actorDeviceName ?? getTransactionActorDeviceName(),
+      occurredAt: meta.occurredAt ?? Date.now(),
+      targetActionEventId: actionEventId,
+      windowTipActionEventId:
+        document.transactionState.activeRestoreWindowTipActionEventId ??
+        document.transactionState.currentActionEventId,
     },
-    meta.actorDeviceName ?? getTransactionActorDeviceName(),
-    meta.occurredAt ?? Date.now(),
-    [
-      ...new Set(
-        plan.transactionIds.flatMap(
-          (targetThreadId) =>
-            document.transactionState.transactions.find(
-              (transaction) => transaction.threadId === targetThreadId,
-            )?.entityRefs ?? [],
-        ),
-      ),
-    ],
   );
-}
 
-export function canRevertTransaction(transaction: TransactionRecord) {
-  return (
-    transaction.undoPolicy === 'reversible' &&
-    transaction.status === 'applied' &&
-    transaction.supersededByThreadId === null
-  );
+  return rebuildDocument({
+    ...document,
+    transactionState: {
+      ...document.transactionState,
+      clientState: nextClientState,
+      events: [...document.transactionState.events, event],
+    },
+  });
 }
 
 export function canRestoreTransaction(transaction: TransactionRecord) {
   return (
-    transaction.undoPolicy === 'reversible' &&
-    transaction.status === 'reverted' &&
-    transaction.explicitStatus === 'reverted' &&
-    transaction.supersededByThreadId === null
+    transaction.rowKind === 'action' &&
+    transaction.isReachableRestorePoint &&
+    !transaction.isCurrent
   );
 }
 
@@ -720,32 +606,33 @@ export function getVisibleTransactions(transactions: TransactionRecord[]) {
   return transactions.filter(isVisibleTransaction);
 }
 
-export function getTransactionActivityEntries(transaction: TransactionRecord) {
-  return transaction.activity;
+export function getTransactionSummary(transaction: TransactionRecord): string {
+  if (transaction.rowKind === 'restore') {
+    return `Restored to ${transaction.targetSummary}`;
+  }
+
+  return getActionMutationSummary(transaction.forward);
 }
 
-export function getTransactionSummary(
-  transaction: TransactionRecord,
-  _transactions: TransactionRecord[] = [],
-): string {
-  switch (transaction.forward.type) {
+function getActionMutationSummary(mutation: TransactionActionMutation): string {
+  switch (mutation.type) {
     case 'child-points-adjusted': {
-      const verb = transaction.forward.delta >= 0 ? '+' : '-';
+      const verb = mutation.delta >= 0 ? '+' : '-';
 
-      return `${transaction.forward.childName} ${verb}${Math.abs(transaction.forward.delta)} points (${transaction.forward.previousPoints} ${VALUE_CHANGE_ARROW} ${transaction.forward.nextPoints})`;
+      return `${mutation.childName} ${verb}${Math.abs(mutation.delta)} points (${mutation.previousPoints} ${VALUE_CHANGE_ARROW} ${mutation.nextPoints})`;
     }
     case 'child-added':
-      return `Added ${transaction.forward.child.displayName}`;
+      return `Added ${mutation.child.displayName}`;
     case 'child-archived':
-      return `Archived ${transaction.forward.childName}`;
+      return `Archived ${mutation.childName}`;
     case 'child-restored':
-      return `Restored ${transaction.forward.childName}`;
+      return `Restored ${mutation.childName}`;
     case 'child-renamed':
-      return `${transaction.forward.previousName} renamed to ${transaction.forward.nextName}`;
+      return `${mutation.previousName} renamed to ${mutation.nextName}`;
     case 'child-moved':
-      return `Reordered ${transaction.forward.childName}`;
+      return `Reordered ${mutation.childName}`;
     case 'child-deleted-permanently':
-      return `Deleted ${transaction.forward.child.displayName}`;
+      return `Deleted ${mutation.child.displayName}`;
     case 'timer-started':
       return 'Started timer';
     case 'timer-paused':
@@ -758,12 +645,14 @@ export function getTransactionSummary(
 }
 
 export function getTransactionDetail(transaction: TransactionRecord) {
-  switch (transaction.forward.type) {
-    case 'child-points-adjusted':
-      return `${transaction.forward.previousPoints} ${VALUE_CHANGE_ARROW} ${transaction.forward.nextPoints}`;
-    default:
-      return null;
+  if (
+    transaction.rowKind === 'action' &&
+    transaction.forward.type === 'child-points-adjusted'
+  ) {
+    return `${transaction.forward.previousPoints} ${VALUE_CHANGE_ARROW} ${transaction.forward.nextPoints}`;
   }
+
+  return null;
 }
 
 function appendActionEvent(
@@ -771,17 +660,22 @@ function appendActionEvent(
   draft: ActionDraft | null,
   actorDeviceName: string,
   occurredAt: number,
-) {
+): PersistedAppDocument {
   if (!draft) {
     return document;
   }
 
-  const { event, nextClientState } = createEvent(document.transactionState, {
-    actorDeviceName,
-    ...draft,
-    eventKind: 'action',
-    occurredAt,
-  });
+  const { event, nextClientState } = createActionEvent(
+    document.transactionState,
+    {
+      actorDeviceName,
+      entityRefs: draft.entityRefs,
+      mutation: draft.mutation,
+      occurredAt,
+      parentActionEventId: document.transactionState.currentActionEventId,
+      threadId: draft.threadId,
+    },
+  );
 
   return rebuildDocument({
     ...document,
@@ -793,66 +687,71 @@ function appendActionEvent(
   });
 }
 
-function appendControlEvent(
-  document: PersistedAppDocument,
-  eventKind: Exclude<TransactionEntryKind, 'action'>,
-  mutation: TransactionControlMutation,
-  actorDeviceName: string,
-  occurredAt: number,
-  entityRefs: TransactionEntityRef[],
-) {
-  const { event, nextClientState } = createEvent(document.transactionState, {
-    actorDeviceName,
-    dependsOnThreadIds: mutation.targetThreadIds,
-    entityRefs,
-    eventKind,
-    mutation,
-    occurredAt,
-    undoPolicy: 'tracked_only',
-  });
-
-  return rebuildDocument({
-    ...document,
-    transactionState: {
-      ...document.transactionState,
-      clientState: nextClientState,
-      events: [...document.transactionState.events, event],
-    },
-  });
-}
-
-function createEvent(
+function createActionEvent(
   transactionState: TransactionState,
   input: {
     actorDeviceName: string;
-    dependsOnThreadIds: string[];
     entityRefs: TransactionEntityRef[];
-    eventKind: TransactionEntryKind;
-    mutation: TransactionMutation;
+    mutation: TransactionActionMutation;
     occurredAt: number;
+    parentActionEventId: string | null;
     threadId?: string;
-    undoPolicy: TransactionUndoPolicy;
   },
 ) {
-  const deviceId = transactionState.clientState.deviceId;
   const deviceSequence = transactionState.clientState.nextDeviceSequence;
-  const eventId = createEventId(deviceId, deviceSequence);
-  const event: Omit<TransactionEvent, 'eventHash'> = {
+  const event: ActionTransactionEvent = withEventHash({
     actorDeviceName: input.actorDeviceName,
-    dependsOnThreadIds: [...input.dependsOnThreadIds],
-    deviceId,
+    deviceId: transactionState.clientState.deviceId,
     deviceSequence,
     entityRefs: [...input.entityRefs],
-    eventId,
-    eventKind: input.eventKind,
+    eventId: createEventId(
+      transactionState.clientState.deviceId,
+      deviceSequence,
+    ),
+    eventKind: 'action',
     mutation: input.mutation,
     occurredAt: input.occurredAt,
-    threadId: input.threadId ?? createThreadId(deviceId, deviceSequence),
-    undoPolicy: input.undoPolicy,
-  };
+    parentActionEventId: input.parentActionEventId,
+    threadId:
+      input.threadId ??
+      createThreadId(transactionState.clientState.deviceId, deviceSequence),
+  });
 
   return {
-    event: withEventHash(event),
+    event,
+    nextClientState: {
+      ...transactionState.clientState,
+      nextDeviceSequence: deviceSequence + 1,
+    },
+  };
+}
+
+function createRestoreEvent(
+  transactionState: TransactionState,
+  input: {
+    actorDeviceName: string;
+    occurredAt: number;
+    targetActionEventId: string;
+    windowTipActionEventId: string | null;
+  },
+) {
+  const deviceSequence = transactionState.clientState.nextDeviceSequence;
+  const event: RestoreTransactionEvent = withEventHash({
+    actorDeviceName: input.actorDeviceName,
+    deviceId: transactionState.clientState.deviceId,
+    deviceSequence,
+    eventId: createEventId(
+      transactionState.clientState.deviceId,
+      deviceSequence,
+    ),
+    eventKind: 'restore',
+    occurredAt: input.occurredAt,
+    targetActionEventId: input.targetActionEventId,
+    windowTipActionEventId: input.windowTipActionEventId,
+  });
+
+  return {
+    event,
     nextClientState: {
       ...transactionState.clientState,
       nextDeviceSequence: deviceSequence + 1,
@@ -900,19 +799,24 @@ function rebuildState(
   currentHead: PersistedAppData,
   clientState: TransactionClientState,
   events: TransactionEvent[],
-) {
+): {
+  head: PersistedAppData;
+  transactionState: TransactionState;
+} {
   const dedupedEvents = dedupeEvents(events);
 
   if (dedupedEvents.length === 0) {
     return {
       head: currentHead,
       transactionState: {
+        activeRestoreWindowTipActionEventId: null,
         canonicalHash: hashString(''),
         clientState,
+        currentActionEventId: null,
         events: [],
         headHash: hashSharedHead(currentHead),
         transactions: [],
-      } satisfies TransactionState,
+      },
     };
   }
 
@@ -922,170 +826,184 @@ function rebuildState(
       .map((event) => `${event.eventId}:${event.eventHash}`)
       .join('|'),
   );
-  const threadMap = new Map<string, ThreadAccumulator>();
+  const actionEventsById = new Map<string, ActionTransactionEvent>();
+  const threadMap = new Map<string, ActionThreadAccumulator>();
+  const restoreEntries: RestoreEntryAccumulator[] = [];
+  let currentActionEventId: string | null = null;
+  let activeRestoreWindowTipActionEventId: string | null = null;
 
-  for (const event of orderedEvents) {
+  orderedEvents.forEach((event, index) => {
     if (event.eventKind === 'action') {
-      const existing = threadMap.get(event.threadId);
+      actionEventsById.set(event.eventId, event);
 
-      if (existing) {
-        existing.actionEvents.push(event);
-        existing.entityRefs = [
-          ...new Set([...existing.entityRefs, ...event.entityRefs]),
-        ];
-        continue;
+      const existingThread = threadMap.get(event.threadId);
+
+      if (existingThread) {
+        existingThread.actionEvents.push(event);
+        existingThread.actorDeviceName = event.actorDeviceName;
+        existingThread.latestEventId = event.eventId;
+        existingThread.latestOccurredAt = event.occurredAt;
+      } else {
+        threadMap.set(event.threadId, {
+          actionEvents: [event],
+          actorDeviceName: event.actorDeviceName,
+          anchorIndex: index,
+          latestEventId: event.eventId,
+          latestOccurredAt: event.occurredAt,
+          rootEventId: event.eventId,
+          threadId: event.threadId,
+        });
       }
 
-      if (!isActionMutation(event.mutation)) {
-        continue;
-      }
-
-      threadMap.set(event.threadId, {
-        actionEvents: [event],
-        activity: [],
-        actorDeviceName: event.actorDeviceName,
-        dependsOnThreadIds: [...event.dependsOnThreadIds],
-        entityRefs: [...event.entityRefs],
-        explicitStatus: 'applied',
-        latestControlTargetThreadIds: [event.threadId],
-        occurredAt: event.occurredAt,
-        rootEventId: event.eventId,
-        threadId: event.threadId,
-        undoPolicy: event.undoPolicy,
-      });
-
-      continue;
+      currentActionEventId = event.eventId;
+      activeRestoreWindowTipActionEventId = null;
+      return;
     }
 
-    if (!isControlMutation(event.mutation)) {
-      continue;
-    }
+    restoreEntries.push({
+      actorDeviceName: event.actorDeviceName,
+      anchorIndex: index,
+      eventId: event.eventId,
+      occurredAt: event.occurredAt,
+      targetActionEventId: event.targetActionEventId,
+    });
+    currentActionEventId = event.targetActionEventId;
+    activeRestoreWindowTipActionEventId = event.windowTipActionEventId;
+  });
 
-    for (const targetThreadId of event.mutation.targetThreadIds) {
-      const thread = threadMap.get(targetThreadId);
-
-      if (!thread) {
-        continue;
-      }
-
-      thread.activity.push({
-        actorDeviceName: event.actorDeviceName,
-        eventId: event.eventId,
-        kind: event.eventKind,
-        occurredAt: event.occurredAt,
-      });
-      thread.explicitStatus =
-        event.eventKind === 'revert' ? 'reverted' : 'applied';
-      thread.latestControlTargetThreadIds = [...event.mutation.targetThreadIds];
-    }
-  }
-
-  const threadStatusCache = new Map<string, TransactionStatus>();
-  const isThreadApplied = (
-    threadId: string,
-    visiting = new Set<string>(),
-  ): boolean => {
-    const cached = threadStatusCache.get(threadId);
-
-    if (cached) {
-      return cached === 'applied';
-    }
-
-    const thread = threadMap.get(threadId);
-
-    if (!thread || visiting.has(threadId)) {
-      threadStatusCache.set(threadId, 'reverted');
-      return false;
-    }
-
-    visiting.add(threadId);
-    const applied =
-      thread.explicitStatus === 'applied' &&
-      thread.dependsOnThreadIds.every((dependencyThreadId) =>
-        isThreadApplied(dependencyThreadId, visiting),
-      );
-    visiting.delete(threadId);
-    threadStatusCache.set(threadId, applied ? 'applied' : 'reverted');
-
-    return applied;
-  };
-  const baseHead = createProjectionBaseHead(currentHead);
-  const nextHead = orderedEvents.reduce((head, event) => {
-    if (
-      event.eventKind !== 'action' ||
-      !isThreadApplied(event.threadId) ||
-      !isActionMutation(event.mutation)
-    ) {
-      return head;
-    }
-
-    return applyActionMutation(head, event.mutation);
-  }, baseHead);
-  const orderedThreads = [...threadMap.values()].sort(
-    (left, right) =>
-      left.occurredAt - right.occurredAt ||
-      left.rootEventId.localeCompare(right.rootEventId),
+  const nextHead = replayHead(
+    currentHead,
+    currentActionEventId,
+    actionEventsById,
   );
-  const threadProjectionDrafts: ThreadProjectionDraft[] = orderedThreads.map(
-    (thread, index) => {
+  const currentLineageSet = new Set(
+    collectLineageIds(currentActionEventId, actionEventsById),
+  );
+  const forwardLineageSet = new Set(
+    collectForwardWindowIds(
+      currentActionEventId,
+      activeRestoreWindowTipActionEventId,
+      actionEventsById,
+    ),
+  );
+  const actionRows: ActionRowDraft[] = [...threadMap.values()]
+    .sort(
+      (left, right) =>
+        left.anchorIndex - right.anchorIndex ||
+        left.rootEventId.localeCompare(right.rootEventId),
+    )
+    .map((thread) => {
       const forward = aggregateThreadMutation(thread.actionEvents);
+      const isCurrent = thread.latestEventId === currentActionEventId;
+      const restoreDirection: RestoreDirection | null = isCurrent
+        ? null
+        : currentLineageSet.has(thread.latestEventId)
+          ? 'backward'
+          : forwardLineageSet.has(thread.latestEventId)
+            ? 'forward'
+            : null;
 
       return {
-        activity: [...thread.activity].sort(
-          (left, right) =>
-            left.occurredAt - right.occurredAt ||
-            left.eventId.localeCompare(right.eventId),
-        ),
         actorDeviceName: thread.actorDeviceName,
-        dependsOnThreadIds: [...thread.dependsOnThreadIds],
-        entityRefs: [...thread.entityRefs],
-        explicitStatus: thread.explicitStatus,
+        anchorIndex: thread.anchorIndex,
         forward,
-        id: index + 1,
         kind: forward.type,
-        latestControlTargetThreadIds: [...thread.latestControlTargetThreadIds],
-        occurredAt: thread.occurredAt,
-        rootEventId: thread.rootEventId,
-        status: isThreadApplied(thread.threadId) ? 'applied' : 'reverted',
+        latestEventId: thread.latestEventId,
+        occurredAt: thread.latestOccurredAt,
+        restoreDirection,
+        rowId: `action:${thread.threadId}`,
+        rowKind: 'action' as const,
         threadId: thread.threadId,
-        undoPolicy: thread.undoPolicy,
+        isCurrent,
+        isReachableRestorePoint: restoreDirection !== null,
       };
-    },
+    });
+  const actionSummaryByLatestEventId = new Map(
+    actionRows.map((row) => [
+      row.latestEventId,
+      getActionMutationSummary(row.forward),
+    ]),
   );
-  const supersededByThreadIdByThreadId = deriveSupersededThreadIds(
-    threadProjectionDrafts,
-  );
-  const transactions = threadProjectionDrafts.map((thread) => {
-    return {
-      activity: [...thread.activity],
-      actorDeviceName: thread.actorDeviceName,
-      dependsOnThreadIds: [...thread.dependsOnThreadIds],
-      entityRefs: [...thread.entityRefs],
-      explicitStatus: thread.explicitStatus,
-      forward: thread.forward,
-      id: thread.id,
-      kind: thread.kind,
-      latestControlTargetThreadIds: [...thread.latestControlTargetThreadIds],
-      occurredAt: thread.occurredAt,
-      rootEventId: thread.rootEventId,
-      status: thread.status,
-      supersededByThreadId:
-        supersededByThreadIdByThreadId.get(thread.threadId) ?? null,
-      threadId: thread.threadId,
-      undoPolicy: thread.undoPolicy,
-    } satisfies TransactionRecord;
-  });
+  const restoreRows: RestoreRowDraft[] = restoreEntries.map((entry) => ({
+    actorDeviceName: entry.actorDeviceName,
+    anchorIndex: entry.anchorIndex,
+    eventId: entry.eventId,
+    kind: 'restore-event' as const,
+    occurredAt: entry.occurredAt,
+    rowId: `restore:${entry.eventId}`,
+    rowKind: 'restore' as const,
+    targetActionEventId: entry.targetActionEventId,
+    targetSummary:
+      actionSummaryByLatestEventId.get(entry.targetActionEventId) ??
+      'Unknown restore point',
+  }));
+  const transactions = [...actionRows, ...restoreRows]
+    .sort(
+      (left, right) =>
+        left.anchorIndex - right.anchorIndex ||
+        left.occurredAt - right.occurredAt ||
+        left.rowId.localeCompare(right.rowId),
+    )
+    .map((transaction, index) => {
+      if (transaction.rowKind === 'action') {
+        return {
+          actorDeviceName: transaction.actorDeviceName,
+          forward: transaction.forward,
+          id: index + 1,
+          isCurrent: transaction.isCurrent,
+          isReachableRestorePoint: transaction.isReachableRestorePoint,
+          kind: transaction.kind,
+          latestEventId: transaction.latestEventId,
+          occurredAt: transaction.occurredAt,
+          restoreDirection: transaction.restoreDirection,
+          rowId: transaction.rowId,
+          rowKind: transaction.rowKind,
+          threadId: transaction.threadId,
+        } satisfies ActionTransactionRecord;
+      }
+
+      return {
+        actorDeviceName: transaction.actorDeviceName,
+        eventId: transaction.eventId,
+        id: index + 1,
+        kind: transaction.kind,
+        occurredAt: transaction.occurredAt,
+        rowId: transaction.rowId,
+        rowKind: transaction.rowKind,
+        targetActionEventId: transaction.targetActionEventId,
+        targetSummary: transaction.targetSummary,
+      } satisfies RestoreTransactionRecord;
+    });
 
   return {
     head: nextHead,
     transactionState: {
+      activeRestoreWindowTipActionEventId,
       canonicalHash,
       clientState,
+      currentActionEventId,
       events: orderedEvents,
       headHash: hashSharedHead(nextHead),
       transactions,
-    } satisfies TransactionState,
+    },
   };
+}
+
+function replayHead(
+  currentHead: PersistedAppData,
+  currentActionEventId: string | null,
+  actionEventsById: Map<string, ActionTransactionEvent>,
+) {
+  const baseHead = createProjectionBaseHead(currentHead);
+  const lineage = collectLineageIds(currentActionEventId, actionEventsById)
+    .reverse()
+    .map((eventId) => actionEventsById.get(eventId))
+    .filter((event): event is ActionTransactionEvent => !!event);
+
+  return lineage.reduce(
+    (head, event) => applyActionMutation(head, event.mutation),
+    baseHead,
+  );
 }
 
 function buildAddChildAction(
@@ -1099,13 +1017,11 @@ function buildAddChildAction(
   const child = createChildProfile(document.head.children, name);
 
   return {
-    dependsOnThreadIds: [],
     entityRefs: createChildEntityRefs(child.id, true),
     mutation: {
       type: 'child-added',
       child,
     },
-    undoPolicy: 'reversible',
   };
 }
 
@@ -1124,10 +1040,6 @@ function buildRenameChildAction(
   }
 
   return {
-    dependsOnThreadIds: getChildLifecycleDependencies(
-      document.transactionState,
-      childId,
-    ),
     entityRefs: createChildEntityRefs(childId),
     mutation: {
       type: 'child-renamed',
@@ -1135,7 +1047,6 @@ function buildRenameChildAction(
       nextName: trimmedName,
       previousName: child.displayName,
     },
-    undoPolicy: 'tracked_only',
   };
 }
 
@@ -1153,10 +1064,6 @@ function buildArchiveChildAction(
   }
 
   return {
-    dependsOnThreadIds: getChildLifecycleDependencies(
-      document.transactionState,
-      childId,
-    ),
     entityRefs: createChildEntityRefs(childId, true),
     mutation: {
       type: 'child-archived',
@@ -1165,7 +1072,6 @@ function buildArchiveChildAction(
       childName: child.displayName,
       previousSortOrder: child.sortOrder,
     },
-    undoPolicy: 'reversible',
   };
 }
 
@@ -1186,10 +1092,6 @@ function buildRestoreChildAction(
   ).length;
 
   return {
-    dependsOnThreadIds: getChildLifecycleDependencies(
-      document.transactionState,
-      childId,
-    ),
     entityRefs: createChildEntityRefs(childId, true),
     mutation: {
       type: 'child-restored',
@@ -1198,7 +1100,6 @@ function buildRestoreChildAction(
       childName: child.displayName,
       restoredSortOrder,
     },
-    undoPolicy: 'reversible',
   };
 }
 
@@ -1215,16 +1116,11 @@ function buildDeleteChildAction(
   }
 
   return {
-    dependsOnThreadIds: getChildLifecycleDependencies(
-      document.transactionState,
-      childId,
-    ),
     entityRefs: createChildEntityRefs(childId, true),
     mutation: {
       type: 'child-deleted-permanently',
       child,
     },
-    undoPolicy: 'tracked_only',
   };
 }
 
@@ -1253,10 +1149,6 @@ function buildMoveChildAction(
   const child = orderedChildren[currentIndex];
 
   return {
-    dependsOnThreadIds: getChildLifecycleDependencies(
-      document.transactionState,
-      childId,
-    ),
     entityRefs: createChildEntityRefs(childId),
     mutation: {
       type: 'child-moved',
@@ -1266,7 +1158,6 @@ function buildMoveChildAction(
       fromSortOrder: child.sortOrder,
       toSortOrder: orderedChildren[targetIndex]?.sortOrder ?? child.sortOrder,
     },
-    undoPolicy: 'tracked_only',
   };
 }
 
@@ -1305,20 +1196,12 @@ function buildPointAdjustmentAction(
   const lastEvent = document.transactionState.events.at(-1);
   const mergedThreadId =
     source === 'tap' &&
-    lastEvent &&
+    lastEvent?.eventKind === 'action' &&
     canMergePointEvent(lastEvent, childId, appliedDelta)
       ? lastEvent.threadId
       : undefined;
-  const mergedDependsOnThreadIds: string[] | undefined = mergedThreadId
-    ? document.transactionState.transactions.find(
-        (transaction) => transaction.threadId === mergedThreadId,
-      )?.dependsOnThreadIds
-    : undefined;
 
   return {
-    dependsOnThreadIds:
-      mergedDependsOnThreadIds ??
-      getChildLifecycleDependencies(document.transactionState, childId),
     entityRefs: createChildEntityRefs(childId),
     mutation: {
       type: 'child-points-adjusted',
@@ -1330,7 +1213,6 @@ function buildPointAdjustmentAction(
       source,
     },
     threadId: mergedThreadId,
-    undoPolicy: 'reversible',
   };
 }
 
@@ -1382,14 +1264,12 @@ function buildTimerStartAction(
   }
 
   return {
-    dependsOnThreadIds: getTimerDependencies(document.transactionState),
     entityRefs: ['timer:shared'],
     mutation: {
       type: 'timer-started',
       nextTimerState: nextHead.timerState,
       startedAt,
     },
-    undoPolicy: 'tracked_only',
   };
 }
 
@@ -1407,7 +1287,6 @@ function buildTimerPauseAction(
   }
 
   return {
-    dependsOnThreadIds: getTimerDependencies(document.transactionState),
     entityRefs: ['timer:shared'],
     mutation: {
       type: 'timer-paused',
@@ -1415,7 +1294,6 @@ function buildTimerPauseAction(
       pausedAt,
       previousTimerState: document.head.timerState,
     },
-    undoPolicy: 'tracked_only',
   };
 }
 
@@ -1426,26 +1304,27 @@ function buildTimerResetAction(
     type: 'resetTimer',
   });
 
-  if (isSameTimerState(document.head.timerState, nextHead.timerState)) {
+  if (
+    isSameTimerState(document.head.timerState, nextHead.timerState) &&
+    document.head.expiredIntervals.length === 0
+  ) {
     return null;
   }
 
   return {
-    dependsOnThreadIds: getTimerDependencies(document.transactionState),
     entityRefs: ['timer:shared'],
     mutation: {
       type: 'timer-reset',
       nextTimerState: nextHead.timerState,
       previousTimerState: document.head.timerState,
     },
-    undoPolicy: 'tracked_only',
   };
 }
 
-function aggregateThreadMutation(actionEvents: TransactionEvent[]) {
+function aggregateThreadMutation(actionEvents: ActionTransactionEvent[]) {
   const firstMutation = actionEvents[0]?.mutation;
 
-  if (!firstMutation || !isActionMutation(firstMutation)) {
+  if (!firstMutation) {
     throw new Error('Thread is missing an action mutation');
   }
 
@@ -1487,17 +1366,6 @@ function dedupeEvents(events: TransactionEvent[]) {
 
 function orderEvents(events: TransactionEvent[]) {
   const eventMap = new Map(events.map((event) => [event.eventId, event]));
-  const rootEventIdsByThreadId = new Map<string, string>();
-
-  for (const event of events) {
-    if (
-      event.eventKind === 'action' &&
-      !rootEventIdsByThreadId.has(event.threadId)
-    ) {
-      rootEventIdsByThreadId.set(event.threadId, event.eventId);
-    }
-  }
-
   const edges = new Map<string, Set<string>>();
   const indegree = new Map<string, number>(
     events.map((event) => [event.eventId, 0]),
@@ -1521,13 +1389,13 @@ function orderEvents(events: TransactionEvent[]) {
   }
 
   for (const event of events) {
-    const dependencyThreadIds = isActionMutation(event.mutation)
-      ? event.dependsOnThreadIds
-      : event.mutation.targetThreadIds;
-
-    for (const dependencyThreadId of dependencyThreadIds) {
-      addEdge(rootEventIdsByThreadId.get(dependencyThreadId), event.eventId);
+    if (event.eventKind === 'action') {
+      addEdge(event.parentActionEventId ?? undefined, event.eventId);
+      continue;
     }
+
+    addEdge(event.targetActionEventId, event.eventId);
+    addEdge(event.windowTipActionEventId ?? undefined, event.eventId);
   }
 
   const ready = [...events]
@@ -1586,6 +1454,74 @@ function compareEvents(left: TransactionEvent, right: TransactionEvent) {
   return left.eventId.localeCompare(right.eventId);
 }
 
+function collectLineageIds(
+  actionEventId: string | null,
+  actionEventsById: Map<string, ActionTransactionEvent>,
+) {
+  const lineageIds: string[] = [];
+  let currentActionEventId = actionEventId;
+
+  while (currentActionEventId) {
+    lineageIds.push(currentActionEventId);
+    currentActionEventId =
+      actionEventsById.get(currentActionEventId)?.parentActionEventId ?? null;
+  }
+
+  return lineageIds;
+}
+
+function collectForwardWindowIds(
+  currentActionEventId: string | null,
+  windowTipActionEventId: string | null,
+  actionEventsById: Map<string, ActionTransactionEvent>,
+) {
+  if (!currentActionEventId || !windowTipActionEventId) {
+    return [] as string[];
+  }
+
+  const forwardIds: string[] = [];
+  let cursor: string | null = windowTipActionEventId;
+
+  while (cursor && cursor !== currentActionEventId) {
+    forwardIds.push(cursor);
+    cursor = actionEventsById.get(cursor)?.parentActionEventId ?? null;
+  }
+
+  return cursor === currentActionEventId ? forwardIds : [];
+}
+
+function collectRollbackActionEventIds(
+  currentActionEventId: string,
+  targetActionEventId: string,
+  actionEventsById: Map<string, ActionTransactionEvent>,
+) {
+  const actionIds: string[] = [];
+  let cursor: string | null = currentActionEventId;
+
+  while (cursor && cursor !== targetActionEventId) {
+    actionIds.push(cursor);
+    cursor = actionEventsById.get(cursor)?.parentActionEventId ?? null;
+  }
+
+  return cursor === targetActionEventId ? actionIds : [];
+}
+
+function collectForwardActionEventIds(
+  currentActionEventId: string,
+  targetActionEventId: string,
+  actionEventsById: Map<string, ActionTransactionEvent>,
+) {
+  const actionIds: string[] = [];
+  let cursor: string | null = targetActionEventId;
+
+  while (cursor && cursor !== currentActionEventId) {
+    actionIds.push(cursor);
+    cursor = actionEventsById.get(cursor)?.parentActionEventId ?? null;
+  }
+
+  return cursor === currentActionEventId ? actionIds : [];
+}
+
 function applyActionMutation(
   head: PersistedAppData,
   mutation: TransactionActionMutation,
@@ -1638,208 +1574,37 @@ function applyActionMutation(
         childId: mutation.child.id,
       });
     case 'timer-started':
+      return appDataReducer(head, {
+        type: 'startTimer',
+        startedAt: mutation.startedAt,
+      });
     case 'timer-paused':
+      return appDataReducer(head, {
+        type: 'pauseTimer',
+        pausedAt: mutation.pausedAt,
+      });
     case 'timer-reset':
       return appDataReducer(head, {
-        type: 'replaceTimerState',
-        timerState: mutation.nextTimerState,
+        type: 'resetTimer',
       });
     default:
       return head;
   }
 }
 
-function convertLegacyTransactionsToEvents(
-  transactions: LegacyTransactionRecord[],
-): TransactionEvent[] {
-  const sortedTransactions = [...transactions].sort(
-    (left, right) => left.id - right.id,
-  );
-  const threadIdByLegacyRootId = new Map<number, string>();
-
-  for (const transaction of sortedTransactions) {
-    const legacyRootId = transaction.rootTransactionId ?? transaction.id;
-
-    if (!threadIdByLegacyRootId.has(legacyRootId)) {
-      threadIdByLegacyRootId.set(legacyRootId, `legacy-thread:${legacyRootId}`);
-    }
-  }
-
-  return sortedTransactions.flatMap((transaction) => {
-    const threadId =
-      threadIdByLegacyRootId.get(
-        transaction.rootTransactionId ?? transaction.id,
-      ) ?? `legacy-thread:${transaction.rootTransactionId ?? transaction.id}`;
-    const dependsOnThreadIds = transaction.dependsOnTransactionIds
-      .map((legacyId) => {
-        const dependency = sortedTransactions.find(
-          (candidate) => candidate.id === legacyId,
-        );
-
-        if (!dependency) {
-          return null;
-        }
-
-        return (
-          threadIdByLegacyRootId.get(
-            dependency.rootTransactionId ?? dependency.id,
-          ) ?? null
-        );
-      })
-      .filter((value): value is string => !!value);
-    const baseEvent = {
-      actorDeviceName: transaction.actorDeviceName,
-      dependsOnThreadIds,
-      deviceId: 'legacy',
-      deviceSequence: transaction.id,
-      entityRefs: transaction.entityRefs,
-      eventId: `legacy-event:${transaction.id}`,
-      occurredAt: transaction.occurredAt,
-      threadId,
-      undoPolicy: transaction.undoPolicy,
-    };
-
-    if (isLegacyActionMutation(transaction.forward)) {
-      return [
-        withEventHash({
-          ...baseEvent,
-          eventKind: 'action',
-          mutation: transaction.forward,
-        }),
-      ];
-    }
-
-    if (
-      transaction.forward.type === 'revert-chain' ||
-      transaction.forward.type === 'restore-chain'
-    ) {
-      const legacyTargets =
-        transaction.forward.targetRootTransactionIds ??
-        transaction.forward.targetTransactionIds ??
-        [];
-
-      return [
-        withEventHash({
-          ...baseEvent,
-          eventKind:
-            transaction.forward.type === 'restore-chain' ? 'restore' : 'revert',
-          mutation: {
-            type:
-              transaction.forward.type === 'restore-chain'
-                ? 'restore-threads'
-                : 'revert-threads',
-            targetThreadIds: legacyTargets
-              .map((legacyTargetId) =>
-                threadIdByLegacyRootId.get(legacyTargetId),
-              )
-              .filter((value): value is string => !!value),
-          },
-        }),
-      ];
-    }
-
-    return [];
-  });
-}
-
-function withEventHash(
-  event: Omit<TransactionEvent, 'eventHash'>,
-): TransactionEvent {
+function withEventHash<T extends Omit<TransactionEvent, 'eventHash'>>(
+  event: T,
+): T & { eventHash: string } {
   return {
     ...event,
     eventHash: hashString(stableSerialize(event)),
   };
 }
 
-function isLegacyActionMutation(
-  mutation: LegacyTransactionMutation,
-): mutation is TransactionActionMutation {
-  return (
-    mutation.type !== 'revert-chain' &&
-    mutation.type !== 'restore-chain' &&
-    mutation.type !== 'reapply-transactions'
-  );
-}
-
-function isActionMutation(
-  mutation: TransactionMutation,
-): mutation is TransactionActionMutation {
-  return (
-    mutation.type !== 'revert-threads' && mutation.type !== 'restore-threads'
-  );
-}
-
-function isControlMutation(
-  mutation: TransactionMutation,
-): mutation is TransactionControlMutation {
-  return (
-    mutation.type === 'revert-threads' || mutation.type === 'restore-threads'
-  );
-}
-
-function getChildLifecycleDependencies(
-  transactionState: TransactionState,
-  childId: string,
-) {
-  const dependency = [...transactionState.transactions]
-    .reverse()
-    .find(
-      (transaction) =>
-        transaction.status === 'applied' &&
-        transaction.entityRefs.includes(`child-lifecycle:${childId}`),
-    );
-
-  return dependency ? [dependency.threadId] : [];
-}
-
-function getTimerDependencies(transactionState: TransactionState) {
-  const dependency = [...transactionState.transactions]
-    .reverse()
-    .find(
-      (transaction) =>
-        transaction.status === 'applied' &&
-        transaction.entityRefs.includes('timer:shared'),
-    );
-
-  return dependency ? [dependency.threadId] : [];
-}
-
-function deriveSupersededThreadIds(transactions: ThreadProjectionDraft[]) {
-  const nextThreadIdByLaneKey = new Map<string, string>();
-  const supersededByThreadIdByThreadId = new Map<string, string | null>();
-
-  for (let index = transactions.length - 1; index >= 0; index -= 1) {
-    const transaction = transactions[index];
-
-    if (!transaction) {
-      continue;
-    }
-
-    const laneKey = getExclusiveLaneKey(transaction.forward);
-
-    if (!laneKey) {
-      supersededByThreadIdByThreadId.set(transaction.threadId, null);
-      continue;
-    }
-
-    supersededByThreadIdByThreadId.set(
-      transaction.threadId,
-      nextThreadIdByLaneKey.get(laneKey) ?? null,
-    );
-    nextThreadIdByLaneKey.set(laneKey, transaction.threadId);
-  }
-
-  return supersededByThreadIdByThreadId;
-}
-
-function getExclusiveLaneKey(mutation: TransactionActionMutation) {
-  switch (mutation.type) {
-    case 'child-archived':
-    case 'child-restored':
-      return `child-lifecycle:${mutation.childId}`;
-    default:
-      return null;
-  }
+function isActionEvent(
+  event: TransactionEvent,
+): event is ActionTransactionEvent {
+  return event.eventKind === 'action';
 }
 
 function canMergePointEvent(
@@ -1849,7 +1614,6 @@ function canMergePointEvent(
 ) {
   return (
     event.eventKind === 'action' &&
-    isActionMutation(event.mutation) &&
     event.mutation.type === 'child-points-adjusted' &&
     event.mutation.source === 'tap' &&
     event.mutation.childId === childId &&
@@ -1869,9 +1633,11 @@ function createProjectionBaseHead(currentHead: PersistedAppData) {
   return {
     ...defaultHead,
     cart: currentHead.cart,
+    expiredIntervals: currentHead.expiredIntervals,
     parentSettings: currentHead.parentSettings,
     shopCatalog: currentHead.shopCatalog,
     timerConfig: currentHead.timerConfig,
+    timerRuntimeState: currentHead.timerRuntimeState,
     uiPreferences: currentHead.uiPreferences,
   } satisfies PersistedAppData;
 }
@@ -1933,19 +1699,5 @@ function isSameTimerState(left: SharedTimerState, right: SharedTimerState) {
     left.cycleStartedAt === right.cycleStartedAt &&
     left.isRunning === right.isRunning &&
     left.pausedRemainingMs === right.pausedRemainingMs
-  );
-}
-
-function sortThreadIdsForDisplay(
-  threadIds: string[],
-  transactions: TransactionRecord[],
-) {
-  const idByThreadId = new Map(
-    transactions.map((transaction) => [transaction.threadId, transaction.id]),
-  );
-
-  return [...threadIds].sort(
-    (left, right) =>
-      (idByThreadId.get(right) ?? 0) - (idByThreadId.get(left) ?? 0),
   );
 }
