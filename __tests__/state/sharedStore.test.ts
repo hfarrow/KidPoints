@@ -66,7 +66,7 @@ describe('sharedStore transaction engine', () => {
     );
   });
 
-  it('records permanent deletion and can rebuild an archived child from the delete transaction restore descriptor', () => {
+  it('records permanent deletion as non-restorable', () => {
     const store = createSharedStore({
       initialDocument: createInitialSharedDocument({ deviceId: 'device-c' }),
       storage: createMemoryStorage(),
@@ -86,10 +86,39 @@ describe('sharedStore transaction engine', () => {
       store.getState().document.events,
     ).find((row) => row.summaryType === 'child-deleted');
 
+    expect(deleteRow?.restoreDescriptor.isRestorable).toBe(false);
     expect(deleteRow?.restoreDescriptor.target?.status).toBe('archived');
     expect(store.getState().restoreTransaction(deleteRow?.id ?? '').ok).toBe(
+      false,
+    );
+    expect(
+      store.getState().document.head.childrenById[childId],
+    ).toBeUndefined();
+  });
+
+  it('restoring the initial child creation removes the child from the document', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({ deviceId: 'device-d' }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ivy').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+
+    const creationRow = deriveTransactionRows(
+      store.getState().document.events,
+    ).find((row) => row.summaryType === 'child-created');
+
+    expect(creationRow?.restoreDescriptor.target).toBeNull();
+    expect(store.getState().restoreTransaction(creationRow?.id ?? '').ok).toBe(
       true,
     );
-    expect(store.getState().document.head.archivedChildIds).toContain(childId);
+    expect(
+      store.getState().document.head.childrenById[childId],
+    ).toBeUndefined();
+    expect(store.getState().document.head.activeChildIds).not.toContain(
+      childId,
+    );
+    expect(store.getState().document.events.at(-1)?.type).toBe('child.deleted');
   });
 });

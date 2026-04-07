@@ -3,6 +3,7 @@ import {
   createContext,
   type PropsWithChildren,
   useContext,
+  useEffect,
   useMemo,
   useRef,
 } from 'react';
@@ -365,7 +366,9 @@ export function deriveTransactionRows(events: SharedEvent[]): TransactionRow[] {
         occurredAtEnd: event.occurredAt,
         occurredAtStart: event.occurredAt,
         restoreDescriptor: {
+          isRestorable: summaryType !== 'child-deleted',
           childId,
+          sourceSummaryType: summaryType,
           target: childBefore ? cloneChildSnapshot(childBefore) : null,
         },
         setPoints:
@@ -394,6 +397,10 @@ function buildRestoreEvents(
   document: SharedDocument,
   descriptor: RestoreDescriptor,
 ) {
+  if (!descriptor.isRestorable) {
+    return [];
+  }
+
   const builder = createEventBuilder(document);
   const eventsToAppend: SharedEvent[] = [];
   let workingHead = document.head;
@@ -412,13 +419,10 @@ function buildRestoreEvents(
   }
 
   if (!targetChild) {
-    if (currentChild.status === 'active') {
-      const event = builder.build('child.archived', {
-        childId: descriptor.childId,
-      });
-      eventsToAppend.push(event);
-      workingHead = applySharedEvent(workingHead, event);
-    }
+    const event = builder.build('child.deleted', {
+      childId: descriptor.childId,
+    });
+    eventsToAppend.push(event);
 
     return eventsToAppend;
   }
@@ -726,11 +730,16 @@ export function SharedStoreProvider({
       initialDocument,
       storage,
     });
-  } else if (
-    typeof storeRef.current.getState().deleteChildPermanently !== 'function'
-  ) {
-    patchSharedStoreActions(storeRef.current);
   }
+
+  useEffect(() => {
+    if (
+      storeRef.current &&
+      typeof storeRef.current.getState().deleteChildPermanently !== 'function'
+    ) {
+      patchSharedStoreActions(storeRef.current);
+    }
+  }, []);
 
   return (
     <SharedStoreContext.Provider value={storeRef.current}>

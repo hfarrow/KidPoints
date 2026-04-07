@@ -83,7 +83,9 @@ export type SharedEvent =
   | ChildRestoredEvent;
 
 export type RestoreDescriptor = {
+  isRestorable: boolean;
   childId: string;
+  sourceSummaryType: TransactionSummaryType;
   target: ChildSnapshot | null;
 };
 
