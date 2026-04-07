@@ -108,7 +108,7 @@ describe('sharedStore transaction graph', () => {
     ).toBe(false);
   });
 
-  it('keeps permanently deleted transactions non-restorable', () => {
+  it('allows restoring to a deleted-child transaction when it is no longer head', () => {
     const store = createSharedStore({
       initialDocument: createInitialSharedDocument({ deviceId: 'device-d' }),
       storage: createMemoryStorage(),
@@ -119,14 +119,19 @@ describe('sharedStore transaction graph', () => {
 
     expect(store.getState().archiveChild(childId).ok).toBe(true);
     expect(store.getState().deleteChildPermanently(childId).ok).toBe(true);
+    expect(store.getState().addChild('Ava').ok).toBe(true);
 
     const deleteRow = deriveTransactionRows(store.getState().document).find(
       (row) => row.kind === 'child-deleted',
     );
 
-    expect(deleteRow?.isRestorableNow).toBe(false);
+    expect(deleteRow?.isRestorableNow).toBe(true);
     expect(store.getState().restoreTransaction(deleteRow?.id ?? '').ok).toBe(
-      false,
+      true,
     );
+    expect(
+      store.getState().document.head.childrenById[childId],
+    ).toBeUndefined();
+    expect(store.getState().document.head.activeChildIds).toHaveLength(0);
   });
 });

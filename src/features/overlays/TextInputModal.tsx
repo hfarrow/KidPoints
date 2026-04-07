@@ -76,6 +76,7 @@ export function TextInputModal() {
         )}
         <TextInput
           accessibilityLabel={request.inputAccessibilityLabel}
+          autoFocus
           keyboardType={request.keyboardType ?? 'default'}
           onChangeText={(nextValue) => {
             setValue(nextValue);

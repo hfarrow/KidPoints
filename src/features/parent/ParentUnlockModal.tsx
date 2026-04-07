@@ -12,6 +12,17 @@ export function ParentUnlockModal() {
   const [pin, setPin] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
+  const submitPin = (value: string) => {
+    const didUnlock = attemptUnlock(value);
+
+    if (!didUnlock) {
+      setErrorMessage('That PIN does not match the temporary parent code.');
+      return;
+    }
+
+    router.back();
+  };
+
   return (
     <View style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}>
       <View style={styles.card}>
@@ -23,11 +34,16 @@ export function ParentUnlockModal() {
         </Text>
         <TextInput
           accessibilityLabel="Parent PIN"
+          autoFocus
           keyboardType="number-pad"
-          onChangeText={(value) => {
-            setPin(value);
+          onChangeText={(nextValue) => {
+            setPin(nextValue);
             if (errorMessage) {
               setErrorMessage('');
+            }
+
+            if (attemptUnlock(nextValue)) {
+              router.back();
             }
           }}
           placeholder="0000"
@@ -45,18 +61,7 @@ export function ParentUnlockModal() {
             <Text style={styles.secondaryText}>Cancel</Text>
           </Pressable>
           <Pressable
-            onPress={() => {
-              const didUnlock = attemptUnlock(pin);
-
-              if (!didUnlock) {
-                setErrorMessage(
-                  'That PIN does not match the temporary parent code.',
-                );
-                return;
-              }
-
-              router.back();
-            }}
+            onPress={() => submitPin(pin)}
             style={styles.primaryAction}
           >
             <Text style={styles.primaryText}>Unlock</Text>

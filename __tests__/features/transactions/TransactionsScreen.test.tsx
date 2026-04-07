@@ -191,4 +191,42 @@ describe('TransactionsScreen', () => {
     ).toBeTruthy();
     expect(screen.getByText('Ava +1 Points [0 > 1]')).toBeTruthy();
   });
+
+  it('shows the new restore head after restoring to a deleted transaction', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({ deviceId: 'tx-delete' }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Test').ok).toBe(true);
+    const deletedChildId = store.getState().document.head.activeChildIds[0];
+    expect(store.getState().archiveChild(deletedChildId).ok).toBe(true);
+    expect(store.getState().deleteChildPermanently(deletedChildId).ok).toBe(
+      true,
+    );
+    expect(store.getState().addChild('Timmy').ok).toBe(true);
+
+    render(
+      <SharedStoreProvider
+        initialDocument={store.getState().document}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <TransactionsScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    fireEvent.press(screen.getByLabelText('Expand Test Deleted'));
+    fireEvent.press(screen.getByText('Restore To This Point'));
+
+    expect(screen.getByTestId('transaction-summary-0').props.children).toBe(
+      'Restored App to Test Deleted',
+    );
+  });
 });

@@ -177,6 +177,7 @@ export function TransactionsScreen() {
   const [highlightedTransactionId, setHighlightedTransactionId] = useState<
     string | null
   >(null);
+  const [pendingHeadFocus, setPendingHeadFocus] = useState(false);
   const [pendingJumpTargetId, setPendingJumpTargetId] = useState<string | null>(
     null,
   );
@@ -260,6 +261,45 @@ export function TransactionsScreen() {
 
     return () => clearTimeout(timeoutId);
   }, [highlightedTransactionId]);
+
+  useEffect(() => {
+    if (!pendingHeadFocus || !document.currentHeadTransactionId) {
+      return;
+    }
+
+    const headItem = findDisplayItemByTransactionId(
+      displayItems,
+      document.currentHeadTransactionId,
+    );
+
+    if (!headItem) {
+      return;
+    }
+
+    setExpandedItemIds((currentIds) =>
+      currentIds.includes(headItem.id)
+        ? currentIds
+        : [...currentIds, headItem.id],
+    );
+    setHighlightedTransactionId(document.currentHeadTransactionId);
+
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollTo({
+        animated: true,
+        y: 0,
+      });
+    });
+
+    setPendingHeadFocus(false);
+  }, [displayItems, document.currentHeadTransactionId, pendingHeadFocus]);
+
+  const handleRestoreTransaction = (transactionId: string) => {
+    const result = restoreTransaction(transactionId);
+
+    if (result.ok) {
+      setPendingHeadFocus(true);
+    }
+  };
 
   return (
     <ScreenScaffold scrollViewRef={scrollViewRef}>
@@ -478,7 +518,7 @@ export function TransactionsScreen() {
                                   <ActionPill
                                     label="Restore To This Point"
                                     onPress={() => {
-                                      restoreTransaction(row.id);
+                                      handleRestoreTransaction(row.id);
                                     }}
                                     tone="primary"
                                   />
@@ -584,7 +624,7 @@ export function TransactionsScreen() {
                     <ActionPill
                       label="Restore To This Point"
                       onPress={() => {
-                        restoreTransaction(row.id);
+                        handleRestoreTransaction(row.id);
                       }}
                       tone="primary"
                     />

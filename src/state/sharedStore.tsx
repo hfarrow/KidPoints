@@ -624,8 +624,8 @@ function summarizeRestoreTarget(
         : 'Child Archived';
     case 'child-restored':
       return targetTransaction.childName
-        ? `${targetTransaction.childName} Restored`
-        : 'Child Restored';
+        ? `${targetTransaction.childName} Unarchived`
+        : 'Child Unarchived';
     case 'child-deleted':
       return targetTransaction.childName
         ? `${targetTransaction.childName} Deleted`
@@ -682,8 +682,8 @@ function summarizeTransactionRow(
         : 'Child Archived';
     case 'child-restored':
       return transaction.childName
-        ? `${transaction.childName} Restored`
-        : 'Child Restored';
+        ? `${transaction.childName} Unarchived`
+        : 'Child Unarchived';
     case 'child-deleted':
       return transaction.childName
         ? `${transaction.childName} Deleted`
@@ -718,16 +718,12 @@ export function deriveTransactionRows(document: SharedDocument) {
       transaction.id === currentRestoreTargetId;
     const isOrphaned = !activeTransactionIds.has(transaction.id);
     const isRestorableNow =
-      !isHead &&
-      transaction.kind !== 'child-deleted' &&
-      (!isOrphaned || document.isOrphanedRestoreWindowOpen);
+      !isHead && (!isOrphaned || document.isOrphanedRestoreWindowOpen);
 
     let restoreDisabledReason: string | undefined;
 
     if (isHead) {
       restoreDisabledReason = 'This is the current HEAD transaction.';
-    } else if (transaction.kind === 'child-deleted') {
-      restoreDisabledReason = 'Permanently deleted history cannot be restored.';
     } else if (isOrphaned && !document.isOrphanedRestoreWindowOpen) {
       restoreDisabledReason =
         'This branch diverged from the current history and can no longer be restored.';

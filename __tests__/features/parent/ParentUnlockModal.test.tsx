@@ -14,7 +14,7 @@ jest.mock('expo-router', () => ({
 }));
 
 describe('ParentUnlockModal', () => {
-  it('rejects a bad pin and accepts 0000', () => {
+  it('rejects a bad pin and accepts 0000 as soon as it is entered', () => {
     render(
       <ParentSessionProvider initialParentUnlocked={false}>
         <AppThemeProvider
@@ -34,7 +34,6 @@ describe('ParentUnlockModal', () => {
     ).toBeTruthy();
 
     fireEvent.changeText(screen.getByLabelText('Parent PIN'), '0000');
-    fireEvent.press(screen.getByText('Unlock'));
 
     expect(mockBack).toHaveBeenCalled();
   });

@@ -60,6 +60,9 @@ export function Tile({
     ) : (
       title
     );
+  const hasVisibleChildren = Boolean(children) && !(collapsible && isCollapsed);
+  const hasVisibleContent =
+    summary != null || footer != null || hasVisibleChildren;
   const toggleCollapsed = () => {
     const nextCollapsed = !isCollapsed;
 
@@ -74,6 +77,10 @@ export function Tile({
       style={[
         styles.tile,
         density === 'extraCompact' && styles.tileExtraCompact,
+        !hasVisibleContent && styles.tileHeaderOnly,
+        !hasVisibleContent &&
+          density === 'extraCompact' &&
+          styles.tileExtraCompactHeaderOnly,
         muted && styles.tileMuted,
         style,
       ]}
@@ -125,25 +132,27 @@ export function Tile({
           ) : null}
         </View>
       )}
-      <View
-        style={[
-          styles.contentWrap,
-          density === 'extraCompact' && styles.contentWrapExtraCompact,
-        ]}
-      >
-        {summary ? (
-          <View
-            style={[
-              styles.summaryRow,
-              density === 'extraCompact' && styles.summaryRowExtraCompact,
-            ]}
-          >
-            <View style={styles.summary}>{summary}</View>
-          </View>
-        ) : null}
-        {collapsible && isCollapsed ? null : children}
-        {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
-      </View>
+      {hasVisibleContent ? (
+        <View
+          style={[
+            styles.contentWrap,
+            density === 'extraCompact' && styles.contentWrapExtraCompact,
+          ]}
+        >
+          {summary ? (
+            <View
+              style={[
+                styles.summaryRow,
+                density === 'extraCompact' && styles.summaryRowExtraCompact,
+              ]}
+            >
+              <View style={styles.summary}>{summary}</View>
+            </View>
+          ) : null}
+          {hasVisibleChildren ? children : null}
+          {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -162,6 +171,12 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       paddingBottom: 8,
       paddingHorizontal: 10,
       paddingTop: 6,
+    },
+    tileHeaderOnly: {
+      paddingBottom: 8,
+    },
+    tileExtraCompactHeaderOnly: {
+      paddingBottom: 6,
     },
     tileMuted: {
       backgroundColor: tokens.tileMutedSurface,
