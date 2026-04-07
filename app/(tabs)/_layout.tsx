@@ -1,0 +1,86 @@
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Tabs, useRouter } from 'expo-router';
+
+import { useShellSession } from '../../src/features/shell/shellContext';
+import { useAppTheme } from '../../src/features/theme/themeContext';
+
+export default function TabsLayout() {
+  const router = useRouter();
+  const { isParentUnlocked } = useShellSession();
+  const { tokens } = useAppTheme();
+
+  return (
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        sceneStyle: {
+          backgroundColor: tokens.screenBackground,
+        },
+        tabBarActiveBackgroundColor: tokens.tabBarActiveBackground,
+        tabBarActiveTintColor: tokens.tabBarActiveTint,
+        tabBarInactiveTintColor: tokens.tabBarInactiveTint,
+        tabBarStyle: {
+          height: 78,
+          backgroundColor: tokens.tabBarBackground,
+          borderTopColor: tokens.border,
+          paddingBottom: 14,
+          paddingTop: 8,
+        },
+        tabBarItemStyle: {
+          borderRadius: 16,
+          marginHorizontal: 6,
+          marginTop: 2,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '800',
+        },
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons color={color} name="home-outline" size={size} />
+          ),
+          tabBarLabel: 'Home',
+        }}
+      />
+      <Tabs.Screen
+        name="alarm"
+        listeners={{
+          tabPress: (event) => {
+            if (isParentUnlocked) {
+              return;
+            }
+
+            event.preventDefault();
+            router.push('/parent-unlock');
+          },
+        }}
+        options={{
+          title: 'Alarm',
+          tabBarIcon: ({ color, size }) => (
+            <Feather color={color} name="clock" size={size} />
+          ),
+          tabBarLabel: 'Alarm',
+        }}
+      />
+      <Tabs.Screen
+        name="shop"
+        options={{
+          title: 'Shop',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons
+              color={color}
+              name="shopping-outline"
+              size={size}
+            />
+          ),
+          tabBarLabel: 'Shop',
+        }}
+      />
+    </Tabs>
+  );
+}
