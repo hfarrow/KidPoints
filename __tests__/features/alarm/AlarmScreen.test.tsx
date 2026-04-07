@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { AlarmScreen } from '../../../src/features/alarm/AlarmScreen';
 import { ShellSessionProvider } from '../../../src/features/shell/shellContext';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
+import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockPush = jest.fn();
 
@@ -30,7 +31,10 @@ describe('AlarmScreen', () => {
   it('renders the locked shell state and opens the unlock flow', () => {
     render(
       <ShellSessionProvider initialParentUnlocked={false}>
-        <AppThemeProvider initialThemeMode="light">
+        <AppThemeProvider
+          initialThemeMode="light"
+          storage={createMemoryStorage()}
+        >
           <AlarmScreen />
         </AppThemeProvider>
       </ShellSessionProvider>,

@@ -1,41 +1,40 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
-import { ParentUnlockScreen } from '../../../src/features/parent/ParentUnlockScreen';
+import { SettingsScreen } from '../../../src/features/settings/SettingsScreen';
 import { ShellSessionProvider } from '../../../src/features/shell/shellContext';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockBack = jest.fn();
+const mockPush = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: mockBack,
+    push: mockPush,
   }),
 }));
 
-describe('ParentUnlockScreen', () => {
-  it('rejects a bad pin and accepts 0000', () => {
+describe('SettingsScreen', () => {
+  it('renders as a screen and links to the routed management surfaces', () => {
     render(
       <ShellSessionProvider initialParentUnlocked={false}>
         <AppThemeProvider
           initialThemeMode="light"
           storage={createMemoryStorage()}
         >
-          <ParentUnlockScreen />
+          <SettingsScreen />
         </AppThemeProvider>
       </ShellSessionProvider>,
     );
 
-    fireEvent.changeText(screen.getByLabelText('Parent PIN'), '1111');
-    fireEvent.press(screen.getByText('Unlock'));
+    expect(screen.getByText('Settings')).toBeTruthy();
+    expect(screen.getByText('Display mode')).toBeTruthy();
 
-    expect(
-      screen.getByText('That PIN does not match the temporary parent code.'),
-    ).toBeTruthy();
+    fireEvent.press(screen.getByText('Archived children'));
+    expect(mockPush).toHaveBeenCalledWith('/list-browser');
 
-    fireEvent.changeText(screen.getByLabelText('Parent PIN'), '0000');
-    fireEvent.press(screen.getByText('Unlock'));
-
+    fireEvent.press(screen.getByText('Back'));
     expect(mockBack).toHaveBeenCalled();
   });
 });

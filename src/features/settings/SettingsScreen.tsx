@@ -23,11 +23,11 @@ export function SettingsScreen() {
 
   return (
     <ScreenScaffold
-      footer={<ActionPill label="Close" onPress={() => router.back()} />}
+      footer={<ActionPill label="Back" onPress={() => router.back()} />}
     >
       <ScreenHeader
-        eyebrow="Shared surface"
-        subtitle="Temporary in-memory settings for the shell. Persistence and Zustand come next."
+        eyebrow="Preferences"
+        subtitle="Device-only settings live here, while family data and transactions stay in the shared Zustand document."
         title="Settings"
       />
 
@@ -74,7 +74,7 @@ export function SettingsScreen() {
         title="Shell session"
       >
         <Text style={styles.body}>
-          Parent Mode is temporary in this milestone, uses the hardcoded PIN
+          Parent Mode stays local to this device for now, uses the hardcoded PIN
           `0000`, and defaults to unlocked in development.
         </Text>
         <ActionPillRow>
@@ -84,7 +84,7 @@ export function SettingsScreen() {
             tone="primary"
           />
           <ActionPill
-            label="Open list browser"
+            label="Archived children"
             onPress={() => router.push('/list-browser')}
           />
         </ActionPillRow>

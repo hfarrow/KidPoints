@@ -1,13 +1,11 @@
 import type { StatusBarStyle } from 'expo-status-bar';
-import {
-  createContext,
-  type PropsWithChildren,
-  useContext,
-  useMemo,
-  useState,
-} from 'react';
+import { type PropsWithChildren, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
-
+import type { StateStorage } from 'zustand/middleware';
+import {
+  LocalSettingsStoreProvider,
+  useLocalSettingsStore,
+} from '../../state/localSettingsStore';
 import {
   getThemeTokens,
   type ResolvedTheme,
@@ -25,51 +23,48 @@ type AppThemeValue = {
   tokens: ThemeTokens;
 };
 
-const AppThemeContext = createContext<AppThemeValue | null>(null);
-
 type AppThemeProviderProps = PropsWithChildren<{
   initialThemeMode?: ThemeMode;
+  storage?: StateStorage;
 }>;
 
 export function AppThemeProvider({
   children,
   initialThemeMode = 'system',
+  storage,
 }: AppThemeProviderProps) {
+  return (
+    <LocalSettingsStoreProvider
+      initialThemeMode={initialThemeMode}
+      storage={storage}
+    >
+      {children}
+    </LocalSettingsStoreProvider>
+  );
+}
+
+export function useAppTheme() {
   const systemColorScheme = useColorScheme();
-  const [themeMode, setThemeMode] = useState<ThemeMode>(initialThemeMode);
+  const themeMode = useLocalSettingsStore((state) => state.themeMode);
+  const setThemeMode = useLocalSettingsStore((state) => state.setThemeMode);
   const resolvedTheme = resolveTheme(
     themeMode,
     systemColorScheme === 'dark' ? 'dark' : 'light',
   );
 
-  const value = useMemo<AppThemeValue>(() => {
+  return useMemo<AppThemeValue>(() => {
     const tokens = getThemeTokens(resolvedTheme);
 
     return {
-      getScreenSurface: () => tokens.screenBackground,
+      getScreenSurface: (isParentMode) =>
+        isParentMode ? tokens.screenBackgroundParent : tokens.screenBackground,
       resolvedTheme,
       setThemeMode,
       statusBarStyle: resolvedTheme === 'dark' ? 'light' : 'dark',
       themeMode,
       tokens,
     };
-  }, [resolvedTheme, themeMode]);
-
-  return (
-    <AppThemeContext.Provider value={value}>
-      {children}
-    </AppThemeContext.Provider>
-  );
-}
-
-export function useAppTheme() {
-  const value = useContext(AppThemeContext);
-
-  if (!value) {
-    throw new Error('useAppTheme must be used within AppThemeProvider');
-  }
-
-  return value;
+  }, [resolvedTheme, setThemeMode, themeMode]);
 }
 
 export function useThemedStyles<T>(factory: (theme: AppThemeValue) => T) {

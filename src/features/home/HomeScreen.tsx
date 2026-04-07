@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
@@ -10,6 +11,10 @@ import {
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
+import {
+  selectHomeTimerSummary,
+  useSharedStore,
+} from '../../state/sharedStore';
 import { MainScreenActions } from '../shell/MainScreenActions';
 import { useShellSession } from '../shell/shellContext';
 import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
@@ -18,6 +23,17 @@ export function HomeScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked } = useShellSession();
+  const head = useSharedStore((state) => state.document.head);
+  const homeTimerSummary = useSharedStore(selectHomeTimerSummary);
+  const adjustPoints = useSharedStore((state) => state.adjustPoints);
+  const archiveChild = useSharedStore((state) => state.archiveChild);
+  const activeChildren = useMemo(
+    () =>
+      head.activeChildIds
+        .map((childId) => head.childrenById[childId])
+        .filter(Boolean),
+    [head],
+  );
 
   const compactGear = isParentUnlocked ? (
     <View style={[styles.iconAction, styles.iconActionNeutral]}>
@@ -30,65 +46,153 @@ export function HomeScreen() {
       <ScreenHeader actions={<MainScreenActions />} title="Home" />
 
       <Tile
-        accessory={compactGear ?? <StatusBadge label="Ready" tone="good" />}
+        accessory={
+          <StatusBadge label={homeTimerSummary.statusLabel} tone="neutral" />
+        }
         summary={
           <View style={styles.timerSummary}>
             <View style={styles.timerValueWrap}>
-              <Text style={styles.primaryMetric}>00:30</Text>
+              <Text style={styles.primaryMetric}>
+                {homeTimerSummary.remainingLabel}
+              </Text>
             </View>
-            <View style={styles.timerControlsRail}>
-              <View
-                style={[
-                  styles.timerControlSegment,
-                  styles.timerControlSegmentLeft,
-                ]}
-              >
-                <Text style={styles.timerControlText}>Start</Text>
-              </View>
-              <View
-                style={[
-                  styles.timerControlSegment,
-                  styles.timerControlSegmentRight,
-                ]}
-              >
-                <Text style={styles.timerControlText}>Reset</Text>
-              </View>
-            </View>
+            <Text style={styles.timerMeta}>
+              {homeTimerSummary.intervalLabel}
+            </Text>
           </View>
         }
         title="Check-In"
-      />
-
-      <Tile title="Add Child">
-        <View style={styles.emptyStateRow}>
-          <ActionPill label="Add" tone="primary" />
-          <Text style={styles.emptyStateCopy}>Add a child to get started!</Text>
-        </View>
+      >
+        <Text style={styles.bodyCopy}>
+          Alarm behavior will connect here next. For now, Home reads a stable
+          timer summary from the shared document.
+        </Text>
       </Tile>
 
-      <Tile
-        accessory={compactGear}
-        summary={
-          <View style={styles.pointsSummary}>
-            <View style={styles.pointsRail}>
-              <View style={[styles.pointsSegment, styles.pointsCapLeft]}>
-                <Text style={[styles.pointsCapText, styles.pointsCapTextLeft]}>
-                  -1
-                </Text>
-              </View>
-              <View style={styles.pointsCore}>
-                <Text style={styles.pointsValue}>128</Text>
-              </View>
-              <View style={[styles.pointsSegment, styles.pointsCapRight]}>
-                <Text style={[styles.pointsCapText, styles.pointsCapTextRight]}>
-                  +1
-                </Text>
+      {activeChildren.length === 0 ? (
+        <Tile title="Add Child">
+          <View style={styles.emptyStateColumn}>
+            <Text style={styles.emptyStateCopy}>
+              Add a child to get started!
+            </Text>
+            <ActionPill
+              label={isParentUnlocked ? 'Add child' : 'Unlock to add'}
+              onPress={() => {
+                if (isParentUnlocked) {
+                  router.push('/edit-dialog?mode=add-child');
+                  return;
+                }
+
+                router.push('/parent-unlock');
+              }}
+              tone="primary"
+            />
+          </View>
+        </Tile>
+      ) : null}
+
+      {activeChildren.map((child) => (
+        <Tile
+          key={child.id}
+          accessory={
+            compactGear ?? (
+              <StatusBadge
+                label={isParentUnlocked ? 'Parent ready' : 'Locked'}
+                tone={isParentUnlocked ? 'good' : 'warning'}
+              />
+            )
+          }
+          summary={
+            <View style={styles.pointsSummary}>
+              <View style={styles.pointsRail}>
+                {isParentUnlocked ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      adjustPoints(child.id, -1);
+                    }}
+                    style={[styles.pointsSegment, styles.pointsCapLeft]}
+                  >
+                    <Text
+                      style={[styles.pointsCapText, styles.pointsCapTextLeft]}
+                    >
+                      -1
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <View style={[styles.pointsSegment, styles.pointsCapLeft]}>
+                    <Text
+                      style={[styles.pointsCapText, styles.pointsCapTextLeft]}
+                    >
+                      PIN
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.pointsCore}>
+                  <Text style={styles.pointsValue}>{child.points}</Text>
+                </View>
+                {isParentUnlocked ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      adjustPoints(child.id, 1);
+                    }}
+                    style={[styles.pointsSegment, styles.pointsCapRight]}
+                  >
+                    <Text
+                      style={[styles.pointsCapText, styles.pointsCapTextRight]}
+                    >
+                      +1
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <View style={[styles.pointsSegment, styles.pointsCapRight]}>
+                    <Text
+                      style={[styles.pointsCapText, styles.pointsCapTextRight]}
+                    >
+                      LOCK
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
-          </View>
-        }
-        title="Ava"
-      />
+          }
+          title={child.name}
+        >
+          {isParentUnlocked ? (
+            <ActionPillRow>
+              <ActionPill
+                label="Edit total"
+                onPress={() =>
+                  router.push(
+                    `/edit-dialog?mode=set-points&childId=${child.id}`,
+                  )
+                }
+              />
+              <ActionPill
+                label="Archive"
+                onPress={() => {
+                  archiveChild(child.id);
+                }}
+                tone="critical"
+              />
+            </ActionPillRow>
+          ) : (
+            <>
+              <Text style={styles.bodyCopy}>
+                Unlock Parent Mode to change points or manage this child.
+              </Text>
+              <ActionPillRow>
+                <ActionPill
+                  label="Unlock Parent Mode"
+                  onPress={() => router.push('/parent-unlock')}
+                  tone="primary"
+                />
+              </ActionPillRow>
+            </>
+          )}
+        </Tile>
+      ))}
 
       <Tile
         accessory={
@@ -99,17 +203,33 @@ export function HomeScreen() {
         }
         title="Parent"
       >
-        <ActionPillRow>
-          <ActionPill label="Add child" />
-          <ActionPill
-            label="Archive"
-            onPress={() => router.push('/list-browser')}
-          />
-          <ActionPill
-            label="Edit"
-            onPress={() => router.push('/edit-dialog')}
-          />
-        </ActionPillRow>
+        {isParentUnlocked ? (
+          <ActionPillRow>
+            <ActionPill
+              label="Add child"
+              onPress={() => router.push('/edit-dialog?mode=add-child')}
+              tone="primary"
+            />
+            <ActionPill
+              label="Archived children"
+              onPress={() => router.push('/list-browser')}
+            />
+          </ActionPillRow>
+        ) : (
+          <>
+            <Text style={styles.bodyCopy}>
+              Parent tools stay available here once the local unlock prompt has
+              been completed.
+            </Text>
+            <ActionPillRow>
+              <ActionPill
+                label="Unlock with PIN"
+                onPress={() => router.push('/parent-unlock')}
+                tone="primary"
+              />
+            </ActionPillRow>
+          </>
+        )}
       </Tile>
     </ScreenScaffold>
   );
@@ -125,10 +245,18 @@ const createStyles = ({
       flexDirection: 'row',
       gap: 10,
     },
+    emptyStateColumn: {
+      gap: 10,
+    },
     emptyStateCopy: {
       color: tokens.textMuted,
       fontSize: 13,
       fontWeight: '600',
+      lineHeight: 18,
+    },
+    bodyCopy: {
+      color: tokens.textMuted,
+      fontSize: 13,
       lineHeight: 18,
     },
     iconAction: {
@@ -146,10 +274,8 @@ const createStyles = ({
       color: tokens.controlText,
     },
     timerSummary: {
-      alignItems: 'center',
       flex: 1,
-      flexDirection: 'row',
-      gap: 8,
+      gap: 4,
       minWidth: 0,
     },
     timerValueWrap: {
@@ -162,33 +288,8 @@ const createStyles = ({
       fontVariant: ['tabular-nums'],
       letterSpacing: -0.6,
     },
-    timerControlsRail: {
-      backgroundColor: tokens.controlSurface,
-      borderRadius: 999,
-      flex: 1,
-      flexDirection: 'row',
-      minHeight: 38,
-      minWidth: 0,
-      overflow: 'hidden',
-    },
-    timerControlSegment: {
-      alignItems: 'center',
-      flex: 1,
-      justifyContent: 'center',
-      minWidth: 0,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-    },
-    timerControlSegmentLeft: {
-      borderRightColor: tokens.border,
-      borderRightWidth: 1,
-    },
-    timerControlSegmentRight: {
-      borderLeftColor: tokens.border,
-      borderLeftWidth: 1,
-    },
-    timerControlText: {
-      color: tokens.controlText,
+    timerMeta: {
+      color: tokens.textMuted,
       fontSize: 12,
       fontWeight: '800',
     },

@@ -5,6 +5,7 @@ import {
   AppThemeProvider,
   useAppTheme,
 } from '../../../src/features/theme/themeContext';
+import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 function ThemeProbe() {
   const { resolvedTheme, setThemeMode, themeMode, tokens } = useAppTheme();
@@ -27,7 +28,10 @@ function ThemeProbe() {
 describe('AppThemeProvider', () => {
   it('updates temporary theme mode in memory', () => {
     render(
-      <AppThemeProvider initialThemeMode="system">
+      <AppThemeProvider
+        initialThemeMode="system"
+        storage={createMemoryStorage()}
+      >
         <ThemeProbe />
       </AppThemeProvider>,
     );

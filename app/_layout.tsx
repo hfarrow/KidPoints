@@ -12,12 +12,12 @@ function RootNavigator() {
       <StatusBar style={statusBarStyle} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="settings" />
         <Stack.Screen
           name="parent-unlock"
           options={{ presentation: 'transparentModal' }}
         />
-        <Stack.Screen name="list-browser" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="list-browser" />
         <Stack.Screen
           name="edit-dialog"
           options={{ presentation: 'transparentModal' }}

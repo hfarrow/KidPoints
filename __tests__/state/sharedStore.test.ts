@@ -1,0 +1,68 @@
+import {
+  createInitialSharedDocument,
+  createSharedStore,
+  deriveTransactionRows,
+  replaySharedDocument,
+} from '../../src/state/sharedStore';
+import { createMemoryStorage } from '../testUtils/memoryStorage';
+
+describe('sharedStore transaction engine', () => {
+  it('records critical actions, derives grouped transaction rows, and restores with new events', () => {
+    const storage = createMemoryStorage();
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({ deviceId: 'device-a' }),
+      storage,
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+    expect(store.getState().setPoints(childId, 7).ok).toBe(true);
+
+    const transactionRows = deriveTransactionRows(
+      store.getState().document.events,
+    );
+    const groupedAdjustRow = transactionRows.find(
+      (row) => row.summaryType === 'points-adjusted',
+    );
+    const exactSetRow = transactionRows.find(
+      (row) => row.summaryType === 'points-set',
+    );
+
+    expect(groupedAdjustRow?.delta).toBe(2);
+    expect(groupedAdjustRow?.eventIds).toHaveLength(2);
+    expect(exactSetRow?.restoreDescriptor.target?.points).toBe(2);
+
+    expect(store.getState().restoreTransaction(exactSetRow?.id ?? '').ok).toBe(
+      true,
+    );
+
+    const document = store.getState().document;
+    const replayedDocument = replaySharedDocument(document);
+
+    expect(document.head.childrenById[childId]?.points).toBe(2);
+    expect(replayedDocument.head).toEqual(document.head);
+    expect(document.events.at(-1)?.type).toBe('child.pointsSet');
+  });
+
+  it('archives and restores children through recorded events', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({ deviceId: 'device-b' }),
+      storage: createMemoryStorage(),
+    });
+
+    store.getState().addChild('Milo');
+    const childId = store.getState().document.head.activeChildIds[0];
+
+    expect(store.getState().archiveChild(childId).ok).toBe(true);
+    expect(store.getState().document.head.archivedChildIds).toContain(childId);
+
+    expect(store.getState().restoreChild(childId).ok).toBe(true);
+    expect(store.getState().document.head.activeChildIds).toContain(childId);
+    expect(store.getState().document.events.at(-1)?.type).toBe(
+      'child.restored',
+    );
+  });
+});
