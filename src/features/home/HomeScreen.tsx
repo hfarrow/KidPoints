@@ -59,7 +59,7 @@ export function HomeScreen() {
         title="Check-In"
       />
 
-      <Tile muted title="Add Child">
+      <Tile title="Add Child">
         <View style={styles.emptyStateRow}>
           <ActionPill label="Add" tone="primary" />
           <Text style={styles.emptyStateCopy}>Add a child to get started!</Text>
@@ -211,15 +211,15 @@ const createStyles = ({
       paddingVertical: 8,
     },
     pointsCapLeft: {
-      backgroundColor: resolvedTheme === 'dark' ? '#4a1f1d' : '#fee2e2',
-      borderRightColor: resolvedTheme === 'dark' ? '#7f1d1d' : '#fbcfe8',
+      backgroundColor: resolvedTheme === 'dark' ? '#562646' : '#ffd7eb',
+      borderRightColor: resolvedTheme === 'dark' ? '#7c3a63' : '#f4b6d6',
       borderRightWidth: 1,
       flexBasis: 0,
       flexGrow: 2,
     },
     pointsCapRight: {
-      backgroundColor: resolvedTheme === 'dark' ? '#15352b' : '#dcfce7',
-      borderLeftColor: resolvedTheme === 'dark' ? '#166534' : '#bbf7d0',
+      backgroundColor: resolvedTheme === 'dark' ? '#1f3560' : '#dbe8ff',
+      borderLeftColor: resolvedTheme === 'dark' ? '#33528d' : '#bccffb',
       borderLeftWidth: 1,
       flexBasis: 0,
       flexGrow: 2,
@@ -239,10 +239,10 @@ const createStyles = ({
       fontWeight: '800',
     },
     pointsCapTextLeft: {
-      color: resolvedTheme === 'dark' ? '#fee2e2' : '#7f1d1d',
+      color: resolvedTheme === 'dark' ? '#ffe5f1' : '#8a1d55',
     },
     pointsCapTextRight: {
-      color: resolvedTheme === 'dark' ? '#dcfce7' : '#166534',
+      color: resolvedTheme === 'dark' ? '#e2ecff' : '#23458f',
     },
     pointsValue: {
       color: tokens.textPrimary,

@@ -46,8 +46,7 @@ export function AppThemeProvider({
     const tokens = getThemeTokens(resolvedTheme);
 
     return {
-      getScreenSurface: (isParentMode) =>
-        isParentMode ? tokens.screenBackgroundParent : tokens.screenBackground,
+      getScreenSurface: () => tokens.screenBackground,
       resolvedTheme,
       setThemeMode,
       statusBarStyle: resolvedTheme === 'dark' ? 'light' : 'dark',

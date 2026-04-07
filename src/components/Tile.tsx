@@ -39,11 +39,7 @@ export function Tile({
 
   return (
     <View style={[styles.tile, muted && styles.tileMuted, style]}>
-      <View style={styles.titleWrap}>
-        <View style={[styles.titleCapsule, muted && styles.titleCapsuleMuted]}>
-          {titleNode}
-        </View>
-      </View>
+      <View style={styles.headerRow}>{titleNode}</View>
       <View style={styles.contentWrap}>
         {summary || accessory ? (
           <View style={styles.summaryRow}>
@@ -66,31 +62,15 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       borderRadius: 18,
       paddingHorizontal: 12,
       paddingBottom: 12,
-      paddingTop: 18,
+      paddingTop: 8,
     },
     tileMuted: {
       backgroundColor: tokens.tileMutedSurface,
     },
-    titleWrap: {
-      left: 12,
-      position: 'absolute',
-      right: 12,
-      top: 0,
-      transform: [{ translateY: -8 }],
-      zIndex: 1,
-    },
-    titleCapsule: {
-      alignItems: 'center',
-      alignSelf: 'flex-start',
-      backgroundColor: tokens.tileSurface,
-      borderRadius: 999,
-      flexDirection: 'row',
-      maxWidth: '100%',
-      paddingHorizontal: 11,
-      paddingVertical: 4,
-    },
-    titleCapsuleMuted: {
-      backgroundColor: tokens.tileMutedSurface,
+    headerRow: {
+      alignItems: 'flex-start',
+      justifyContent: 'flex-start',
+      minHeight: 20,
     },
     title: {
       color: tokens.textPrimary,
