@@ -19,7 +19,7 @@ const THEME_OPTIONS: ThemeMode[] = ['light', 'dark', 'system'];
 export function SettingsScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
-  const { isParentUnlocked } = useParentSession();
+  const { isParentUnlocked, lockParentMode } = useParentSession();
   const { resolvedTheme, setThemeMode, themeMode, tokens } = useAppTheme();
 
   return (
@@ -78,13 +78,16 @@ export function SettingsScreen() {
         </Text>
         <ActionPillRow>
           <ActionPill
-            label="Open Unlock"
-            onPress={() => router.push('/parent-unlock')}
+            label={isParentUnlocked ? 'Lock' : 'Unlock'}
+            onPress={() => {
+              if (isParentUnlocked) {
+                lockParentMode();
+                return;
+              }
+
+              router.push('/parent-unlock');
+            }}
             tone="primary"
-          />
-          <ActionPill
-            label="Archived Children"
-            onPress={() => router.push('/list-browser')}
           />
         </ActionPillRow>
       </Tile>

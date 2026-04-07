@@ -28,7 +28,12 @@ jest.mock('expo-router', () => ({
 }));
 
 describe('SettingsScreen', () => {
-  it('renders as a screen and links to the routed management surfaces', () => {
+  beforeEach(() => {
+    mockBack.mockReset();
+    mockPush.mockReset();
+  });
+
+  it('shows Unlock in the locked state and opens the parent modal', () => {
     render(
       <ParentSessionProvider initialParentUnlocked={false}>
         <AppThemeProvider
@@ -43,11 +48,29 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('Settings')).toBeTruthy();
     expect(screen.getByText('Theme')).toBeTruthy();
     expect(screen.getByLabelText('Go Back')).toBeTruthy();
+    expect(screen.getByText('Unlock')).toBeTruthy();
+    expect(screen.queryByText('Archived Children')).toBeNull();
 
-    fireEvent.press(screen.getByText('Archived Children'));
-    expect(mockPush).toHaveBeenCalledWith('/list-browser');
+    fireEvent.press(screen.getByText('Unlock'));
+    expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
 
     fireEvent.press(screen.getByLabelText('Go Back'));
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('shows Lock in the unlocked state and does not route away', () => {
+    render(
+      <ParentSessionProvider initialParentUnlocked>
+        <AppThemeProvider
+          initialThemeMode="light"
+          storage={createMemoryStorage()}
+        >
+          <SettingsScreen />
+        </AppThemeProvider>
+      </ParentSessionProvider>,
+    );
+
+    fireEvent.press(screen.getByText('Lock'));
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
