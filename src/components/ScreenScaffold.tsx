@@ -1,4 +1,4 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import type { PropsWithChildren, ReactNode, RefObject } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -7,9 +7,14 @@ import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
 
 type ScreenScaffoldProps = PropsWithChildren<{
   footer?: ReactNode;
+  scrollViewRef?: RefObject<ScrollView | null>;
 }>;
 
-export function ScreenScaffold({ children, footer }: ScreenScaffoldProps) {
+export function ScreenScaffold({
+  children,
+  footer,
+  scrollViewRef,
+}: ScreenScaffoldProps) {
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked } = useParentSession();
   const { getScreenSurface } = useAppTheme();
@@ -22,7 +27,9 @@ export function ScreenScaffold({ children, footer }: ScreenScaffoldProps) {
         { backgroundColor: getScreenSurface(isParentUnlocked) },
       ]}
     >
-      <ScrollView contentContainerStyle={styles.content}>{children}</ScrollView>
+      <ScrollView contentContainerStyle={styles.content} ref={scrollViewRef}>
+        {children}
+      </ScrollView>
       {footer ? <View style={styles.footer}>{footer}</View> : null}
     </SafeAreaView>
   );

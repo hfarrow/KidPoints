@@ -17,13 +17,14 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import type {
   ChildSnapshot,
   HomeTimerSummary,
-  RestoreDescriptor,
   SharedCommandResult,
   SharedDocument,
   SharedEvent,
   SharedHead,
+  TransactionFilterChild,
+  TransactionKind,
+  TransactionRecord,
   TransactionRow,
-  TransactionSummaryType,
 } from './sharedTypes';
 
 type SharedStoreState = {
@@ -33,15 +34,13 @@ type SharedStoreState = {
   deleteChildPermanently: (childId: string) => SharedCommandResult;
   document: SharedDocument;
   restoreChild: (childId: string) => SharedCommandResult;
-  restoreTransaction: (
-    target: RestoreDescriptor | string,
-  ) => SharedCommandResult;
+  restoreTransaction: (transactionId: string) => SharedCommandResult;
   setPoints: (childId: string, points: number) => SharedCommandResult;
 };
 
 type SharedStore = StoreApi<SharedStoreState>;
 
-const SHARED_STORAGE_KEY = 'kidpoints.shared-document.v1';
+const SHARED_STORAGE_KEY = 'kidpoints.shared-document.v2';
 
 const DEFAULT_HOME_TIMER_SUMMARY: HomeTimerSummary = {
   intervalLabel: '15 minute cadence',
@@ -56,6 +55,15 @@ type SharedStoreProviderProps = PropsWithChildren<{
   storage?: StateStorage;
 }>;
 
+function createEmptyHead(): SharedHead {
+  return {
+    activeChildIds: [],
+    archivedChildIds: [],
+    childrenById: {},
+    homeTimerSummary: DEFAULT_HOME_TIMER_SUMMARY,
+  };
+}
+
 function generateId(prefix: string) {
   const randomPart = Math.random().toString(36).slice(2, 10);
 
@@ -64,29 +72,6 @@ function generateId(prefix: string) {
 
 function cloneChildSnapshot(child: ChildSnapshot): ChildSnapshot {
   return { ...child };
-}
-
-function normalizeName(name: string) {
-  return name.trim().replace(/\s+/g, ' ');
-}
-
-export function createInitialSharedDocument({
-  deviceId = generateId('device'),
-}: {
-  deviceId?: string;
-} = {}): SharedDocument {
-  return {
-    deviceId,
-    events: [],
-    head: {
-      activeChildIds: [],
-      archivedChildIds: [],
-      childrenById: {},
-      homeTimerSummary: DEFAULT_HOME_TIMER_SUMMARY,
-    },
-    nextSequence: 1,
-    schemaVersion: 1,
-  };
 }
 
 function cloneHead(head: SharedHead): SharedHead {
@@ -103,12 +88,43 @@ function cloneHead(head: SharedHead): SharedHead {
   };
 }
 
+function normalizeName(name: string) {
+  return name.trim().replace(/\s+/g, ' ');
+}
+
 function insertUniqueId(ids: string[], id: string) {
   return ids.includes(id) ? ids : [...ids, id];
 }
 
 function removeId(ids: string[], id: string) {
   return ids.filter((value) => value !== id);
+}
+
+function getChild(head: SharedHead, childId: string) {
+  return head.childrenById[childId] ?? null;
+}
+
+function areChildrenEquivalent(
+  left: ChildSnapshot | null,
+  right: ChildSnapshot | null,
+) {
+  if (!left && !right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    left.archivedAt === right.archivedAt &&
+    left.createdAt === right.createdAt &&
+    left.id === right.id &&
+    left.name === right.name &&
+    left.points === right.points &&
+    left.status === right.status &&
+    left.updatedAt === right.updatedAt
+  );
 }
 
 function sortEventsCanonical(events: SharedEvent[]) {
@@ -119,6 +135,23 @@ function sortEventsCanonical(events: SharedEvent[]) {
 
     return left.sequence - right.sequence;
   });
+}
+
+export function createInitialSharedDocument({
+  deviceId = generateId('device'),
+}: {
+  deviceId?: string;
+} = {}): SharedDocument {
+  return {
+    currentHeadTransactionId: null,
+    deviceId,
+    events: [],
+    head: createEmptyHead(),
+    isOrphanedRestoreWindowOpen: false,
+    nextSequence: 1,
+    schemaVersion: 2,
+    transactions: [],
+  };
 }
 
 export function applySharedEvent(head: SharedHead, event: SharedEvent) {
@@ -230,23 +263,77 @@ export function applySharedEvent(head: SharedHead, event: SharedEvent) {
   }
 }
 
-export function replaySharedDocument(document: SharedDocument): SharedDocument {
-  const sortedEvents = sortEventsCanonical(document.events);
-  const initialHead: SharedHead = {
-    activeChildIds: [],
-    archivedChildIds: [],
-    childrenById: {},
-    homeTimerSummary: DEFAULT_HOME_TIMER_SUMMARY,
-  };
-  const head = sortedEvents.reduce<SharedHead>(
-    (currentHead, event) => applySharedEvent(currentHead, event),
-    initialHead,
+function getHeadForCurrentTransaction(
+  transactions: TransactionRecord[],
+  currentHeadTransactionId: string | null,
+) {
+  if (transactions.length === 0) {
+    return createEmptyHead();
+  }
+
+  const headTransaction =
+    transactions.find(
+      (transaction) => transaction.id === currentHeadTransactionId,
+    ) ?? transactions.at(-1);
+
+  return headTransaction
+    ? cloneHead(headTransaction.stateAfter)
+    : createEmptyHead();
+}
+
+function deriveNextSequence(events: SharedEvent[]) {
+  const maxSequence = events.reduce(
+    (currentMax, event) => Math.max(currentMax, event.sequence),
+    0,
   );
 
+  return maxSequence + 1;
+}
+
+function isSharedDocument(value: unknown): value is SharedDocument {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<SharedDocument>;
+
+  return (
+    candidate.schemaVersion === 2 &&
+    typeof candidate.deviceId === 'string' &&
+    Array.isArray(candidate.events) &&
+    Array.isArray(candidate.transactions)
+  );
+}
+
+export function cloneSharedDocument(
+  document: SharedDocument | null | undefined,
+): SharedDocument {
+  if (!document) {
+    return createInitialSharedDocument();
+  }
+
+  const events = sortEventsCanonical(document.events);
+  const transactions = document.transactions.map((transaction) => ({
+    ...transaction,
+    affectedChildIds: [...transaction.affectedChildIds],
+    eventIds: [...transaction.eventIds],
+    stateAfter: cloneHead(transaction.stateAfter),
+  }));
+  const currentHeadTransactionId = transactions.some(
+    (transaction) => transaction.id === document.currentHeadTransactionId,
+  )
+    ? document.currentHeadTransactionId
+    : (transactions.at(-1)?.id ?? null);
+
   return {
-    ...document,
-    events: sortedEvents,
-    head,
+    currentHeadTransactionId,
+    deviceId: document.deviceId,
+    events,
+    head: getHeadForCurrentTransaction(transactions, currentHeadTransactionId),
+    isOrphanedRestoreWindowOpen: Boolean(document.isOrphanedRestoreWindowOpen),
+    nextSequence: document.nextSequence ?? deriveNextSequence(events),
+    schemaVersion: 2,
+    transactions,
   };
 }
 
@@ -271,181 +358,417 @@ function createEventBuilder(document: SharedDocument) {
       nextSequence += 1;
       return event;
     },
-    getNextSequence() {
-      return nextSequence;
-    },
   };
 }
 
-function commitSharedEvents(
-  document: SharedDocument,
-  eventsToAppend: SharedEvent[],
-): SharedDocument {
-  const lastEvent = eventsToAppend.at(-1);
-  const nextDocument = replaySharedDocument({
+function createTransactionRecord(args: {
+  affectedChildIds: string[];
+  childAfter: ChildSnapshot | null;
+  childBefore: ChildSnapshot | null;
+  childId: string | null;
+  eventIds: string[];
+  kind: TransactionKind;
+  occurredAt: string;
+  parentTransactionId: string | null;
+  pointsAfter?: number;
+  pointsBefore?: number;
+  restoredFromTransactionId?: string;
+  restoredToTransactionId?: string;
+  stateAfter: SharedHead;
+  transactionId?: string;
+}) {
+  const {
+    affectedChildIds,
+    childAfter,
+    childBefore,
+    childId,
+    eventIds,
+    kind,
+    occurredAt,
+    parentTransactionId,
+    pointsAfter,
+    pointsBefore,
+    restoredFromTransactionId,
+    restoredToTransactionId,
+    stateAfter,
+    transactionId,
+  } = args;
+
+  return {
+    affectedChildIds,
+    childId,
+    childName: childAfter?.name ?? childBefore?.name ?? null,
+    eventIds,
+    id: transactionId ?? `tx-${eventIds[0] ?? generateId('transaction')}`,
+    kind,
+    occurredAt,
+    parentTransactionId,
+    pointsAfter,
+    pointsBefore,
+    restoredFromTransactionId,
+    restoredToTransactionId,
+    stateAfter: cloneHead(stateAfter),
+  } satisfies TransactionRecord;
+}
+
+function commitDocumentChange(args: {
+  document: SharedDocument;
+  isOrphanedRestoreWindowOpen: boolean;
+  nextHead: SharedHead;
+  transaction: TransactionRecord;
+  eventsToAppend?: SharedEvent[];
+}) {
+  const {
+    document,
+    eventsToAppend = [],
+    isOrphanedRestoreWindowOpen,
+    nextHead,
+    transaction,
+  } = args;
+  const sortedEvents = sortEventsCanonical([
+    ...document.events,
+    ...eventsToAppend,
+  ]);
+
+  return {
     ...document,
-    events: [...document.events, ...eventsToAppend],
-    nextSequence:
-      lastEvent?.sequence != null
-        ? lastEvent.sequence + 1
-        : document.nextSequence,
-  });
-
-  return nextDocument;
+    currentHeadTransactionId: transaction.id,
+    events: sortedEvents,
+    head: cloneHead(nextHead),
+    isOrphanedRestoreWindowOpen,
+    nextSequence: Math.max(
+      document.nextSequence,
+      deriveNextSequence(sortedEvents),
+    ),
+    transactions: [...document.transactions, transaction],
+  } satisfies SharedDocument;
 }
 
-function getChild(head: SharedHead, childId: string) {
-  return head.childrenById[childId] ?? null;
+function getTransactionMap(transactions: TransactionRecord[]) {
+  return new Map(
+    transactions.map((transaction) => [transaction.id, transaction] as const),
+  );
 }
 
-function getRowSummaryType(event: SharedEvent): TransactionSummaryType {
-  switch (event.type) {
-    case 'child.created':
-      return 'child-created';
-    case 'child.pointsAdjusted':
-      return 'points-adjusted';
-    case 'child.pointsSet':
-      return 'points-set';
-    case 'child.archived':
-      return 'child-archived';
-    case 'child.deleted':
-      return 'child-deleted';
-    case 'child.restored':
-      return 'child-restored';
-  }
-}
+function getActiveTransactionIds(document: SharedDocument) {
+  const transactionsById = getTransactionMap(document.transactions);
+  const activeTransactionIds = new Set<string>();
+  let currentId = document.currentHeadTransactionId;
 
-export function deriveTransactionRows(events: SharedEvent[]): TransactionRow[] {
-  const rows: TransactionRow[] = [];
-  let currentHead: SharedHead = {
-    activeChildIds: [],
-    archivedChildIds: [],
-    childrenById: {},
-    homeTimerSummary: DEFAULT_HOME_TIMER_SUMMARY,
-  };
-  let pendingRow: TransactionRow | null = null;
-
-  const finalizePendingRow = () => {
-    if (!pendingRow) {
-      return;
+  while (currentId) {
+    if (activeTransactionIds.has(currentId)) {
+      break;
     }
 
-    rows.push(pendingRow);
-    pendingRow = null;
-  };
-
-  for (const event of sortEventsCanonical(events)) {
-    const childId =
-      event.type === 'child.created'
-        ? event.payload.child.id
-        : event.payload.childId;
-    const childBefore = getChild(currentHead, childId);
-    const summaryType = getRowSummaryType(event);
-    const canExtendPendingRow =
-      pendingRow &&
-      summaryType === 'points-adjusted' &&
-      pendingRow.summaryType === 'points-adjusted' &&
-      pendingRow.childId === childId;
-
-    currentHead = applySharedEvent(currentHead, event);
-    const childAfter = getChild(currentHead, childId);
-
-    if (!canExtendPendingRow) {
-      finalizePendingRow();
-
-      pendingRow = {
-        childId,
-        childName: childAfter?.name ?? childBefore?.name ?? null,
-        delta:
-          event.type === 'child.pointsAdjusted'
-            ? event.payload.delta
-            : undefined,
-        eventIds: [event.eventId],
-        id: `row-${event.eventId}`,
-        occurredAtEnd: event.occurredAt,
-        occurredAtStart: event.occurredAt,
-        restoreDescriptor: {
-          isRestorable: summaryType !== 'child-deleted',
-          childId,
-          sourceSummaryType: summaryType,
-          target: childBefore ? cloneChildSnapshot(childBefore) : null,
-        },
-        setPoints:
-          event.type === 'child.pointsSet' ? event.payload.points : undefined,
-        summaryType,
-      };
-      continue;
-    }
-
-    if (pendingRow && event.type === 'child.pointsAdjusted') {
-      pendingRow = {
-        ...pendingRow,
-        childName: childAfter?.name ?? pendingRow.childName,
-        delta: (pendingRow.delta ?? 0) + event.payload.delta,
-        eventIds: [...pendingRow.eventIds, event.eventId],
-        occurredAtEnd: event.occurredAt,
-      };
-    }
+    activeTransactionIds.add(currentId);
+    currentId = transactionsById.get(currentId)?.parentTransactionId ?? null;
   }
 
-  finalizePendingRow();
-  return rows;
+  return activeTransactionIds;
+}
+
+function areHeadsEquivalent(left: SharedHead, right: SharedHead) {
+  const leftIds = Object.keys(left.childrenById).sort();
+  const rightIds = Object.keys(right.childrenById).sort();
+
+  if (
+    leftIds.length !== rightIds.length ||
+    left.activeChildIds.join('|') !== right.activeChildIds.join('|') ||
+    left.archivedChildIds.join('|') !== right.archivedChildIds.join('|')
+  ) {
+    return false;
+  }
+
+  return leftIds.every((childId) =>
+    areChildrenEquivalent(
+      left.childrenById[childId],
+      right.childrenById[childId],
+    ),
+  );
 }
 
 function buildRestoreEvents(
   document: SharedDocument,
-  descriptor: RestoreDescriptor,
+  targetHead: SharedHead,
+  occurredAt: string,
 ) {
-  if (!descriptor.isRestorable) {
-    return [];
-  }
-
   const builder = createEventBuilder(document);
   const eventsToAppend: SharedEvent[] = [];
-  let workingHead = document.head;
-  const currentChild = getChild(workingHead, descriptor.childId);
-  const targetChild = descriptor.target;
+  const affectedChildIds = new Set<string>();
+  const allIds = [
+    ...new Set([
+      ...Object.keys(document.head.childrenById),
+      ...Object.keys(targetHead.childrenById),
+    ]),
+  ].sort();
 
-  if (!currentChild) {
-    if (targetChild) {
-      const event = builder.build('child.created', {
-        child: targetChild,
-      });
-      eventsToAppend.push(event);
+  for (const childId of allIds) {
+    const currentChild = getChild(document.head, childId);
+    const targetChild = getChild(targetHead, childId);
+
+    if (areChildrenEquivalent(currentChild, targetChild)) {
+      continue;
     }
 
-    return eventsToAppend;
+    affectedChildIds.add(childId);
+
+    if (!currentChild && targetChild) {
+      eventsToAppend.push(
+        builder.build(
+          'child.created',
+          {
+            child: cloneChildSnapshot(targetChild),
+          },
+          occurredAt,
+        ),
+      );
+      continue;
+    }
+
+    if (currentChild && !targetChild) {
+      eventsToAppend.push(
+        builder.build(
+          'child.deleted',
+          {
+            childId,
+          },
+          occurredAt,
+        ),
+      );
+      continue;
+    }
+
+    if (!currentChild || !targetChild) {
+      continue;
+    }
+
+    if (currentChild.status !== targetChild.status) {
+      eventsToAppend.push(
+        targetChild.status === 'active'
+          ? builder.build('child.restored', { childId }, occurredAt)
+          : builder.build('child.archived', { childId }, occurredAt),
+      );
+    }
+
+    if (currentChild.points !== targetChild.points) {
+      eventsToAppend.push(
+        builder.build(
+          'child.pointsSet',
+          {
+            childId,
+            points: targetChild.points,
+          },
+          occurredAt,
+        ),
+      );
+    }
   }
 
-  if (!targetChild) {
-    const event = builder.build('child.deleted', {
-      childId: descriptor.childId,
-    });
-    eventsToAppend.push(event);
+  return {
+    affectedChildIds: [...affectedChildIds],
+    eventsToAppend,
+  };
+}
 
-    return eventsToAppend;
+function formatTransactionTimestamp(occurredAt: string) {
+  return new Date(occurredAt).toLocaleString(undefined, {
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    month: 'short',
+  });
+}
+
+function summarizeRestoreTarget(
+  targetTransaction: TransactionRecord | undefined,
+  transactionsById: Map<string, TransactionRecord>,
+): string {
+  if (!targetTransaction) {
+    return 'Earlier State';
   }
 
-  if (currentChild.status !== targetChild.status) {
-    const event =
-      targetChild.status === 'active'
-        ? builder.build('child.restored', { childId: descriptor.childId })
-        : builder.build('child.archived', { childId: descriptor.childId });
-    eventsToAppend.push(event);
-    workingHead = applySharedEvent(workingHead, event);
+  switch (targetTransaction.kind) {
+    case 'points-adjusted': {
+      if (
+        targetTransaction.childName &&
+        targetTransaction.pointsBefore != null &&
+        targetTransaction.pointsAfter != null
+      ) {
+        const delta =
+          (targetTransaction.pointsAfter ?? 0) -
+          (targetTransaction.pointsBefore ?? 0);
+        const deltaLabel = delta >= 0 ? `+${delta}` : `${delta}`;
+
+        return `${targetTransaction.childName} ${deltaLabel} Points [${targetTransaction.pointsBefore} > ${targetTransaction.pointsAfter}]`;
+      }
+
+      return 'Point Change';
+    }
+    case 'points-set':
+      if (
+        targetTransaction.childName &&
+        targetTransaction.pointsBefore != null &&
+        targetTransaction.pointsAfter != null
+      ) {
+        return `${targetTransaction.childName} Set Points [${targetTransaction.pointsBefore} > ${targetTransaction.pointsAfter}]`;
+      }
+
+      return 'Point Total Update';
+    case 'child-created':
+      return targetTransaction.childName
+        ? `${targetTransaction.childName} Added`
+        : 'Child Added';
+    case 'child-archived':
+      return targetTransaction.childName
+        ? `${targetTransaction.childName} Archived`
+        : 'Child Archived';
+    case 'child-restored':
+      return targetTransaction.childName
+        ? `${targetTransaction.childName} Restored`
+        : 'Child Restored';
+    case 'child-deleted':
+      return targetTransaction.childName
+        ? `${targetTransaction.childName} Deleted`
+        : 'Child Deleted';
+    case 'history-restored': {
+      const nestedTarget = targetTransaction.restoredToTransactionId
+        ? transactionsById.get(targetTransaction.restoredToTransactionId)
+        : undefined;
+
+      return nestedTarget
+        ? summarizeRestoreTarget(nestedTarget, transactionsById)
+        : 'Earlier State';
+    }
+  }
+}
+
+function summarizeTransactionRow(
+  transaction: TransactionRecord,
+  transactionsById: Map<string, TransactionRecord>,
+) {
+  switch (transaction.kind) {
+    case 'child-created':
+      return transaction.childName
+        ? `${transaction.childName} Added`
+        : 'Child Added';
+    case 'points-adjusted': {
+      if (
+        transaction.childName &&
+        transaction.pointsBefore != null &&
+        transaction.pointsAfter != null
+      ) {
+        const delta =
+          (transaction.pointsAfter ?? 0) - (transaction.pointsBefore ?? 0);
+        const deltaLabel = delta >= 0 ? `+${delta}` : `${delta}`;
+
+        return `${transaction.childName} ${deltaLabel} Points [${transaction.pointsBefore} > ${transaction.pointsAfter}]`;
+      }
+
+      return 'Point Change';
+    }
+    case 'points-set':
+      if (
+        transaction.childName &&
+        transaction.pointsBefore != null &&
+        transaction.pointsAfter != null
+      ) {
+        return `${transaction.childName} Set Points [${transaction.pointsBefore} > ${transaction.pointsAfter}]`;
+      }
+
+      return 'Point Total Update';
+    case 'child-archived':
+      return transaction.childName
+        ? `${transaction.childName} Archived`
+        : 'Child Archived';
+    case 'child-restored':
+      return transaction.childName
+        ? `${transaction.childName} Restored`
+        : 'Child Restored';
+    case 'child-deleted':
+      return transaction.childName
+        ? `${transaction.childName} Deleted`
+        : 'Child Deleted';
+    case 'history-restored': {
+      const targetTransaction = transaction.restoredToTransactionId
+        ? transactionsById.get(transaction.restoredToTransactionId)
+        : undefined;
+
+      return `Restored App to ${summarizeRestoreTarget(
+        targetTransaction,
+        transactionsById,
+      )}`;
+    }
+  }
+}
+
+export function deriveTransactionRows(document: SharedDocument) {
+  const activeTransactionIds = getActiveTransactionIds(document);
+  const transactionsById = getTransactionMap(document.transactions);
+  const currentHeadTransaction = document.currentHeadTransactionId
+    ? transactionsById.get(document.currentHeadTransactionId)
+    : undefined;
+  const currentRestoreTargetId =
+    currentHeadTransaction?.kind === 'history-restored'
+      ? (currentHeadTransaction.restoredToTransactionId ?? null)
+      : null;
+
+  return [...document.transactions].reverse().map((transaction) => {
+    const isHead =
+      transaction.id === document.currentHeadTransactionId ||
+      transaction.id === currentRestoreTargetId;
+    const isOrphaned = !activeTransactionIds.has(transaction.id);
+    const isRestorableNow =
+      !isHead &&
+      transaction.kind !== 'child-deleted' &&
+      (!isOrphaned || document.isOrphanedRestoreWindowOpen);
+
+    let restoreDisabledReason: string | undefined;
+
+    if (isHead) {
+      restoreDisabledReason = 'This is the current HEAD transaction.';
+    } else if (transaction.kind === 'child-deleted') {
+      restoreDisabledReason = 'Permanently deleted history cannot be restored.';
+    } else if (isOrphaned && !document.isOrphanedRestoreWindowOpen) {
+      restoreDisabledReason =
+        'This branch diverged from the current history and can no longer be restored.';
+    }
+
+    return {
+      affectedChildIds: transaction.affectedChildIds,
+      childId: transaction.childId,
+      childName: transaction.childName,
+      id: transaction.id,
+      isHead,
+      isOrphaned,
+      isRestorableNow,
+      kind: transaction.kind,
+      occurredAt: transaction.occurredAt,
+      parentTransactionId: transaction.parentTransactionId,
+      pointsAfter: transaction.pointsAfter,
+      pointsBefore: transaction.pointsBefore,
+      restoreDisabledReason,
+      restoredFromTransactionId: transaction.restoredFromTransactionId,
+      restoredToTransactionId: transaction.restoredToTransactionId,
+      stateAfter: cloneHead(transaction.stateAfter),
+      summaryText: summarizeTransactionRow(transaction, transactionsById),
+      timestampLabel: formatTransactionTimestamp(transaction.occurredAt),
+    } satisfies TransactionRow;
+  });
+}
+
+function deriveTransactionFilterChildren(document: SharedDocument) {
+  const children = new Map<string, TransactionFilterChild>();
+
+  for (const transaction of [...document.transactions].reverse()) {
+    if (transaction.childId && transaction.childName) {
+      children.set(transaction.childId, {
+        id: transaction.childId,
+        name: transaction.childName,
+      });
+    }
   }
 
-  const nextChild = getChild(workingHead, descriptor.childId);
-
-  if (nextChild && nextChild.points !== targetChild.points) {
-    const event = builder.build('child.pointsSet', {
-      childId: descriptor.childId,
-      points: targetChild.points,
-    });
-    eventsToAppend.push(event);
-  }
-
-  return eventsToAppend;
+  return [...children.values()];
 }
 
 function createSharedStoreActions(
@@ -465,8 +788,8 @@ function createSharedStoreActions(
       const result: SharedCommandResult = { ok: true };
 
       set((state) => {
-        const builder = createEventBuilder(state.document);
         const occurredAt = new Date().toISOString();
+        const builder = createEventBuilder(state.document);
         const child: ChildSnapshot = {
           createdAt: occurredAt,
           id: generateId('child'),
@@ -476,10 +799,29 @@ function createSharedStoreActions(
           updatedAt: occurredAt,
         };
         const event = builder.build('child.created', { child }, occurredAt);
+        const nextHead = applySharedEvent(state.document.head, event);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [child.id],
+          childAfter: child,
+          childBefore: null,
+          childId: child.id,
+          eventIds: [event.eventId],
+          kind: 'child-created',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          pointsAfter: child.points,
+          stateAfter: nextHead,
+        });
 
         return {
           ...state,
-          document: commitSharedEvents(state.document, [event]),
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
         };
       });
 
@@ -506,15 +848,41 @@ function createSharedStoreActions(
           return state;
         }
 
+        const occurredAt = new Date().toISOString();
         const builder = createEventBuilder(state.document);
-        const event = builder.build('child.pointsAdjusted', {
+        const event = builder.build(
+          'child.pointsAdjusted',
+          {
+            childId,
+            delta,
+          },
+          occurredAt,
+        );
+        const nextHead = applySharedEvent(state.document.head, event);
+        const nextChild = getChild(nextHead, childId);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [childId],
+          childAfter: nextChild,
+          childBefore: child,
           childId,
-          delta,
+          eventIds: [event.eventId],
+          kind: 'points-adjusted',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          pointsAfter: nextChild?.points,
+          pointsBefore: child.points,
+          stateAfter: nextHead,
         });
 
         return {
           ...state,
-          document: commitSharedEvents(state.document, [event]),
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
         };
       });
 
@@ -534,12 +902,34 @@ function createSharedStoreActions(
           return state;
         }
 
+        const occurredAt = new Date().toISOString();
         const builder = createEventBuilder(state.document);
-        const event = builder.build('child.archived', { childId });
+        const event = builder.build('child.archived', { childId }, occurredAt);
+        const nextHead = applySharedEvent(state.document.head, event);
+        const nextChild = getChild(nextHead, childId);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [childId],
+          childAfter: nextChild,
+          childBefore: child,
+          childId,
+          eventIds: [event.eventId],
+          kind: 'child-archived',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          pointsAfter: nextChild?.points,
+          pointsBefore: child.points,
+          stateAfter: nextHead,
+        });
 
         return {
           ...state,
-          document: commitSharedEvents(state.document, [event]),
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
         };
       });
 
@@ -559,12 +949,32 @@ function createSharedStoreActions(
           return state;
         }
 
+        const occurredAt = new Date().toISOString();
         const builder = createEventBuilder(state.document);
-        const event = builder.build('child.deleted', { childId });
+        const event = builder.build('child.deleted', { childId }, occurredAt);
+        const nextHead = applySharedEvent(state.document.head, event);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [childId],
+          childAfter: null,
+          childBefore: child,
+          childId,
+          eventIds: [event.eventId],
+          kind: 'child-deleted',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          pointsBefore: child.points,
+          stateAfter: nextHead,
+        });
 
         return {
           ...state,
-          document: commitSharedEvents(state.document, [event]),
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
         };
       });
 
@@ -584,31 +994,48 @@ function createSharedStoreActions(
           return state;
         }
 
+        const occurredAt = new Date().toISOString();
         const builder = createEventBuilder(state.document);
-        const event = builder.build('child.restored', { childId });
+        const event = builder.build('child.restored', { childId }, occurredAt);
+        const nextHead = applySharedEvent(state.document.head, event);
+        const nextChild = getChild(nextHead, childId);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [childId],
+          childAfter: nextChild,
+          childBefore: child,
+          childId,
+          eventIds: [event.eventId],
+          kind: 'child-restored',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          pointsAfter: nextChild?.points,
+          pointsBefore: child.points,
+          stateAfter: nextHead,
+        });
 
         return {
           ...state,
-          document: commitSharedEvents(state.document, [event]),
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
         };
       });
 
       return result;
     },
-    restoreTransaction(
-      target: RestoreDescriptor | string,
-    ): SharedCommandResult {
+    restoreTransaction(transactionId: string): SharedCommandResult {
       let result: SharedCommandResult = { ok: true };
 
       set((state) => {
-        const descriptor =
-          typeof target === 'string'
-            ? deriveTransactionRows(state.document.events).find(
-                (row) => row.id === target,
-              )?.restoreDescriptor
-            : target;
+        const transactionRow = deriveTransactionRows(state.document).find(
+          (row) => row.id === transactionId,
+        );
 
-        if (!descriptor) {
+        if (!transactionRow) {
           result = {
             error: 'The requested transaction could not be restored.',
             ok: false,
@@ -616,19 +1043,58 @@ function createSharedStoreActions(
           return state;
         }
 
-        const eventsToAppend = buildRestoreEvents(state.document, descriptor);
-
-        if (eventsToAppend.length === 0) {
+        if (!transactionRow.isRestorableNow) {
           result = {
-            error: 'There is nothing to restore for that transaction.',
+            error:
+              transactionRow.restoreDisabledReason ??
+              'That transaction cannot be restored right now.',
             ok: false,
           };
           return state;
         }
 
+        if (
+          areHeadsEquivalent(state.document.head, transactionRow.stateAfter) &&
+          transactionRow.id === state.document.currentHeadTransactionId
+        ) {
+          result = {
+            error: 'That transaction is already the current HEAD.',
+            ok: false,
+          };
+          return state;
+        }
+
+        const occurredAt = new Date().toISOString();
+        const { affectedChildIds, eventsToAppend } = buildRestoreEvents(
+          state.document,
+          transactionRow.stateAfter,
+          occurredAt,
+        );
+        const transaction = createTransactionRecord({
+          affectedChildIds,
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: eventsToAppend.map((event) => event.eventId),
+          kind: 'history-restored',
+          occurredAt,
+          parentTransactionId: transactionRow.id,
+          restoredFromTransactionId:
+            state.document.currentHeadTransactionId ?? undefined,
+          restoredToTransactionId: transactionRow.id,
+          stateAfter: transactionRow.stateAfter,
+          transactionId: generateId('transaction'),
+        });
+
         return {
           ...state,
-          document: commitSharedEvents(state.document, eventsToAppend),
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend,
+            isOrphanedRestoreWindowOpen: true,
+            nextHead: transactionRow.stateAfter,
+            transaction,
+          }),
         };
       });
 
@@ -655,12 +1121,41 @@ function createSharedStoreActions(
           return state;
         }
 
+        const occurredAt = new Date().toISOString();
         const builder = createEventBuilder(state.document);
-        const event = builder.build('child.pointsSet', { childId, points });
+        const event = builder.build(
+          'child.pointsSet',
+          {
+            childId,
+            points,
+          },
+          occurredAt,
+        );
+        const nextHead = applySharedEvent(state.document.head, event);
+        const nextChild = getChild(nextHead, childId);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [childId],
+          childAfter: nextChild,
+          childBefore: child,
+          childId,
+          eventIds: [event.eventId],
+          kind: 'points-set',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          pointsAfter: nextChild?.points,
+          pointsBefore: child.points,
+          stateAfter: nextHead,
+        });
 
         return {
           ...state,
-          document: commitSharedEvents(state.document, [event]),
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
         };
       });
 
@@ -682,19 +1177,19 @@ export function createSharedStore({
         ...createSharedStoreActions((updater) => {
           set((state) => updater(state));
         }),
-        document: replaySharedDocument(initialDocument),
+        document: cloneSharedDocument(initialDocument),
       }),
       {
         merge: (persistedState, currentState) => {
           const nextState = persistedState as Partial<SharedStoreState> | null;
 
-          if (!nextState?.document) {
+          if (!isSharedDocument(nextState?.document)) {
             return currentState;
           }
 
           return {
             ...currentState,
-            document: replaySharedDocument(nextState.document),
+            document: cloneSharedDocument(nextState.document),
           };
         },
         name: SHARED_STORAGE_KEY,
@@ -757,7 +1252,11 @@ export function selectHomeTimerSummary(state: SharedStoreState) {
 }
 
 export function selectTransactionRows(state: SharedStoreState) {
-  return deriveTransactionRows(state.document.events);
+  return deriveTransactionRows(state.document);
+}
+
+export function selectTransactionFilterChildren(state: SharedStoreState) {
+  return deriveTransactionFilterChildren(state.document);
 }
 
 export function selectChildById(childId: string) {

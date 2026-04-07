@@ -237,6 +237,10 @@ export function HomeScreen() {
               label="Archived Children"
               onPress={() => router.push('/list-browser')}
             />
+            <ActionPill
+              label="Transactions"
+              onPress={() => router.push('/transactions')}
+            />
           </ActionPillRow>
         ) : (
           <ActionPillRow>

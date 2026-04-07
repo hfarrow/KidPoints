@@ -6,6 +6,7 @@ import { ParentSessionProvider } from '../../../src/features/parent/parentSessio
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import {
   createInitialSharedDocument,
+  createSharedStore,
   SharedStoreProvider,
 } from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
@@ -38,36 +39,18 @@ describe('ListBrowserScreen', () => {
   });
 
   it('shows restore and permanent delete actions for archived children', () => {
-    const document = createInitialSharedDocument({ deviceId: 'archived-list' });
-    const child = {
-      archivedAt: undefined,
-      createdAt: '2026-04-06T08:00:00.000Z',
-      id: 'child-noah',
-      name: 'Noah',
-      points: 12,
-      status: 'active' as const,
-      updatedAt: '2026-04-06T08:00:00.000Z',
-    };
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'archived-list',
+      }),
+      storage: createMemoryStorage(),
+    });
 
-    document.events = [
-      {
-        deviceId: document.deviceId,
-        eventId: `${document.deviceId}-1`,
-        occurredAt: '2026-04-06T08:00:00.000Z',
-        payload: { child },
-        sequence: 1,
-        type: 'child.created' as const,
-      },
-      {
-        deviceId: document.deviceId,
-        eventId: `${document.deviceId}-2`,
-        occurredAt: '2026-04-06T09:00:00.000Z',
-        payload: { childId: child.id },
-        sequence: 2,
-        type: 'child.archived' as const,
-      },
-    ];
-    document.nextSequence = 3;
+    expect(store.getState().addChild('Noah').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+    expect(store.getState().setPoints(childId, 12).ok).toBe(true);
+    expect(store.getState().archiveChild(childId).ok).toBe(true);
+    const document = store.getState().document;
 
     render(
       <SharedStoreProvider

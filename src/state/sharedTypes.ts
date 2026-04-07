@@ -82,40 +82,66 @@ export type SharedEvent =
   | ChildPointsSetEvent
   | ChildRestoredEvent;
 
-export type RestoreDescriptor = {
-  isRestorable: boolean;
-  childId: string;
-  sourceSummaryType: TransactionSummaryType;
-  target: ChildSnapshot | null;
-};
-
-export type TransactionSummaryType =
+export type TransactionKind =
   | 'child-archived'
   | 'child-created'
   | 'child-deleted'
   | 'child-restored'
+  | 'history-restored'
   | 'points-adjusted'
   | 'points-set';
 
-export type TransactionRow = {
-  childId: string;
+export type TransactionRecord = {
+  affectedChildIds: string[];
+  childId: string | null;
   childName: string | null;
-  delta?: number;
   eventIds: string[];
   id: string;
-  occurredAtEnd: string;
-  occurredAtStart: string;
-  restoreDescriptor: RestoreDescriptor;
-  setPoints?: number;
-  summaryType: TransactionSummaryType;
+  kind: TransactionKind;
+  occurredAt: string;
+  parentTransactionId: string | null;
+  pointsAfter?: number;
+  pointsBefore?: number;
+  restoredFromTransactionId?: string;
+  restoredToTransactionId?: string;
+  stateAfter: SharedHead;
+};
+
+export type TransactionFilterChild = {
+  id: string;
+  name: string;
+};
+
+export type TransactionRow = {
+  affectedChildIds: string[];
+  childId: string | null;
+  childName: string | null;
+  id: string;
+  isHead: boolean;
+  isOrphaned: boolean;
+  isRestorableNow: boolean;
+  kind: TransactionKind;
+  occurredAt: string;
+  parentTransactionId: string | null;
+  pointsAfter?: number;
+  pointsBefore?: number;
+  restoreDisabledReason?: string;
+  restoredFromTransactionId?: string;
+  restoredToTransactionId?: string;
+  stateAfter: SharedHead;
+  summaryText: string;
+  timestampLabel: string;
 };
 
 export type SharedDocument = {
+  currentHeadTransactionId: string | null;
   deviceId: string;
   events: SharedEvent[];
   head: SharedHead;
+  isOrphanedRestoreWindowOpen: boolean;
   nextSequence: number;
-  schemaVersion: 1;
+  schemaVersion: 2;
+  transactions: TransactionRecord[];
 };
 
 export type SharedCommandResult = { ok: true } | { error: string; ok: false };

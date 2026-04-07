@@ -2,16 +2,14 @@ import {
   createInitialSharedDocument,
   createSharedStore,
   deriveTransactionRows,
-  replaySharedDocument,
 } from '../../src/state/sharedStore';
 import { createMemoryStorage } from '../testUtils/memoryStorage';
 
-describe('sharedStore transaction engine', () => {
-  it('records critical actions, derives grouped transaction rows, and restores with new events', () => {
-    const storage = createMemoryStorage();
+describe('sharedStore transaction graph', () => {
+  it('records one transaction per critical action and orders rows newest first', () => {
     const store = createSharedStore({
       initialDocument: createInitialSharedDocument({ deviceId: 'device-a' }),
-      storage,
+      storage: createMemoryStorage(),
     });
 
     expect(store.getState().addChild('Ava').ok).toBe(true);
@@ -21,104 +19,114 @@ describe('sharedStore transaction engine', () => {
     expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
     expect(store.getState().setPoints(childId, 7).ok).toBe(true);
 
-    const transactionRows = deriveTransactionRows(
-      store.getState().document.events,
-    );
-    const groupedAdjustRow = transactionRows.find(
-      (row) => row.summaryType === 'points-adjusted',
-    );
-    const exactSetRow = transactionRows.find(
-      (row) => row.summaryType === 'points-set',
-    );
-
-    expect(groupedAdjustRow?.delta).toBe(2);
-    expect(groupedAdjustRow?.eventIds).toHaveLength(2);
-    expect(exactSetRow?.restoreDescriptor.target?.points).toBe(2);
-
-    expect(store.getState().restoreTransaction(exactSetRow?.id ?? '').ok).toBe(
-      true,
-    );
-
     const document = store.getState().document;
-    const replayedDocument = replaySharedDocument(document);
+    const rows = deriveTransactionRows(document);
 
-    expect(document.head.childrenById[childId]?.points).toBe(2);
-    expect(replayedDocument.head).toEqual(document.head);
-    expect(document.events.at(-1)?.type).toBe('child.pointsSet');
+    expect(document.events).toHaveLength(4);
+    expect(document.transactions).toHaveLength(4);
+    expect(rows[0]?.summaryText).toBe('Ava Set Points [2 > 7]');
+    expect(rows[1]?.summaryText).toBe('Ava +1 Points [1 > 2]');
+    expect(rows[2]?.summaryText).toBe('Ava +1 Points [0 > 1]');
+    expect(rows[3]?.summaryText).toBe('Ava Added');
   });
 
-  it('archives and restores children through recorded events', () => {
+  it('records restore as its own transaction and restores the exact target state', () => {
     const store = createSharedStore({
       initialDocument: createInitialSharedDocument({ deviceId: 'device-b' }),
       storage: createMemoryStorage(),
     });
 
-    store.getState().addChild('Milo');
+    expect(store.getState().addChild('Ava').ok).toBe(true);
     const childId = store.getState().document.head.activeChildIds[0];
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+    expect(store.getState().setPoints(childId, 4).ok).toBe(true);
 
-    expect(store.getState().archiveChild(childId).ok).toBe(true);
-    expect(store.getState().document.head.archivedChildIds).toContain(childId);
+    const targetRow = deriveTransactionRows(store.getState().document).find(
+      (row) => row.summaryText === 'Ava +1 Points [0 > 1]',
+    );
 
-    expect(store.getState().restoreChild(childId).ok).toBe(true);
-    expect(store.getState().document.head.activeChildIds).toContain(childId);
-    expect(store.getState().document.events.at(-1)?.type).toBe(
-      'child.restored',
+    expect(store.getState().restoreTransaction(targetRow?.id ?? '').ok).toBe(
+      true,
+    );
+
+    const document = store.getState().document;
+    const rows = deriveTransactionRows(document);
+    const newestRow = rows[0];
+    const originalTargetRow = rows.find(
+      (row) => row.summaryText === 'Ava +1 Points [0 > 1]',
+    );
+
+    expect(document.head.childrenById[childId]?.points).toBe(1);
+    expect(document.transactions.at(-1)?.kind).toBe('history-restored');
+    expect(document.isOrphanedRestoreWindowOpen).toBe(true);
+    expect(newestRow?.isHead).toBe(true);
+    expect(originalTargetRow?.isHead).toBe(true);
+    expect(newestRow?.summaryText).toBe(
+      'Restored App to Ava +1 Points [0 > 1]',
     );
   });
 
-  it('records permanent deletion as non-restorable', () => {
+  it('marks abandoned future transactions orphaned and seals them after a new action', () => {
     const store = createSharedStore({
       initialDocument: createInitialSharedDocument({ deviceId: 'device-c' }),
       storage: createMemoryStorage(),
     });
 
-    store.getState().addChild('Noah');
+    expect(store.getState().addChild('Ava').ok).toBe(true);
     const childId = store.getState().document.head.activeChildIds[0];
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+    expect(store.getState().setPoints(childId, 4).ok).toBe(true);
 
-    expect(store.getState().archiveChild(childId).ok).toBe(true);
-    expect(store.getState().deleteChildPermanently(childId).ok).toBe(true);
-    expect(
-      store.getState().document.head.childrenById[childId],
-    ).toBeUndefined();
-    expect(store.getState().document.events.at(-1)?.type).toBe('child.deleted');
-
-    const deleteRow = deriveTransactionRows(
-      store.getState().document.events,
-    ).find((row) => row.summaryType === 'child-deleted');
-
-    expect(deleteRow?.restoreDescriptor.isRestorable).toBe(false);
-    expect(deleteRow?.restoreDescriptor.target?.status).toBe('archived');
-    expect(store.getState().restoreTransaction(deleteRow?.id ?? '').ok).toBe(
-      false,
+    const targetRow = deriveTransactionRows(store.getState().document).find(
+      (row) => row.summaryText === 'Ava +1 Points [0 > 1]',
     );
+
+    expect(store.getState().restoreTransaction(targetRow?.id ?? '').ok).toBe(
+      true,
+    );
+
+    let rows = deriveTransactionRows(store.getState().document);
+    let orphanedSetRow = rows.find(
+      (row) => row.summaryText === 'Ava Set Points [1 > 4]',
+    );
+
+    expect(orphanedSetRow?.isOrphaned).toBe(true);
+    expect(orphanedSetRow?.isRestorableNow).toBe(true);
+
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+
+    rows = deriveTransactionRows(store.getState().document);
+    orphanedSetRow = rows.find(
+      (row) => row.summaryText === 'Ava Set Points [1 > 4]',
+    );
+
+    expect(store.getState().document.isOrphanedRestoreWindowOpen).toBe(false);
+    expect(orphanedSetRow?.isOrphaned).toBe(true);
+    expect(orphanedSetRow?.isRestorableNow).toBe(false);
     expect(
-      store.getState().document.head.childrenById[childId],
-    ).toBeUndefined();
+      store.getState().restoreTransaction(orphanedSetRow?.id ?? '').ok,
+    ).toBe(false);
   });
 
-  it('restoring the initial child creation removes the child from the document', () => {
+  it('keeps permanently deleted transactions non-restorable', () => {
     const store = createSharedStore({
       initialDocument: createInitialSharedDocument({ deviceId: 'device-d' }),
       storage: createMemoryStorage(),
     });
 
-    expect(store.getState().addChild('Ivy').ok).toBe(true);
+    expect(store.getState().addChild('Noah').ok).toBe(true);
     const childId = store.getState().document.head.activeChildIds[0];
 
-    const creationRow = deriveTransactionRows(
-      store.getState().document.events,
-    ).find((row) => row.summaryType === 'child-created');
+    expect(store.getState().archiveChild(childId).ok).toBe(true);
+    expect(store.getState().deleteChildPermanently(childId).ok).toBe(true);
 
-    expect(creationRow?.restoreDescriptor.target).toBeNull();
-    expect(store.getState().restoreTransaction(creationRow?.id ?? '').ok).toBe(
-      true,
+    const deleteRow = deriveTransactionRows(store.getState().document).find(
+      (row) => row.kind === 'child-deleted',
     );
-    expect(
-      store.getState().document.head.childrenById[childId],
-    ).toBeUndefined();
-    expect(store.getState().document.head.activeChildIds).not.toContain(
-      childId,
+
+    expect(deleteRow?.isRestorableNow).toBe(false);
+    expect(store.getState().restoreTransaction(deleteRow?.id ?? '').ok).toBe(
+      false,
     );
-    expect(store.getState().document.events.at(-1)?.type).toBe('child.deleted');
   });
 });

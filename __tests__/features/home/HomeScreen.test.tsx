@@ -10,6 +10,7 @@ import { ParentSessionProvider } from '../../../src/features/parent/parentSessio
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import {
   createInitialSharedDocument,
+  createSharedStore,
   SharedStoreProvider,
 } from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
@@ -43,6 +44,26 @@ describe('HomeScreen', () => {
     mockPush.mockReset();
   });
 
+  function createDocumentWithActiveChild(args: {
+    deviceId: string;
+    name: string;
+    points: number;
+  }) {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({ deviceId: args.deviceId }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild(args.name).ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+
+    if (args.points > 0) {
+      expect(store.getState().setPoints(childId, args.points).ok).toBe(true);
+    }
+
+    return store.getState().document;
+  }
+
   it('renders the empty state and opens supporting surfaces', () => {
     render(
       <SharedStoreProvider
@@ -71,28 +92,11 @@ describe('HomeScreen', () => {
   });
 
   it('renders active children and keeps mutations gated when locked', () => {
-    const document = createInitialSharedDocument({ deviceId: 'home-locked' });
-    const child = {
-      archivedAt: undefined,
-      createdAt: '2026-04-06T08:00:00.000Z',
-      id: 'child-ava',
+    const document = createDocumentWithActiveChild({
+      deviceId: 'home-locked',
       name: 'Ava',
       points: 4,
-      status: 'active' as const,
-      updatedAt: '2026-04-06T08:00:00.000Z',
-    };
-
-    document.events = [
-      {
-        deviceId: document.deviceId,
-        eventId: `${document.deviceId}-1`,
-        occurredAt: '2026-04-06T08:00:00.000Z',
-        payload: { child },
-        sequence: 1,
-        type: 'child.created' as const,
-      },
-    ];
-    document.nextSequence = 2;
+    });
 
     render(
       <SharedStoreProvider
@@ -120,28 +124,11 @@ describe('HomeScreen', () => {
   });
 
   it('opens exact points editing from the points capsule and confirms archive inside the expanded tile', () => {
-    const document = createInitialSharedDocument({ deviceId: 'home-unlocked' });
-    const child = {
-      archivedAt: undefined,
-      createdAt: '2026-04-06T08:00:00.000Z',
-      id: 'child-ava',
+    const document = createDocumentWithActiveChild({
+      deviceId: 'home-unlocked',
       name: 'Ava',
       points: 4,
-      status: 'active' as const,
-      updatedAt: '2026-04-06T08:00:00.000Z',
-    };
-
-    document.events = [
-      {
-        deviceId: document.deviceId,
-        eventId: `${document.deviceId}-1`,
-        occurredAt: '2026-04-06T08:00:00.000Z',
-        payload: { child },
-        sequence: 1,
-        type: 'child.created' as const,
-      },
-    ];
-    document.nextSequence = 2;
+    });
 
     render(
       <SharedStoreProvider
@@ -181,28 +168,11 @@ describe('HomeScreen', () => {
   });
 
   it('keeps parent tools collapsed by default without an unlocked badge', () => {
-    const document = createInitialSharedDocument({ deviceId: 'home-parent' });
-    const child = {
-      archivedAt: undefined,
-      createdAt: '2026-04-06T08:00:00.000Z',
-      id: 'child-parent',
+    const document = createDocumentWithActiveChild({
+      deviceId: 'home-parent',
       name: 'Milo',
       points: 2,
-      status: 'active' as const,
-      updatedAt: '2026-04-06T08:00:00.000Z',
-    };
-
-    document.events = [
-      {
-        deviceId: document.deviceId,
-        eventId: `${document.deviceId}-1`,
-        occurredAt: '2026-04-06T08:00:00.000Z',
-        payload: { child },
-        sequence: 1,
-        type: 'child.created' as const,
-      },
-    ];
-    document.nextSequence = 2;
+    });
 
     render(
       <SharedStoreProvider
@@ -226,5 +196,6 @@ describe('HomeScreen', () => {
 
     fireEvent.press(screen.getByText('Parent'));
     expect(screen.getByText('Add Child')).toBeTruthy();
+    expect(screen.getByText('Transactions')).toBeTruthy();
   });
 });

@@ -45,5 +45,6 @@ describe('TabsLayout', () => {
     expect(screen.getByText('shop:Shop:tab')).toBeTruthy();
     expect(screen.getByText('settings::hidden')).toBeTruthy();
     expect(screen.getByText('list-browser::hidden')).toBeTruthy();
+    expect(screen.getByText('transactions::hidden')).toBeTruthy();
   });
 });

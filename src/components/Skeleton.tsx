@@ -1,6 +1,7 @@
 import type { PropsWithChildren, ReactNode } from 'react';
 import {
   Pressable,
+  type StyleProp,
   StyleSheet,
   Text,
   View,
@@ -84,9 +85,11 @@ export function ActionPillRow({ children }: PropsWithChildren) {
 
 export function StatusBadge({
   label,
+  size = 'default',
   tone = 'neutral',
 }: {
   label: string;
+  size?: 'default' | 'mini';
   tone?: 'good' | 'neutral' | 'warning';
 }) {
   const styles = useThemedStyles(createStyles);
@@ -98,8 +101,12 @@ export function StatusBadge({
         : styles.neutralBadge;
 
   return (
-    <View style={[styles.badge, toneStyle]}>
-      <Text style={styles.badgeText}>{label}</Text>
+    <View
+      style={[styles.badge, size === 'mini' && styles.badgeMini, toneStyle]}
+    >
+      <Text style={[styles.badgeText, size === 'mini' && styles.badgeTextMini]}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -113,7 +120,7 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 export function CompactSurface({
   children,
   style,
-}: PropsWithChildren<{ style?: ViewStyle }>) {
+}: PropsWithChildren<{ style?: StyleProp<ViewStyle> }>) {
   const styles = useThemedStyles(createStyles);
 
   return <View style={[styles.surface, style]}>{children}</View>;
@@ -170,11 +177,19 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       paddingHorizontal: 10,
       paddingVertical: 6,
     },
+    badgeMini: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
     badgeText: {
       fontSize: 11,
       fontWeight: '800',
       letterSpacing: 0.4,
       textTransform: 'uppercase',
+    },
+    badgeTextMini: {
+      fontSize: 9,
+      letterSpacing: 0.3,
     },
     goodBadge: {
       backgroundColor: tokens.successSurface,

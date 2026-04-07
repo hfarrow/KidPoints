@@ -17,7 +17,11 @@ import {
 type TileProps = {
   accessory?: ReactNode;
   children?: ReactNode;
+  collapsed?: boolean;
   collapsible?: boolean;
+  collapsibleLabel?: string;
+  density?: 'default' | 'extraCompact';
+  footer?: ReactNode;
   initiallyCollapsed?: boolean;
   muted?: boolean;
   onCollapsedChange?: (isCollapsed: boolean) => void;
@@ -29,7 +33,11 @@ type TileProps = {
 export function Tile({
   accessory,
   children,
+  collapsed,
   collapsible = false,
+  collapsibleLabel,
+  density = 'default',
+  footer,
   initiallyCollapsed = false,
   muted = false,
   onCollapsedChange,
@@ -38,11 +46,14 @@ export function Tile({
   title,
 }: TileProps) {
   const styles = useThemedStyles(createStyles);
-  const [isCollapsed, setIsCollapsed] = useState(initiallyCollapsed);
+  const [uncontrolledCollapsed, setUncontrolledCollapsed] =
+    useState(initiallyCollapsed);
+  const isCollapsed = collapsed ?? uncontrolledCollapsed;
   const titleText =
-    typeof title === 'string' || typeof title === 'number'
+    collapsibleLabel ??
+    (typeof title === 'string' || typeof title === 'number'
       ? String(title)
-      : 'tile';
+      : 'tile');
   const titleNode =
     typeof title === 'string' ? (
       <Text style={styles.title}>{title}</Text>
@@ -52,18 +63,30 @@ export function Tile({
   const toggleCollapsed = () => {
     const nextCollapsed = !isCollapsed;
 
-    setIsCollapsed(nextCollapsed);
+    if (collapsed == null) {
+      setUncontrolledCollapsed(nextCollapsed);
+    }
     onCollapsedChange?.(nextCollapsed);
   };
 
   return (
-    <View style={[styles.tile, muted && styles.tileMuted, style]}>
+    <View
+      style={[
+        styles.tile,
+        density === 'extraCompact' && styles.tileExtraCompact,
+        muted && styles.tileMuted,
+        style,
+      ]}
+    >
       {collapsible ? (
         <Pressable
           accessibilityLabel={`${isCollapsed ? 'Expand' : 'Collapse'} ${titleText}`}
           accessibilityRole="button"
           onPress={toggleCollapsed}
-          style={styles.headerRow}
+          style={[
+            styles.headerRow,
+            density === 'extraCompact' && styles.headerRowExtraCompact,
+          ]}
         >
           <View style={styles.titleWrap}>{titleNode}</View>
           {accessory || collapsible ? (
@@ -71,7 +94,13 @@ export function Tile({
               {accessory ? (
                 <View style={styles.accessory}>{accessory}</View>
               ) : null}
-              <View style={styles.expanderButton}>
+              <View
+                style={[
+                  styles.expanderButton,
+                  density === 'extraCompact' &&
+                    styles.expanderButtonExtraCompact,
+                ]}
+              >
                 <Feather
                   color={styles.expanderIcon.color}
                   name={isCollapsed ? 'chevron-right' : 'chevron-down'}
@@ -82,7 +111,12 @@ export function Tile({
           ) : null}
         </Pressable>
       ) : (
-        <View style={styles.headerRow}>
+        <View
+          style={[
+            styles.headerRow,
+            density === 'extraCompact' && styles.headerRowExtraCompact,
+          ]}
+        >
           <View style={styles.titleWrap}>{titleNode}</View>
           {accessory ? (
             <View style={styles.headerActions}>
@@ -91,13 +125,24 @@ export function Tile({
           ) : null}
         </View>
       )}
-      <View style={styles.contentWrap}>
+      <View
+        style={[
+          styles.contentWrap,
+          density === 'extraCompact' && styles.contentWrapExtraCompact,
+        ]}
+      >
         {summary ? (
-          <View style={styles.summaryRow}>
+          <View
+            style={[
+              styles.summaryRow,
+              density === 'extraCompact' && styles.summaryRowExtraCompact,
+            ]}
+          >
             <View style={styles.summary}>{summary}</View>
           </View>
         ) : null}
         {collapsible && isCollapsed ? null : children}
+        {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
       </View>
     </View>
   );
@@ -112,6 +157,12 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       paddingBottom: 12,
       paddingTop: 8,
     },
+    tileExtraCompact: {
+      borderRadius: 16,
+      paddingBottom: 8,
+      paddingHorizontal: 10,
+      paddingTop: 6,
+    },
     tileMuted: {
       backgroundColor: tokens.tileMutedSurface,
     },
@@ -121,6 +172,10 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       gap: 10,
       justifyContent: 'space-between',
       minHeight: 32,
+    },
+    headerRowExtraCompact: {
+      gap: 8,
+      minHeight: 28,
     },
     title: {
       color: tokens.textPrimary,
@@ -143,6 +198,10 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       gap: 8,
       paddingTop: 6,
     },
+    contentWrapExtraCompact: {
+      gap: 6,
+      paddingTop: 4,
+    },
     summaryRow: {
       alignItems: 'center',
       flexDirection: 'row',
@@ -150,12 +209,18 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       justifyContent: 'space-between',
       minWidth: 0,
     },
+    summaryRowExtraCompact: {
+      gap: 6,
+    },
     summary: {
       flex: 1,
       minWidth: 0,
     },
     accessory: {
       flexShrink: 0,
+    },
+    footerWrap: {
+      paddingTop: 2,
     },
     expanderButton: {
       alignItems: 'center',
@@ -165,6 +230,11 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       height: 32,
       justifyContent: 'center',
       width: 32,
+    },
+    expanderButtonExtraCompact: {
+      borderRadius: 14,
+      height: 28,
+      width: 28,
     },
     expanderIcon: {
       color: tokens.controlText,
