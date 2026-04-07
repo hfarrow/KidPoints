@@ -2,7 +2,7 @@ import type { PropsWithChildren, ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useShellSession } from '../features/shell/shellContext';
+import { useParentSession } from '../features/parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
 
 type ScreenScaffoldProps = PropsWithChildren<{
@@ -11,7 +11,7 @@ type ScreenScaffoldProps = PropsWithChildren<{
 
 export function ScreenScaffold({ children, footer }: ScreenScaffoldProps) {
   const styles = useThemedStyles(createStyles);
-  const { isParentUnlocked } = useShellSession();
+  const { isParentUnlocked } = useParentSession();
   const { getScreenSurface } = useAppTheme();
 
   return (

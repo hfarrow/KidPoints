@@ -1,12 +1,12 @@
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs, useRouter } from 'expo-router';
 
-import { useShellSession } from '../../src/features/shell/shellContext';
+import { useParentSession } from '../../src/features/parent/parentSessionContext';
 import { useAppTheme } from '../../src/features/theme/themeContext';
 
 export default function TabsLayout() {
   const router = useRouter();
-  const { isParentUnlocked } = useShellSession();
+  const { isParentUnlocked } = useParentSession();
   const { tokens } = useAppTheme();
 
   return (

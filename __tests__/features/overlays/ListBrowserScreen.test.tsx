@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import { ListBrowserScreen } from '../../../src/features/overlays/ListBrowserScreen';
-import { ShellSessionProvider } from '../../../src/features/shell/shellContext';
+import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import {
   createInitialSharedDocument,
@@ -74,14 +74,14 @@ describe('ListBrowserScreen', () => {
         initialDocument={document}
         storage={createMemoryStorage()}
       >
-        <ShellSessionProvider initialParentUnlocked>
+        <ParentSessionProvider initialParentUnlocked>
           <AppThemeProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <ListBrowserScreen />
           </AppThemeProvider>
-        </ShellSessionProvider>
+        </ParentSessionProvider>
       </SharedStoreProvider>,
     );
 

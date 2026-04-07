@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { AlarmScreen } from '../../../src/features/alarm/AlarmScreen';
-import { ShellSessionProvider } from '../../../src/features/shell/shellContext';
+import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
@@ -28,16 +28,16 @@ jest.mock('expo-router', () => ({
 }));
 
 describe('AlarmScreen', () => {
-  it('renders the locked shell state and opens the unlock flow', () => {
+  it('renders the locked parent-gated state and opens the unlock flow', () => {
     render(
-      <ShellSessionProvider initialParentUnlocked={false}>
+      <ParentSessionProvider initialParentUnlocked={false}>
         <AppThemeProvider
           initialThemeMode="light"
           storage={createMemoryStorage()}
         >
           <AlarmScreen />
         </AppThemeProvider>
-      </ShellSessionProvider>,
+      </ParentSessionProvider>,
     );
 
     expect(screen.getByText('Alarm')).toBeTruthy();

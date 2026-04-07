@@ -3,7 +3,6 @@ import {
   createContext,
   type PropsWithChildren,
   useContext,
-  useEffect,
   useMemo,
   useRef,
 } from 'react';
@@ -670,15 +669,6 @@ function createSharedStoreActions(
   };
 }
 
-function patchSharedStoreActions(store: SharedStore) {
-  store.setState((state) => ({
-    ...state,
-    ...createSharedStoreActions((updater) => {
-      store.setState((currentState) => updater(currentState));
-    }),
-  }));
-}
-
 export function createSharedStore({
   initialDocument = createInitialSharedDocument(),
   storage = AsyncStorage,
@@ -686,7 +676,7 @@ export function createSharedStore({
   initialDocument?: SharedDocument;
   storage?: StateStorage;
 } = {}) {
-  const store = createStore<SharedStoreState>()(
+  return createStore<SharedStoreState>()(
     persist(
       (set) => ({
         ...createSharedStoreActions((updater) => {
@@ -713,9 +703,6 @@ export function createSharedStore({
       },
     ),
   );
-
-  patchSharedStoreActions(store);
-  return store;
 }
 
 export function SharedStoreProvider({
@@ -731,15 +718,6 @@ export function SharedStoreProvider({
       storage,
     });
   }
-
-  useEffect(() => {
-    if (
-      storeRef.current &&
-      typeof storeRef.current.getState().deleteChildPermanently !== 'function'
-    ) {
-      patchSharedStoreActions(storeRef.current);
-    }
-  }, []);
 
   return (
     <SharedStoreContext.Provider value={storeRef.current}>

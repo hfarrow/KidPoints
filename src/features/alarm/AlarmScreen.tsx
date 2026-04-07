@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { MainScreenActions } from '../../components/MainScreenActions';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
 import {
@@ -12,14 +13,13 @@ import {
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
-import { MainScreenActions } from '../shell/MainScreenActions';
-import { useShellSession } from '../shell/shellContext';
+import { useParentSession } from '../parent/parentSessionContext';
 import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
 
 export function AlarmScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
-  const { isParentUnlocked } = useShellSession();
+  const { isParentUnlocked } = useParentSession();
 
   return (
     <ScreenScaffold>
@@ -31,8 +31,8 @@ export function AlarmScreen() {
           title="Unlock required"
         >
           <Text style={styles.body}>
-            Alarm controls are gated behind Parent Mode. The shell is live now,
-            while timer behavior and runtime integration land next.
+            Alarm controls are gated behind Parent Mode. This preview is live
+            now, while timer behavior and runtime integration land next.
           </Text>
           <ActionPillRow>
             <ActionPill
@@ -54,7 +54,7 @@ export function AlarmScreen() {
               tone={isParentUnlocked ? 'good' : 'warning'}
             />
           }
-          title="Countdown shell"
+          title="Countdown preview"
         >
           <SkeletonCluster lines={['48%', '66%', '33%']} />
           <ActionPillRow>

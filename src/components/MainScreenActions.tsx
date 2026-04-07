@@ -1,14 +1,13 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
-
-import { useAppTheme, useThemedStyles } from '../theme/themeContext';
-import { useShellSession } from './shellContext';
+import { useParentSession } from '../features/parent/parentSessionContext';
+import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
 
 export function MainScreenActions() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
-  const { isParentUnlocked, lockParentMode } = useShellSession();
+  const { isParentUnlocked, lockParentMode } = useParentSession();
   const { resolvedTheme, tokens } = useAppTheme();
 
   return (

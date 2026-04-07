@@ -2,7 +2,11 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import { HomeScreen } from '../../../src/features/home/HomeScreen';
-import { ShellSessionProvider } from '../../../src/features/shell/shellContext';
+import {
+  clearTextInputModal,
+  useTextInputModalStore,
+} from '../../../src/features/overlays/textInputModalStore';
+import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import {
   createInitialSharedDocument,
@@ -35,6 +39,7 @@ jest.mock('expo-router', () => ({
 describe('HomeScreen', () => {
   beforeEach(() => {
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
+    clearTextInputModal();
     mockPush.mockReset();
   });
 
@@ -44,14 +49,14 @@ describe('HomeScreen', () => {
         initialDocument={createInitialSharedDocument({ deviceId: 'home-test' })}
         storage={createMemoryStorage()}
       >
-        <ShellSessionProvider initialParentUnlocked>
+        <ParentSessionProvider initialParentUnlocked>
           <AppThemeProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <HomeScreen />
           </AppThemeProvider>
-        </ShellSessionProvider>
+        </ParentSessionProvider>
       </SharedStoreProvider>,
     );
 
@@ -94,14 +99,14 @@ describe('HomeScreen', () => {
         initialDocument={document}
         storage={createMemoryStorage()}
       >
-        <ShellSessionProvider initialParentUnlocked={false}>
+        <ParentSessionProvider initialParentUnlocked={false}>
           <AppThemeProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <HomeScreen />
           </AppThemeProvider>
-        </ShellSessionProvider>
+        </ParentSessionProvider>
       </SharedStoreProvider>,
     );
 
@@ -113,7 +118,7 @@ describe('HomeScreen', () => {
     fireEvent.press(screen.getByLabelText('Edit Ava points'));
     expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
 
-    fireEvent.press(screen.getByLabelText('Expand Ava'));
+    fireEvent.press(screen.getByText('Ava'));
     expect(screen.getByText('Unlock Parent Mode')).toBeTruthy();
   });
 
@@ -146,21 +151,26 @@ describe('HomeScreen', () => {
         initialDocument={document}
         storage={createMemoryStorage()}
       >
-        <ShellSessionProvider initialParentUnlocked>
+        <ParentSessionProvider initialParentUnlocked>
           <AppThemeProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <HomeScreen />
           </AppThemeProvider>
-        </ShellSessionProvider>
+        </ParentSessionProvider>
       </SharedStoreProvider>,
     );
 
     fireEvent.press(screen.getByLabelText('Edit Ava points'));
-    expect(mockPush).toHaveBeenCalledWith(
-      '/edit-dialog?mode=set-points&childId=child-ava',
-    );
+    expect(mockPush).toHaveBeenCalledWith('/text-input-modal');
+    expect(useTextInputModalStore.getState().request).toMatchObject({
+      confirmLabel: 'Save Total',
+      description: 'Set the exact point total for Ava.',
+      initialValue: '4',
+      inputAccessibilityLabel: 'Exact Point Total',
+      title: 'Edit Point Total',
+    });
 
     fireEvent.press(screen.getByLabelText('Expand Ava'));
     expect(screen.getByText('Archive')).toBeTruthy();
@@ -202,14 +212,14 @@ describe('HomeScreen', () => {
         initialDocument={document}
         storage={createMemoryStorage()}
       >
-        <ShellSessionProvider initialParentUnlocked>
+        <ParentSessionProvider initialParentUnlocked>
           <AppThemeProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <HomeScreen />
           </AppThemeProvider>
-        </ShellSessionProvider>
+        </ParentSessionProvider>
       </SharedStoreProvider>,
     );
 
@@ -217,7 +227,7 @@ describe('HomeScreen', () => {
     expect(screen.queryByText('Unlocked')).toBeNull();
     expect(screen.queryByText('Add child')).toBeNull();
 
-    fireEvent.press(screen.getByLabelText('Expand Parent'));
+    fireEvent.press(screen.getByText('Parent'));
     expect(screen.getByText('Add child')).toBeTruthy();
   });
 });

@@ -58,30 +58,39 @@ export function Tile({
 
   return (
     <View style={[styles.tile, muted && styles.tileMuted, style]}>
-      <View style={styles.headerRow}>
-        <View style={styles.titleWrap}>{titleNode}</View>
-        {accessory || collapsible ? (
-          <View style={styles.headerActions}>
-            {accessory ? (
-              <View style={styles.accessory}>{accessory}</View>
-            ) : null}
-            {collapsible ? (
-              <Pressable
-                accessibilityLabel={`${isCollapsed ? 'Expand' : 'Collapse'} ${titleText}`}
-                accessibilityRole="button"
-                onPress={toggleCollapsed}
-                style={styles.expanderButton}
-              >
+      {collapsible ? (
+        <Pressable
+          accessibilityLabel={`${isCollapsed ? 'Expand' : 'Collapse'} ${titleText}`}
+          accessibilityRole="button"
+          onPress={toggleCollapsed}
+          style={styles.headerRow}
+        >
+          <View style={styles.titleWrap}>{titleNode}</View>
+          {accessory || collapsible ? (
+            <View style={styles.headerActions}>
+              {accessory ? (
+                <View style={styles.accessory}>{accessory}</View>
+              ) : null}
+              <View style={styles.expanderButton}>
                 <Feather
                   color={styles.expanderIcon.color}
                   name={isCollapsed ? 'chevron-right' : 'chevron-down'}
                   size={18}
                 />
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-      </View>
+              </View>
+            </View>
+          ) : null}
+        </Pressable>
+      ) : (
+        <View style={styles.headerRow}>
+          <View style={styles.titleWrap}>{titleNode}</View>
+          {accessory ? (
+            <View style={styles.headerActions}>
+              <View style={styles.accessory}>{accessory}</View>
+            </View>
+          ) : null}
+        </View>
+      )}
       <View style={styles.contentWrap}>
         {summary ? (
           <View style={styles.summaryRow}>

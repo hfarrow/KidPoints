@@ -4,21 +4,21 @@ import {
   useSessionUiStore,
 } from '../../state/sessionUiStore';
 
-type ShellSessionContextValue = {
+type ParentSessionContextValue = {
   attemptUnlock: (pin: string) => boolean;
   isParentUnlocked: boolean;
   lockParentMode: () => void;
   unlockParentMode: () => void;
 };
 
-type ShellSessionProviderProps = PropsWithChildren<{
+type ParentSessionProviderProps = PropsWithChildren<{
   initialParentUnlocked?: boolean;
 }>;
 
-export function ShellSessionProvider({
+export function ParentSessionProvider({
   children,
   initialParentUnlocked,
-}: ShellSessionProviderProps) {
+}: ParentSessionProviderProps) {
   return (
     <SessionUiStoreProvider initialParentUnlocked={initialParentUnlocked}>
       {children}
@@ -26,11 +26,11 @@ export function ShellSessionProvider({
   );
 }
 
-export function useShellSession() {
+export function useParentSession() {
   return {
     attemptUnlock: useSessionUiStore((state) => state.attemptUnlock),
     isParentUnlocked: useSessionUiStore((state) => state.isParentUnlocked),
     lockParentMode: useSessionUiStore((state) => state.lockParentMode),
     unlockParentMode: useSessionUiStore((state) => state.unlockParentMode),
-  } satisfies ShellSessionContextValue;
+  } satisfies ParentSessionContextValue;
 }

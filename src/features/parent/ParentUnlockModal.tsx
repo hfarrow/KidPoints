@@ -1,14 +1,13 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-
-import { useShellSession } from '../shell/shellContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { useParentSession } from './parentSessionContext';
 
-export function ParentUnlockScreen() {
+export function ParentUnlockModal() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
-  const { attemptUnlock } = useShellSession();
+  const { attemptUnlock } = useParentSession();
   const { tokens } = useAppTheme();
   const [pin, setPin] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -17,7 +16,7 @@ export function ParentUnlockScreen() {
     <View style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}>
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Parent Mode</Text>
-        <Text style={styles.title}>Unlock shell controls</Text>
+        <Text style={styles.title}>Unlock parent controls</Text>
         <Text style={styles.body}>
           Enter the temporary PIN to view parent-gated controls. The default PIN
           for this milestone is `0000`.

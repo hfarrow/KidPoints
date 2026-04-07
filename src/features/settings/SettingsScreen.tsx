@@ -10,7 +10,7 @@ import {
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
-import { useShellSession } from '../shell/shellContext';
+import { useParentSession } from '../parent/parentSessionContext';
 import type { ThemeMode } from '../theme/theme';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 
@@ -19,7 +19,7 @@ const THEME_OPTIONS: ThemeMode[] = ['light', 'dark', 'system'];
 export function SettingsScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
-  const { isParentUnlocked } = useShellSession();
+  const { isParentUnlocked } = useParentSession();
   const { resolvedTheme, setThemeMode, themeMode, tokens } = useAppTheme();
 
   return (
@@ -37,10 +37,7 @@ export function SettingsScreen() {
         title="Settings"
       />
 
-      <Tile
-        accessory={<StatusBadge label={resolvedTheme} />}
-        title="Display mode"
-      >
+      <Tile accessory={<StatusBadge label={resolvedTheme} />} title="Theme">
         <View style={styles.optionRow}>
           {THEME_OPTIONS.map((option) => {
             const isActive = themeMode === option;
@@ -49,6 +46,7 @@ export function SettingsScreen() {
               <Pressable
                 key={option}
                 accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
                 onPress={() => setThemeMode(option)}
                 style={[
                   styles.option,
@@ -59,11 +57,6 @@ export function SettingsScreen() {
                 ]}
               >
                 <Text style={styles.optionTitle}>{option}</Text>
-                <Text style={styles.optionBody}>
-                  {option === 'system'
-                    ? 'Follow device appearance.'
-                    : `Use ${option} tokens immediately.`}
-                </Text>
               </Pressable>
             );
           })}
@@ -77,7 +70,7 @@ export function SettingsScreen() {
             tone={isParentUnlocked ? 'good' : 'warning'}
           />
         }
-        title="Shell session"
+        title="Parent session"
       >
         <Text style={styles.body}>
           Parent Mode stays local to this device for now, uses the hardcoded PIN
@@ -115,26 +108,25 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       lineHeight: 20,
     },
     optionRow: {
+      flexDirection: 'row',
       gap: 8,
     },
     option: {
+      alignItems: 'center',
       backgroundColor: tokens.controlSurface,
       borderColor: tokens.border,
       borderRadius: 16,
       borderWidth: 1,
-      gap: 2,
-      paddingHorizontal: 12,
-      paddingVertical: 12,
+      flex: 1,
+      justifyContent: 'center',
+      minHeight: 44,
+      paddingHorizontal: 10,
+      paddingVertical: 10,
     },
     optionTitle: {
       color: tokens.textPrimary,
-      fontSize: 15,
+      fontSize: 14,
       fontWeight: '800',
       textTransform: 'capitalize',
-    },
-    optionBody: {
-      color: tokens.textMuted,
-      fontSize: 13,
-      lineHeight: 18,
     },
   });

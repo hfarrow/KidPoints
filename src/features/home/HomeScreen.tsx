@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { MainScreenActions } from '../../components/MainScreenActions';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
 import {
@@ -14,18 +15,20 @@ import {
   selectHomeTimerSummary,
   useSharedStore,
 } from '../../state/sharedStore';
-import { MainScreenActions } from '../shell/MainScreenActions';
-import { useShellSession } from '../shell/shellContext';
+import { presentTextInputModal } from '../overlays/textInputModalStore';
+import { useParentSession } from '../parent/parentSessionContext';
 import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
 
 export function HomeScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
-  const { isParentUnlocked } = useShellSession();
+  const { isParentUnlocked } = useParentSession();
   const head = useSharedStore((state) => state.document.head);
   const homeTimerSummary = useSharedStore(selectHomeTimerSummary);
+  const addChild = useSharedStore((state) => state.addChild);
   const adjustPoints = useSharedStore((state) => state.adjustPoints);
   const archiveChild = useSharedStore((state) => state.archiveChild);
+  const setPoints = useSharedStore((state) => state.setPoints);
   const activeChildren = useMemo(
     () =>
       head.activeChildIds
@@ -33,6 +36,45 @@ export function HomeScreen() {
         .filter(Boolean),
     [head],
   );
+
+  const openAddChildModal = () => {
+    presentTextInputModal({
+      confirmLabel: 'Add Child',
+      description: 'Add a child tile to the home screen.',
+      initialValue: '',
+      inputAccessibilityLabel: 'Child Name',
+      onSubmit: (nextValue) => addChild(nextValue),
+      title: 'Add Child',
+    });
+    router.push('/text-input-modal');
+  };
+
+  const openEditPointTotalModal = (
+    childId: string,
+    childName: string,
+    points: number,
+  ) => {
+    presentTextInputModal({
+      confirmLabel: 'Save Total',
+      description: `Set the exact point total for ${childName}.`,
+      initialValue: String(points),
+      inputAccessibilityLabel: 'Exact Point Total',
+      keyboardType: 'number-pad',
+      onSubmit: (nextValue) => {
+        if (!/^-?\d+$/.test(nextValue.trim())) {
+          return {
+            error: 'Enter a whole-number point total.',
+            ok: false,
+          } as const;
+        }
+
+        return setPoints(childId, Number(nextValue.trim()));
+      },
+      placeholder: '0',
+      title: 'Edit Point Total',
+    });
+    router.push('/text-input-modal');
+  };
 
   return (
     <ScreenScaffold>
@@ -72,7 +114,7 @@ export function HomeScreen() {
               label={isParentUnlocked ? 'Add child' : 'Unlock to add'}
               onPress={() => {
                 if (isParentUnlocked) {
-                  router.push('/edit-dialog?mode=add-child');
+                  openAddChildModal();
                   return;
                 }
 
@@ -122,9 +164,7 @@ export function HomeScreen() {
                       return;
                     }
 
-                    router.push(
-                      `/edit-dialog?mode=set-points&childId=${child.id}`,
-                    );
+                    openEditPointTotalModal(child.id, child.name, child.points);
                   }}
                   style={[
                     styles.pointsCore,
@@ -198,7 +238,7 @@ export function HomeScreen() {
           <ActionPillRow>
             <ActionPill
               label="Add child"
-              onPress={() => router.push('/edit-dialog?mode=add-child')}
+              onPress={openAddChildModal}
               tone="primary"
             />
             <ActionPill

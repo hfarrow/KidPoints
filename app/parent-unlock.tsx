@@ -1,5 +1,5 @@
-import { ParentUnlockScreen } from '../src/features/parent/ParentUnlockScreen';
+import { ParentUnlockModal } from '../src/features/parent/ParentUnlockModal';
 
 export default function ParentUnlockRoute() {
-  return <ParentUnlockScreen />;
+  return <ParentUnlockModal />;
 }

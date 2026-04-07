@@ -17,7 +17,7 @@ function RootNavigator() {
           options={{ presentation: 'transparentModal' }}
         />
         <Stack.Screen
-          name="edit-dialog"
+          name="text-input-modal"
           options={{ presentation: 'transparentModal' }}
         />
       </Stack>

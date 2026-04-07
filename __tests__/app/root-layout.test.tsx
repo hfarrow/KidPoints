@@ -38,6 +38,6 @@ describe('RootLayout', () => {
 
     expect(screen.getByText('(tabs):default')).toBeTruthy();
     expect(screen.getByText('parent-unlock:transparentModal')).toBeTruthy();
-    expect(screen.getByText('edit-dialog:transparentModal')).toBeTruthy();
+    expect(screen.getByText('text-input-modal:transparentModal')).toBeTruthy();
   });
 });

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
-import { ParentUnlockScreen } from '../../../src/features/parent/ParentUnlockScreen';
-import { ShellSessionProvider } from '../../../src/features/shell/shellContext';
+import { ParentUnlockModal } from '../../../src/features/parent/ParentUnlockModal';
+import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
@@ -13,17 +13,17 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
-describe('ParentUnlockScreen', () => {
+describe('ParentUnlockModal', () => {
   it('rejects a bad pin and accepts 0000', () => {
     render(
-      <ShellSessionProvider initialParentUnlocked={false}>
+      <ParentSessionProvider initialParentUnlocked={false}>
         <AppThemeProvider
           initialThemeMode="light"
           storage={createMemoryStorage()}
         >
-          <ParentUnlockScreen />
+          <ParentUnlockModal />
         </AppThemeProvider>
-      </ShellSessionProvider>,
+      </ParentSessionProvider>,
     );
 
     fireEvent.changeText(screen.getByLabelText('Parent PIN'), '1111');
