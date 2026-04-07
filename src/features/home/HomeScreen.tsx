@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -17,12 +18,13 @@ import {
 } from '../../state/sharedStore';
 import { presentTextInputModal } from '../overlays/textInputModalStore';
 import { useParentSession } from '../parent/parentSessionContext';
-import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 
 export function HomeScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked } = useParentSession();
+  const { tokens } = useAppTheme();
   const head = useSharedStore((state) => state.document.head);
   const homeTimerSummary = useSharedStore(selectHomeTimerSummary);
   const addChild = useSharedStore((state) => state.addChild);
@@ -78,7 +80,13 @@ export function HomeScreen() {
 
   return (
     <ScreenScaffold>
-      <ScreenHeader actions={<MainScreenActions />} title="Home" />
+      <ScreenHeader
+        actions={<MainScreenActions />}
+        title="Home"
+        titleIcon={
+          <Ionicons color={tokens.textPrimary} name="home-outline" size={24} />
+        }
+      />
 
       <Tile
         accessory={
@@ -111,7 +119,7 @@ export function HomeScreen() {
               Add a child to get started!
             </Text>
             <ActionPill
-              label={isParentUnlocked ? 'Add child' : 'Unlock to add'}
+              label={isParentUnlocked ? 'Add Child' : 'Unlock To Add'}
               onPress={() => {
                 if (isParentUnlocked) {
                   openAddChildModal();
@@ -128,8 +136,8 @@ export function HomeScreen() {
 
       {activeChildren.map((child) => (
         <Tile
-          collapsible
-          initiallyCollapsed
+          collapsible={isParentUnlocked}
+          initiallyCollapsed={isParentUnlocked}
           key={child.id}
           summary={
             <View style={styles.pointsSummary}>
@@ -200,7 +208,7 @@ export function HomeScreen() {
                 label="Archive"
                 onPress={() => {
                   Alert.alert(
-                    'Archive child',
+                    'Archive Child',
                     `${child.name} will be removed from Home, but their recorded transactions and data will stay available so you can restore them later.`,
                     [
                       { style: 'cancel', text: 'Cancel' },
@@ -217,49 +225,27 @@ export function HomeScreen() {
                 tone="critical"
               />
             </ActionPillRow>
-          ) : (
-            <>
-              <Text style={styles.bodyCopy}>
-                Tap the points capsule or unlock Parent Mode to manage this
-                child.
-              </Text>
-              <ActionPill
-                label="Unlock Parent Mode"
-                onPress={() => router.push('/parent-unlock')}
-                tone="primary"
-              />
-            </>
-          )}
+          ) : null}
         </Tile>
       ))}
 
       <Tile collapsible initiallyCollapsed title="Parent">
         {isParentUnlocked ? (
           <ActionPillRow>
+            <ActionPill label="Add Child" onPress={openAddChildModal} />
             <ActionPill
-              label="Add child"
-              onPress={openAddChildModal}
-              tone="primary"
-            />
-            <ActionPill
-              label="Archived children"
+              label="Archived Children"
               onPress={() => router.push('/list-browser')}
             />
           </ActionPillRow>
         ) : (
-          <>
-            <Text style={styles.bodyCopy}>
-              Parent tools stay available here once the local unlock prompt has
-              been completed.
-            </Text>
-            <ActionPillRow>
-              <ActionPill
-                label="Unlock with PIN"
-                onPress={() => router.push('/parent-unlock')}
-                tone="primary"
-              />
-            </ActionPillRow>
-          </>
+          <ActionPillRow>
+            <ActionPill
+              label="Unlock with PIN"
+              onPress={() => router.push('/parent-unlock')}
+              tone="primary"
+            />
+          </ActionPillRow>
         )}
       </Tile>
     </ScreenScaffold>

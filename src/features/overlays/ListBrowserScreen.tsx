@@ -36,7 +36,7 @@ export function ListBrowserScreen() {
       <ScreenHeader
         leadingAction={
           <Pressable
-            accessibilityLabel="Go back"
+            accessibilityLabel="Go Back"
             onPress={() => router.back()}
             style={styles.backButton}
           >
@@ -47,14 +47,14 @@ export function ListBrowserScreen() {
       />
 
       {archivedChildren.length === 0 ? (
-        <Tile title="Nothing archived">
+        <Tile title="Nothing Archived">
           <Text style={styles.emptyCopy}>
             Archived children will appear here once you move them off the Home
             dashboard.
           </Text>
         </Tile>
       ) : (
-        <Tile title="Restore children">
+        <Tile title="Restore Children">
           <View style={styles.column}>
             {archivedChildren.map((child) => (
               <CompactSurface key={child.id}>
@@ -77,7 +77,7 @@ export function ListBrowserScreen() {
                     label="Delete Permanently"
                     onPress={() => {
                       Alert.alert(
-                        'Delete child permanently',
+                        'Delete Child Permanently',
                         `${child.name} will be removed forever. Their archived profile and recorded data will no longer be available after this action.`,
                         [
                           { style: 'cancel', text: 'Cancel' },
@@ -86,7 +86,7 @@ export function ListBrowserScreen() {
                               deleteChildPermanently(child.id);
                             },
                             style: 'destructive',
-                            text: 'Delete permanently',
+                            text: 'Delete Permanently',
                           },
                         ],
                       );

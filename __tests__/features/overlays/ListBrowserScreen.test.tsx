@@ -88,16 +88,16 @@ describe('ListBrowserScreen', () => {
     expect(screen.getByText('Noah')).toBeTruthy();
     expect(screen.getByText('Restore to Home')).toBeTruthy();
     expect(screen.getByText('Delete Permanently')).toBeTruthy();
-    expect(screen.getByLabelText('Go back')).toBeTruthy();
+    expect(screen.getByLabelText('Go Back')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Delete Permanently'));
     expect(Alert.alert).toHaveBeenCalledWith(
-      'Delete child permanently',
+      'Delete Child Permanently',
       expect.stringContaining('removed forever'),
       expect.any(Array),
     );
 
-    fireEvent.press(screen.getByLabelText('Go back'));
+    fireEvent.press(screen.getByLabelText('Go Back'));
     expect(mockBack).toHaveBeenCalled();
   });
 });

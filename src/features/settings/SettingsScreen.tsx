@@ -27,7 +27,7 @@ export function SettingsScreen() {
       <ScreenHeader
         leadingAction={
           <Pressable
-            accessibilityLabel="Go back"
+            accessibilityLabel="Go Back"
             onPress={() => router.back()}
             style={styles.backButton}
           >
@@ -70,7 +70,7 @@ export function SettingsScreen() {
             tone={isParentUnlocked ? 'good' : 'warning'}
           />
         }
-        title="Parent session"
+        title="Parent Session"
       >
         <Text style={styles.body}>
           Parent Mode stays local to this device for now, uses the hardcoded PIN
@@ -78,12 +78,12 @@ export function SettingsScreen() {
         </Text>
         <ActionPillRow>
           <ActionPill
-            label="Open unlock"
+            label="Open Unlock"
             onPress={() => router.push('/parent-unlock')}
             tone="primary"
           />
           <ActionPill
-            label="Archived children"
+            label="Archived Children"
             onPress={() => router.push('/list-browser')}
           />
         </ActionPillRow>

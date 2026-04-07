@@ -42,12 +42,12 @@ describe('SettingsScreen', () => {
 
     expect(screen.getByText('Settings')).toBeTruthy();
     expect(screen.getByText('Theme')).toBeTruthy();
-    expect(screen.getByLabelText('Go back')).toBeTruthy();
+    expect(screen.getByLabelText('Go Back')).toBeTruthy();
 
-    fireEvent.press(screen.getByText('Archived children'));
+    fireEvent.press(screen.getByText('Archived Children'));
     expect(mockPush).toHaveBeenCalledWith('/list-browser');
 
-    fireEvent.press(screen.getByLabelText('Go back'));
+    fireEvent.press(screen.getByLabelText('Go Back'));
     expect(mockBack).toHaveBeenCalled();
   });
 });

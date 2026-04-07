@@ -41,7 +41,7 @@ describe('AlarmScreen', () => {
     );
 
     expect(screen.getByText('Alarm')).toBeTruthy();
-    expect(screen.getByText('Unlock required')).toBeTruthy();
+    expect(screen.getByText('Unlock Required')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Unlock with PIN'));
     expect(mockPush).toHaveBeenCalledWith('/parent-unlock');

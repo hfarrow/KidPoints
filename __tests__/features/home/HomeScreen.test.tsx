@@ -62,11 +62,11 @@ describe('HomeScreen', () => {
 
     expect(screen.getByText('Home')).toBeTruthy();
     expect(screen.getByText('Check-In')).toBeTruthy();
-    expect(screen.getByText('Add Child')).toBeTruthy();
+    expect(screen.getAllByText('Add Child')).toHaveLength(2);
     expect(screen.getByText('Add a child to get started!')).toBeTruthy();
     expect(screen.getByText('Parent')).toBeTruthy();
 
-    fireEvent.press(screen.getByLabelText('Open settings'));
+    fireEvent.press(screen.getByLabelText('Open Settings'));
     expect(mockPush).toHaveBeenCalledWith('/settings');
   });
 
@@ -112,14 +112,11 @@ describe('HomeScreen', () => {
 
     expect(screen.getByText('Ava')).toBeTruthy();
     expect(screen.queryByText('Unlock Parent Mode')).toBeNull();
-    expect(screen.getByLabelText('Expand Ava')).toBeTruthy();
-    expect(screen.queryByText('Add child')).toBeNull();
+    expect(screen.queryByLabelText('Expand Ava')).toBeNull();
+    expect(screen.queryByText('Add Child')).toBeNull();
 
     fireEvent.press(screen.getByLabelText('Edit Ava points'));
     expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
-
-    fireEvent.press(screen.getByText('Ava'));
-    expect(screen.getByText('Unlock Parent Mode')).toBeTruthy();
   });
 
   it('opens exact points editing from the points capsule and confirms archive inside the expanded tile', () => {
@@ -177,7 +174,7 @@ describe('HomeScreen', () => {
 
     fireEvent.press(screen.getByText('Archive'));
     expect(Alert.alert).toHaveBeenCalledWith(
-      'Archive child',
+      'Archive Child',
       expect.stringContaining('removed from Home'),
       expect.any(Array),
     );
@@ -225,9 +222,9 @@ describe('HomeScreen', () => {
 
     expect(screen.getByText('Parent')).toBeTruthy();
     expect(screen.queryByText('Unlocked')).toBeNull();
-    expect(screen.queryByText('Add child')).toBeNull();
+    expect(screen.queryByText('Add Child')).toBeNull();
 
     fireEvent.press(screen.getByText('Parent'));
-    expect(screen.getByText('Add child')).toBeTruthy();
+    expect(screen.getByText('Add Child')).toBeTruthy();
   });
 });

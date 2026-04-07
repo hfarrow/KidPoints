@@ -11,6 +11,7 @@ type ScreenHeaderProps = {
   eyebrow?: string;
   leadingAction?: ReactNode;
   subtitle?: string;
+  titleIcon?: ReactNode;
   title: string;
 };
 
@@ -19,6 +20,7 @@ export function ScreenHeader({
   eyebrow,
   leadingAction,
   subtitle,
+  titleIcon,
   title,
 }: ScreenHeaderProps) {
   const styles = useThemedStyles(createStyles);
@@ -31,6 +33,7 @@ export function ScreenHeader({
           {leadingAction ? (
             <View style={styles.leadingAction}>{leadingAction}</View>
           ) : null}
+          {titleIcon ? <View style={styles.titleIcon}>{titleIcon}</View> : null}
           <Text accessibilityRole="header" style={styles.title}>
             {title}
           </Text>
@@ -64,6 +67,11 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     },
     leadingAction: {
       flexShrink: 0,
+    },
+    titleIcon: {
+      alignItems: 'center',
+      flexShrink: 0,
+      justifyContent: 'center',
     },
     title: {
       color: tokens.textPrimary,

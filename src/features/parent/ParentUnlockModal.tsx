@@ -16,7 +16,7 @@ export function ParentUnlockModal() {
     <View style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}>
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Parent Mode</Text>
-        <Text style={styles.title}>Unlock parent controls</Text>
+        <Text style={styles.title}>Unlock Parent Controls</Text>
         <Text style={styles.body}>
           Enter the temporary PIN to view parent-gated controls. The default PIN
           for this milestone is `0000`.

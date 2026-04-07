@@ -13,7 +13,7 @@ export function MainScreenActions() {
   return (
     <View style={styles.row}>
       <Pressable
-        accessibilityLabel="Open settings"
+        accessibilityLabel="Open Settings"
         onPress={() => router.push('/settings')}
         style={styles.action}
       >
@@ -25,7 +25,7 @@ export function MainScreenActions() {
       </Pressable>
       <Pressable
         accessibilityLabel={
-          isParentUnlocked ? 'Lock parent mode' : 'Unlock parent mode'
+          isParentUnlocked ? 'Lock Parent Mode' : 'Unlock Parent Mode'
         }
         onPress={() => {
           if (isParentUnlocked) {

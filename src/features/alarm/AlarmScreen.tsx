@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -14,21 +15,28 @@ import {
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
 import { useParentSession } from '../parent/parentSessionContext';
-import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 
 export function AlarmScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked } = useParentSession();
+  const { tokens } = useAppTheme();
 
   return (
     <ScreenScaffold>
-      <ScreenHeader actions={<MainScreenActions />} title="Alarm" />
+      <ScreenHeader
+        actions={<MainScreenActions />}
+        title="Alarm"
+        titleIcon={
+          <Feather color={tokens.textPrimary} name="clock" size={22} />
+        }
+      />
 
       {!isParentUnlocked ? (
         <Tile
           accessory={<StatusBadge label="Locked" tone="warning" />}
-          title="Unlock required"
+          title="Unlock Required"
         >
           <Text style={styles.body}>
             Alarm controls are gated behind Parent Mode. This preview is live
@@ -50,11 +58,11 @@ export function AlarmScreen() {
         <Tile
           accessory={
             <StatusBadge
-              label={isParentUnlocked ? 'Parent ready' : 'Preview only'}
+              label={isParentUnlocked ? 'Parent Ready' : 'Preview Only'}
               tone={isParentUnlocked ? 'good' : 'warning'}
             />
           }
-          title="Countdown preview"
+          title="Countdown Preview"
         >
           <SkeletonCluster lines={['48%', '66%', '33%']} />
           <ActionPillRow>
@@ -64,14 +72,14 @@ export function AlarmScreen() {
           </ActionPillRow>
         </Tile>
 
-        <Tile title="Interval and duration">
+        <Tile title="Interval And Duration">
           <View style={styles.column}>
             <CompactSurface>
-              <SectionLabel>Check-in cadence</SectionLabel>
+              <SectionLabel>Check-In Cadence</SectionLabel>
               <SkeletonCluster lines={['34%', '58%']} />
             </CompactSurface>
             <CompactSurface>
-              <SectionLabel>Session length</SectionLabel>
+              <SectionLabel>Session Length</SectionLabel>
               <SkeletonCluster lines={['26%', '41%']} />
             </CompactSurface>
           </View>
@@ -79,22 +87,22 @@ export function AlarmScreen() {
 
         <Tile
           accessory={<StatusBadge label="Skeleton" />}
-          title="Notifications and readiness"
+          title="Notifications And Readiness"
         >
           <View style={styles.column}>
             <CompactSurface>
-              <SectionLabel>Runtime state</SectionLabel>
+              <SectionLabel>Runtime State</SectionLabel>
               <SkeletonCluster lines={['52%', '66%']} />
             </CompactSurface>
             <CompactSurface>
-              <SectionLabel>Corrective actions</SectionLabel>
+              <SectionLabel>Corrective Actions</SectionLabel>
               <ActionPillRow>
                 <ActionPill
-                  label="Open settings"
+                  label="Open Settings"
                   onPress={() => router.push('/settings')}
                 />
                 <ActionPill
-                  label="Open list view"
+                  label="Open List View"
                   onPress={() => router.push('/list-browser')}
                 />
               </ActionPillRow>
