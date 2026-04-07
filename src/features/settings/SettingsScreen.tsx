@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -22,12 +23,17 @@ export function SettingsScreen() {
   const { resolvedTheme, setThemeMode, themeMode, tokens } = useAppTheme();
 
   return (
-    <ScreenScaffold
-      footer={<ActionPill label="Back" onPress={() => router.back()} />}
-    >
+    <ScreenScaffold>
       <ScreenHeader
-        eyebrow="Preferences"
-        subtitle="Device-only settings live here, while family data and transactions stay in the shared Zustand document."
+        leadingAction={
+          <Pressable
+            accessibilityLabel="Go back"
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <Feather color={tokens.controlText} name="arrow-left" size={18} />
+          </Pressable>
+        }
         title="Settings"
       />
 
@@ -95,6 +101,14 @@ export function SettingsScreen() {
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
+    backButton: {
+      alignItems: 'center',
+      backgroundColor: tokens.controlSurface,
+      borderRadius: 18,
+      height: 36,
+      justifyContent: 'center',
+      width: 36,
+    },
     body: {
       color: tokens.textMuted,
       fontSize: 14,

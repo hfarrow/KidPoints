@@ -16,9 +16,11 @@ jest.mock('expo-router', () => {
     options,
   }: {
     name: string;
-    options?: { title?: string };
+    options?: { href?: null; title?: string };
   }) {
-    return <Text>{`${name}:${options?.title ?? ''}`}</Text>;
+    const tabVisibility = options?.href === null ? 'hidden' : 'tab';
+
+    return <Text>{`${name}:${options?.title ?? ''}:${tabVisibility}`}</Text>;
   }
   Tabs.displayName = 'MockTabs';
   MockTabsScreen.displayName = 'MockTabsScreen';
@@ -31,15 +33,17 @@ jest.mock('expo-router', () => {
 });
 
 describe('TabsLayout', () => {
-  it('configures the three primary tabs', () => {
+  it('configures the primary tabs and hides fullscreen support screens from the tab bar', () => {
     render(
       <AppProviders>
         <TabsLayout />
       </AppProviders>,
     );
 
-    expect(screen.getByText('index:Home')).toBeTruthy();
-    expect(screen.getByText('alarm:Alarm')).toBeTruthy();
-    expect(screen.getByText('shop:Shop')).toBeTruthy();
+    expect(screen.getByText('index:Home:tab')).toBeTruthy();
+    expect(screen.getByText('alarm:Alarm:tab')).toBeTruthy();
+    expect(screen.getByText('shop:Shop:tab')).toBeTruthy();
+    expect(screen.getByText('settings::hidden')).toBeTruthy();
+    expect(screen.getByText('list-browser::hidden')).toBeTruthy();
   });
 });

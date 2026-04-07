@@ -60,6 +60,13 @@ export type ChildArchivedEvent = SharedEventBase & {
   type: 'child.archived';
 };
 
+export type ChildDeletedEvent = SharedEventBase & {
+  payload: {
+    childId: string;
+  };
+  type: 'child.deleted';
+};
+
 export type ChildRestoredEvent = SharedEventBase & {
   payload: {
     childId: string;
@@ -70,6 +77,7 @@ export type ChildRestoredEvent = SharedEventBase & {
 export type SharedEvent =
   | ChildArchivedEvent
   | ChildCreatedEvent
+  | ChildDeletedEvent
   | ChildPointsAdjustedEvent
   | ChildPointsSetEvent
   | ChildRestoredEvent;
@@ -82,6 +90,7 @@ export type RestoreDescriptor = {
 export type TransactionSummaryType =
   | 'child-archived'
   | 'child-created'
+  | 'child-deleted'
   | 'child-restored'
   | 'points-adjusted'
   | 'points-set';

@@ -8,6 +8,19 @@ import { createMemoryStorage } from '../../testUtils/memoryStorage';
 const mockBack = jest.fn();
 const mockPush = jest.fn();
 
+jest.mock('@expo/vector-icons', () => {
+  const mockReactNative = jest.requireActual('react-native');
+  const { Text } = mockReactNative;
+
+  function MockIcon() {
+    return <Text>icon</Text>;
+  }
+
+  return {
+    Feather: MockIcon,
+  };
+});
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: mockBack,
@@ -30,11 +43,12 @@ describe('SettingsScreen', () => {
 
     expect(screen.getByText('Settings')).toBeTruthy();
     expect(screen.getByText('Display mode')).toBeTruthy();
+    expect(screen.getByLabelText('Go back')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Archived children'));
     expect(mockPush).toHaveBeenCalledWith('/list-browser');
 
-    fireEvent.press(screen.getByText('Back'));
+    fireEvent.press(screen.getByLabelText('Go back'));
     expect(mockBack).toHaveBeenCalled();
   });
 });

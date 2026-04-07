@@ -65,4 +65,31 @@ describe('sharedStore transaction engine', () => {
       'child.restored',
     );
   });
+
+  it('records permanent deletion and can rebuild an archived child from the delete transaction restore descriptor', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({ deviceId: 'device-c' }),
+      storage: createMemoryStorage(),
+    });
+
+    store.getState().addChild('Noah');
+    const childId = store.getState().document.head.activeChildIds[0];
+
+    expect(store.getState().archiveChild(childId).ok).toBe(true);
+    expect(store.getState().deleteChildPermanently(childId).ok).toBe(true);
+    expect(
+      store.getState().document.head.childrenById[childId],
+    ).toBeUndefined();
+    expect(store.getState().document.events.at(-1)?.type).toBe('child.deleted');
+
+    const deleteRow = deriveTransactionRows(
+      store.getState().document.events,
+    ).find((row) => row.summaryType === 'child-deleted');
+
+    expect(deleteRow?.restoreDescriptor.target?.status).toBe('archived');
+    expect(store.getState().restoreTransaction(deleteRow?.id ?? '').ok).toBe(
+      true,
+    );
+    expect(store.getState().document.head.archivedChildIds).toContain(childId);
+  });
 });

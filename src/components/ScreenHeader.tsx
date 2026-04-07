@@ -9,6 +9,7 @@ import {
 type ScreenHeaderProps = {
   actions?: ReactNode;
   eyebrow?: string;
+  leadingAction?: ReactNode;
   subtitle?: string;
   title: string;
 };
@@ -16,6 +17,7 @@ type ScreenHeaderProps = {
 export function ScreenHeader({
   actions,
   eyebrow,
+  leadingAction,
   subtitle,
   title,
 }: ScreenHeaderProps) {
@@ -25,9 +27,14 @@ export function ScreenHeader({
     <View style={styles.wrap}>
       <View style={styles.copy}>
         {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-        <Text accessibilityRole="header" style={styles.title}>
-          {title}
-        </Text>
+        <View style={styles.titleRow}>
+          {leadingAction ? (
+            <View style={styles.leadingAction}>{leadingAction}</View>
+          ) : null}
+          <Text accessibilityRole="header" style={styles.title}>
+            {title}
+          </Text>
+        </View>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
       {actions ? <View style={styles.actions}>{actions}</View> : null}
@@ -49,6 +56,14 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       fontWeight: '800',
       letterSpacing: 0.9,
       textTransform: 'uppercase',
+    },
+    titleRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 8,
+    },
+    leadingAction: {
+      flexShrink: 0,
     },
     title: {
       color: tokens.textPrimary,

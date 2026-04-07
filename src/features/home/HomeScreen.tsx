@@ -1,7 +1,6 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
@@ -34,12 +33,6 @@ export function HomeScreen() {
         .filter(Boolean),
     [head],
   );
-
-  const compactGear = isParentUnlocked ? (
-    <View style={[styles.iconAction, styles.iconActionNeutral]}>
-      <Ionicons name="settings-outline" size={18} style={styles.icon} />
-    </View>
-  ) : null;
 
   return (
     <ScreenScaffold>
@@ -93,20 +86,20 @@ export function HomeScreen() {
 
       {activeChildren.map((child) => (
         <Tile
+          collapsible
+          initiallyCollapsed
           key={child.id}
-          accessory={
-            compactGear ?? (
-              <StatusBadge
-                label={isParentUnlocked ? 'Parent ready' : 'Locked'}
-                tone={isParentUnlocked ? 'good' : 'warning'}
-              />
-            )
-          }
           summary={
             <View style={styles.pointsSummary}>
-              <View style={styles.pointsRail}>
+              <View
+                style={[
+                  styles.pointsRail,
+                  !isParentUnlocked && styles.pointsRailLocked,
+                ]}
+              >
                 {isParentUnlocked ? (
                   <Pressable
+                    accessibilityLabel={`Decrease ${child.name} points`}
                     accessibilityRole="button"
                     onPress={() => {
                       adjustPoints(child.id, -1);
@@ -119,20 +112,30 @@ export function HomeScreen() {
                       -1
                     </Text>
                   </Pressable>
-                ) : (
-                  <View style={[styles.pointsSegment, styles.pointsCapLeft]}>
-                    <Text
-                      style={[styles.pointsCapText, styles.pointsCapTextLeft]}
-                    >
-                      PIN
-                    </Text>
-                  </View>
-                )}
-                <View style={styles.pointsCore}>
+                ) : null}
+                <Pressable
+                  accessibilityLabel={`Edit ${child.name} points`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    if (!isParentUnlocked) {
+                      router.push('/parent-unlock');
+                      return;
+                    }
+
+                    router.push(
+                      `/edit-dialog?mode=set-points&childId=${child.id}`,
+                    );
+                  }}
+                  style={[
+                    styles.pointsCore,
+                    !isParentUnlocked && styles.pointsCoreLocked,
+                  ]}
+                >
                   <Text style={styles.pointsValue}>{child.points}</Text>
-                </View>
+                </Pressable>
                 {isParentUnlocked ? (
                   <Pressable
+                    accessibilityLabel={`Increase ${child.name} points`}
                     accessibilityRole="button"
                     onPress={() => {
                       adjustPoints(child.id, 1);
@@ -145,15 +148,7 @@ export function HomeScreen() {
                       +1
                     </Text>
                   </Pressable>
-                ) : (
-                  <View style={[styles.pointsSegment, styles.pointsCapRight]}>
-                    <Text
-                      style={[styles.pointsCapText, styles.pointsCapTextRight]}
-                    >
-                      LOCK
-                    </Text>
-                  </View>
-                )}
+                ) : null}
               </View>
             </View>
           }
@@ -162,17 +157,22 @@ export function HomeScreen() {
           {isParentUnlocked ? (
             <ActionPillRow>
               <ActionPill
-                label="Edit total"
-                onPress={() =>
-                  router.push(
-                    `/edit-dialog?mode=set-points&childId=${child.id}`,
-                  )
-                }
-              />
-              <ActionPill
                 label="Archive"
                 onPress={() => {
-                  archiveChild(child.id);
+                  Alert.alert(
+                    'Archive child',
+                    `${child.name} will be removed from Home, but their recorded transactions and data will stay available so you can restore them later.`,
+                    [
+                      { style: 'cancel', text: 'Cancel' },
+                      {
+                        onPress: () => {
+                          archiveChild(child.id);
+                        },
+                        style: 'destructive',
+                        text: 'Archive',
+                      },
+                    ],
+                  );
                 }}
                 tone="critical"
               />
@@ -180,29 +180,20 @@ export function HomeScreen() {
           ) : (
             <>
               <Text style={styles.bodyCopy}>
-                Unlock Parent Mode to change points or manage this child.
+                Tap the points capsule or unlock Parent Mode to manage this
+                child.
               </Text>
-              <ActionPillRow>
-                <ActionPill
-                  label="Unlock Parent Mode"
-                  onPress={() => router.push('/parent-unlock')}
-                  tone="primary"
-                />
-              </ActionPillRow>
+              <ActionPill
+                label="Unlock Parent Mode"
+                onPress={() => router.push('/parent-unlock')}
+                tone="primary"
+              />
             </>
           )}
         </Tile>
       ))}
 
-      <Tile
-        accessory={
-          <StatusBadge
-            label={isParentUnlocked ? 'Unlocked' : 'Locked'}
-            tone={isParentUnlocked ? 'good' : 'warning'}
-          />
-        }
-        title="Parent"
-      >
+      <Tile collapsible initiallyCollapsed title="Parent">
         {isParentUnlocked ? (
           <ActionPillRow>
             <ActionPill
@@ -259,20 +250,6 @@ const createStyles = ({
       fontSize: 13,
       lineHeight: 18,
     },
-    iconAction: {
-      alignItems: 'center',
-      borderRadius: 16,
-      flexShrink: 0,
-      height: 32,
-      justifyContent: 'center',
-      width: 32,
-    },
-    iconActionNeutral: {
-      backgroundColor: tokens.controlSurface,
-    },
-    icon: {
-      color: tokens.controlText,
-    },
     timerSummary: {
       flex: 1,
       gap: 4,
@@ -304,6 +281,9 @@ const createStyles = ({
       minHeight: 42,
       overflow: 'hidden',
     },
+    pointsRailLocked: {
+      alignSelf: 'flex-start',
+    },
     pointsSegment: {
       alignItems: 'center',
       justifyContent: 'center',
@@ -334,6 +314,12 @@ const createStyles = ({
       minWidth: 0,
       paddingHorizontal: 14,
       paddingVertical: 8,
+    },
+    pointsCoreLocked: {
+      borderRadius: 999,
+      flexBasis: 'auto',
+      flexGrow: 0,
+      minWidth: 110,
     },
     pointsCapText: {
       fontSize: 14,

@@ -1,6 +1,7 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
@@ -11,12 +12,16 @@ import {
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
 import { useSharedStore } from '../../state/sharedStore';
-import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 
 export function ListBrowserScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
+  const { tokens } = useAppTheme();
   const head = useSharedStore((state) => state.document.head);
+  const deleteChildPermanently = useSharedStore(
+    (state) => state.deleteChildPermanently,
+  );
   const restoreChild = useSharedStore((state) => state.restoreChild);
   const archivedChildren = useMemo(
     () =>
@@ -27,12 +32,17 @@ export function ListBrowserScreen() {
   );
 
   return (
-    <ScreenScaffold
-      footer={<ActionPill label="Back" onPress={() => router.back()} />}
-    >
+    <ScreenScaffold>
       <ScreenHeader
-        eyebrow="Child archive"
-        subtitle="Archived children stay out of Home, but their recorded transactions and restore path remain intact."
+        leadingAction={
+          <Pressable
+            accessibilityLabel="Go back"
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <Feather color={tokens.controlText} name="arrow-left" size={18} />
+          </Pressable>
+        }
         title="Archived Children"
       />
 
@@ -55,13 +65,35 @@ export function ListBrowserScreen() {
                     ? `Archived ${new Date(child.archivedAt).toLocaleString()}`
                     : 'Archived child'}
                 </Text>
-                <ActionPill
-                  label="Restore to Home"
-                  onPress={() => {
-                    restoreChild(child.id);
-                  }}
-                  tone="primary"
-                />
+                <View style={styles.actionRow}>
+                  <ActionPill
+                    label="Restore to Home"
+                    onPress={() => {
+                      restoreChild(child.id);
+                    }}
+                    tone="primary"
+                  />
+                  <ActionPill
+                    label="Delete Permanently"
+                    onPress={() => {
+                      Alert.alert(
+                        'Delete child permanently',
+                        `${child.name} will be removed forever. Their archived profile and recorded data will no longer be available after this action.`,
+                        [
+                          { style: 'cancel', text: 'Cancel' },
+                          {
+                            onPress: () => {
+                              deleteChildPermanently(child.id);
+                            },
+                            style: 'destructive',
+                            text: 'Delete permanently',
+                          },
+                        ],
+                      );
+                    }}
+                    tone="critical"
+                  />
+                </View>
               </CompactSurface>
             ))}
           </View>
@@ -73,6 +105,19 @@ export function ListBrowserScreen() {
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
+    actionRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    backButton: {
+      alignItems: 'center',
+      backgroundColor: tokens.controlSurface,
+      borderRadius: 18,
+      height: 36,
+      justifyContent: 'center',
+      width: 36,
+    },
     column: {
       gap: 8,
     },

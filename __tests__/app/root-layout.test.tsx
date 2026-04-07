@@ -33,12 +33,10 @@ jest.mock('expo-router', () => {
 });
 
 describe('RootLayout', () => {
-  it('keeps settings and archived children as screens while prompts remain lightweight', () => {
+  it('keeps only the lightweight prompt routes in the root stack', () => {
     render(<RootLayout />);
 
     expect(screen.getByText('(tabs):default')).toBeTruthy();
-    expect(screen.getByText('settings:default')).toBeTruthy();
-    expect(screen.getByText('list-browser:default')).toBeTruthy();
     expect(screen.getByText('parent-unlock:transparentModal')).toBeTruthy();
     expect(screen.getByText('edit-dialog:transparentModal')).toBeTruthy();
   });

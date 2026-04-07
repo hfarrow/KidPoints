@@ -30,6 +30,7 @@ type SharedStoreState = {
   addChild: (name: string) => SharedCommandResult;
   adjustPoints: (childId: string, delta: number) => SharedCommandResult;
   archiveChild: (childId: string) => SharedCommandResult;
+  deleteChildPermanently: (childId: string) => SharedCommandResult;
   document: SharedDocument;
   restoreChild: (childId: string) => SharedCommandResult;
   restoreTransaction: (
@@ -128,11 +129,22 @@ export function applySharedEvent(head: SharedHead, event: SharedEvent) {
       const child = cloneChildSnapshot(event.payload.child);
 
       nextHead.childrenById[child.id] = child;
-      nextHead.activeChildIds = insertUniqueId(
-        nextHead.activeChildIds,
-        child.id,
-      );
-      nextHead.archivedChildIds = removeId(nextHead.archivedChildIds, child.id);
+      if (child.status === 'archived') {
+        nextHead.archivedChildIds = insertUniqueId(
+          nextHead.archivedChildIds,
+          child.id,
+        );
+        nextHead.activeChildIds = removeId(nextHead.activeChildIds, child.id);
+      } else {
+        nextHead.activeChildIds = insertUniqueId(
+          nextHead.activeChildIds,
+          child.id,
+        );
+        nextHead.archivedChildIds = removeId(
+          nextHead.archivedChildIds,
+          child.id,
+        );
+      }
       return nextHead;
     }
     case 'child.pointsAdjusted': {
@@ -201,6 +213,18 @@ export function applySharedEvent(head: SharedHead, event: SharedEvent) {
         nextHead.activeChildIds,
         child.id,
       );
+      return nextHead;
+    }
+    case 'child.deleted': {
+      const child = nextHead.childrenById[event.payload.childId];
+
+      if (!child) {
+        return nextHead;
+      }
+
+      delete nextHead.childrenById[event.payload.childId];
+      nextHead.activeChildIds = removeId(nextHead.activeChildIds, child.id);
+      nextHead.archivedChildIds = removeId(nextHead.archivedChildIds, child.id);
       return nextHead;
     }
   }
@@ -284,6 +308,8 @@ function getRowSummaryType(event: SharedEvent): TransactionSummaryType {
       return 'points-set';
     case 'child.archived':
       return 'child-archived';
+    case 'child.deleted':
+      return 'child-deleted';
     case 'child.restored':
       return 'child-restored';
   }
@@ -375,6 +401,13 @@ function buildRestoreEvents(
   const targetChild = descriptor.target;
 
   if (!currentChild) {
+    if (targetChild) {
+      const event = builder.build('child.created', {
+        child: targetChild,
+      });
+      eventsToAppend.push(event);
+    }
+
     return eventsToAppend;
   }
 
@@ -509,6 +542,31 @@ function createSharedStoreActions(
 
       return result;
     },
+    deleteChildPermanently(childId: string): SharedCommandResult {
+      let result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const child = getChild(state.document.head, childId);
+
+        if (!child || child.status !== 'archived') {
+          result = {
+            error: 'Only archived children can be deleted permanently.',
+            ok: false,
+          };
+          return state;
+        }
+
+        const builder = createEventBuilder(state.document);
+        const event = builder.build('child.deleted', { childId });
+
+        return {
+          ...state,
+          document: commitSharedEvents(state.document, [event]),
+        };
+      });
+
+      return result;
+    },
     restoreChild(childId: string): SharedCommandResult {
       let result: SharedCommandResult = { ok: true };
 
@@ -608,6 +666,15 @@ function createSharedStoreActions(
   };
 }
 
+function patchSharedStoreActions(store: SharedStore) {
+  store.setState((state) => ({
+    ...state,
+    ...createSharedStoreActions((updater) => {
+      store.setState((currentState) => updater(currentState));
+    }),
+  }));
+}
+
 export function createSharedStore({
   initialDocument = createInitialSharedDocument(),
   storage = AsyncStorage,
@@ -615,7 +682,7 @@ export function createSharedStore({
   initialDocument?: SharedDocument;
   storage?: StateStorage;
 } = {}) {
-  return createStore<SharedStoreState>()(
+  const store = createStore<SharedStoreState>()(
     persist(
       (set) => ({
         ...createSharedStoreActions((updater) => {
@@ -642,6 +709,9 @@ export function createSharedStore({
       },
     ),
   );
+
+  patchSharedStoreActions(store);
+  return store;
 }
 
 export function SharedStoreProvider({
@@ -656,6 +726,10 @@ export function SharedStoreProvider({
       initialDocument,
       storage,
     });
+  } else if (
+    typeof storeRef.current.getState().deleteChildPermanently !== 'function'
+  ) {
+    patchSharedStoreActions(storeRef.current);
   }
 
   return (
