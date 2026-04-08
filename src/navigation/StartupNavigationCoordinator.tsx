@@ -7,47 +7,11 @@ import {
 import { useEffect, useRef } from 'react';
 
 import { createModuleLogger } from '../logging/logger';
+import { scheduleAfterFrameCommit } from '../timing/scheduleAfterFrameCommit';
 import { useStartupNavigationStore } from './startupNavigationStore';
 
 const STARTUP_NAVIGATION_TIMEOUT_MS = 1000;
 const log = createModuleLogger('startup-navigation-coordinator');
-
-function scheduleAfterConcreteRouteCommit(callback: () => void) {
-  if (
-    typeof requestAnimationFrame === 'function' &&
-    typeof cancelAnimationFrame === 'function'
-  ) {
-    let secondFrameId: number | null = null;
-    const firstFrameId = requestAnimationFrame(() => {
-      secondFrameId = requestAnimationFrame(() => {
-        callback();
-      });
-    });
-
-    return () => {
-      cancelAnimationFrame(firstFrameId);
-
-      if (secondFrameId != null) {
-        cancelAnimationFrame(secondFrameId);
-      }
-    };
-  }
-
-  let secondTimeout: ReturnType<typeof setTimeout> | null = null;
-  const firstTimeout = setTimeout(() => {
-    secondTimeout = setTimeout(() => {
-      callback();
-    }, 0);
-  }, 0);
-
-  return () => {
-    clearTimeout(firstTimeout);
-
-    if (secondTimeout) {
-      clearTimeout(secondTimeout);
-    }
-  };
-}
 
 export function StartupNavigationCoordinator() {
   const pathname = usePathname();
@@ -129,30 +93,28 @@ export function StartupNavigationCoordinator() {
       targetPathname: currentRequest.targetPathname,
     });
 
-    cancelScheduledDispatchRef.current = scheduleAfterConcreteRouteCommit(
-      () => {
-        log.info('Startup navigation dispatched', {
-          href: currentRequest.href,
-          pathname: currentPathRef.current,
-          requestId: currentRequest.id,
-          source: currentRequest.source,
-          targetPathname: currentRequest.targetPathname,
-        });
-        router.push(currentRequest.href);
+    cancelScheduledDispatchRef.current = scheduleAfterFrameCommit(() => {
+      log.info('Startup navigation dispatched', {
+        href: currentRequest.href,
+        pathname: currentPathRef.current,
+        requestId: currentRequest.id,
+        source: currentRequest.source,
+        targetPathname: currentRequest.targetPathname,
+      });
+      router.push(currentRequest.href);
 
-        timeoutRef.current = setTimeout(() => {
-          if (currentPathRef.current !== currentRequest.targetPathname) {
-            log.error('Startup navigation target not reached after dispatch', {
-              currentPathname: currentPathRef.current,
-              href: currentRequest.href,
-              requestId: currentRequest.id,
-              source: currentRequest.source,
-              targetPathname: currentRequest.targetPathname,
-            });
-          }
-        }, STARTUP_NAVIGATION_TIMEOUT_MS);
-      },
-    );
+      timeoutRef.current = setTimeout(() => {
+        if (currentPathRef.current !== currentRequest.targetPathname) {
+          log.error('Startup navigation target not reached after dispatch', {
+            currentPathname: currentPathRef.current,
+            href: currentRequest.href,
+            requestId: currentRequest.id,
+            source: currentRequest.source,
+            targetPathname: currentRequest.targetPathname,
+          });
+        }
+      }, STARTUP_NAVIGATION_TIMEOUT_MS);
+    });
 
     return () => {
       if (cancelScheduledDispatchRef.current) {

@@ -2,7 +2,6 @@ import { usePathname, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   BackHandler,
-  InteractionManager,
   Keyboard,
   StyleSheet,
   Text,
@@ -18,6 +17,7 @@ import { LoggedPressable } from '../../components/LoggedPressable';
 import { ActionPill } from '../../components/Skeleton';
 import { createModuleLogger } from '../../logging/logger';
 import { isBlockingRouteModalPath } from '../../navigation/modalPaths';
+import { scheduleAfterFrameCommit } from '../../timing/scheduleAfterFrameCommit';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 import {
@@ -41,51 +41,6 @@ type ActiveTextInputModalProps = {
   tokens: ReturnType<typeof useAppTheme>['tokens'];
   value: string;
 };
-
-function scheduleAfterInteractionCommit(callback: () => void) {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let firstFrameId: number | null = null;
-  let secondFrameId: number | null = null;
-
-  const scheduleAfterPaint = () => {
-    if (
-      typeof requestAnimationFrame === 'function' &&
-      typeof cancelAnimationFrame === 'function'
-    ) {
-      firstFrameId = requestAnimationFrame(() => {
-        secondFrameId = requestAnimationFrame(() => {
-          callback();
-        });
-      });
-
-      return;
-    }
-
-    timeoutId = setTimeout(() => {
-      callback();
-    }, 0);
-  };
-
-  const interactionHandle =
-    InteractionManager.runAfterInteractions(scheduleAfterPaint);
-
-  return () => {
-    interactionHandle.cancel();
-
-    if (firstFrameId != null && typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(firstFrameId);
-    }
-
-    if (secondFrameId != null && typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(secondFrameId);
-    }
-
-    if (timeoutId != null) {
-      clearTimeout(timeoutId);
-    }
-  };
-}
-
 function ActiveTextInputModal({
   errorMessage,
   handleClose,
@@ -102,7 +57,7 @@ function ActiveTextInputModal({
   useResizeMode();
 
   useEffect(() => {
-    return scheduleAfterInteractionCommit(() => {
+    return scheduleAfterFrameCommit(() => {
       inputRef.current?.focus();
     });
   }, [inputRef]);
