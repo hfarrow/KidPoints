@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { SettingsScreen } from '../../../src/features/settings/SettingsScreen';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
+import * as loggerModule from '../../../src/logging/logger';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockBack = jest.fn();
@@ -29,6 +30,7 @@ jest.mock('expo-router', () => ({
 
 describe('SettingsScreen', () => {
   beforeEach(() => {
+    jest.restoreAllMocks();
     mockBack.mockReset();
     mockPush.mockReset();
   });
@@ -97,10 +99,34 @@ describe('SettingsScreen', () => {
 
     expect(screen.getByText('Debug')).toBeTruthy();
     expect(screen.getAllByText('debug')).toHaveLength(2);
+    expect(screen.getByText('temp')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('temp'));
+
+    expect(screen.getAllByText('temp')).toHaveLength(2);
 
     fireEvent.press(screen.getByText('error'));
 
     expect(screen.getAllByText('error')).toHaveLength(2);
+  });
+
+  it('hides the temp option when only production log levels are selectable', () => {
+    jest
+      .spyOn(loggerModule, 'getSelectableAppLogLevels')
+      .mockReturnValue(['debug', 'info', 'warn', 'error']);
+
+    render(
+      <ParentSessionProvider initialParentUnlocked={false}>
+        <AppThemeProvider
+          initialThemeMode="light"
+          storage={createMemoryStorage()}
+        >
+          <SettingsScreen />
+        </AppThemeProvider>
+      </ParentSessionProvider>,
+    );
+
+    expect(screen.queryByText('temp')).toBeNull();
   });
 
   it('shows Set PIN when the device has not configured one yet', () => {

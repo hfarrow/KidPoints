@@ -6,6 +6,7 @@ import { LoggedPressable } from '../../src/components/LoggedPressable';
 jest.mock('../../src/logging/logger', () => {
   const mockLogger = {
     debug: jest.fn(),
+    temp: jest.fn(),
   };
 
   return {

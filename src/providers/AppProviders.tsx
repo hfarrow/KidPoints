@@ -10,6 +10,7 @@ import { AppThemeProvider } from '../features/theme/themeContext';
 import {
   createModuleLogger,
   getAppLogLevel,
+  normalizeAppLogLevel,
   setAppLogLevel,
 } from '../logging/logger';
 import { useLocalSettingsStore } from '../state/localSettingsStore';
@@ -22,11 +23,15 @@ function AppLogLevelObserver() {
 
   useEffect(() => {
     const previousLogLevel = getAppLogLevel();
+    const normalizedLogLevel = normalizeAppLogLevel(logLevel, {
+      fallbackLogLevel: previousLogLevel,
+    });
 
-    setAppLogLevel(logLevel);
+    setAppLogLevel(normalizedLogLevel);
     log.info('App log level applied', {
       from: previousLogLevel,
-      to: logLevel,
+      requestedLogLevel: logLevel,
+      to: normalizedLogLevel,
     });
   }, [logLevel]);
 

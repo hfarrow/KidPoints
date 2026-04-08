@@ -23,6 +23,7 @@ jest.mock('../../src/logging/logger', () => {
     info: jest.fn(),
     patchConsole: jest.fn(),
     setSeverity: jest.fn(),
+    temp: jest.fn(),
     warn: jest.fn(),
   };
 
@@ -36,6 +37,13 @@ jest.mock('../../src/logging/logger', () => {
       };
     }),
     getDefaultAppLogLevel: jest.fn(() => 'debug'),
+    normalizeAppLogLevel: jest.fn((logLevel, options) => {
+      if (logLevel === 'temp' && options?.allowTemporaryLogLevel === false) {
+        return options.fallbackLogLevel ?? 'debug';
+      }
+
+      return logLevel ?? options?.fallbackLogLevel ?? 'debug';
+    }),
   };
 });
 

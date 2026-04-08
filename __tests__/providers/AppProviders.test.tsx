@@ -9,6 +9,7 @@ jest.mock('../../src/logging/logger', () => {
     debug: jest.fn(),
     error: jest.fn(),
     info: jest.fn(),
+    temp: jest.fn(),
     warn: jest.fn(),
   };
 
@@ -22,13 +23,16 @@ jest.mock('../../src/logging/logger', () => {
     }),
     getAppLogLevel: jest.fn(() => 'debug'),
     getDefaultAppLogLevel: jest.fn(() => 'debug'),
+    normalizeAppLogLevel: jest.fn((logLevel) => logLevel ?? 'debug'),
     setAppLogLevel: jest.fn(),
   };
 });
 
-const { __mockLogger: mockLogger, setAppLogLevel } = jest.requireMock(
-  '../../src/logging/logger',
-);
+const {
+  __mockLogger: mockLogger,
+  normalizeAppLogLevel,
+  setAppLogLevel,
+} = jest.requireMock('../../src/logging/logger');
 
 jest.mock('react-native-safe-area-context', () => {
   const { View } = jest.requireActual('react-native');
@@ -76,6 +80,9 @@ describe('AppProviders', () => {
     );
 
     expect(getByTestId('keyboard-provider')).toBeTruthy();
+    expect(normalizeAppLogLevel).toHaveBeenCalledWith('debug', {
+      fallbackLogLevel: 'debug',
+    });
     expect(setAppLogLevel).toHaveBeenCalledWith('debug');
     expect(handleAppStateChange).toBeTruthy();
 

@@ -18,6 +18,7 @@ import {
   createModuleLogger,
   createStructuredLog,
   getDefaultAppLogLevel,
+  normalizeAppLogLevel,
 } from '../logging/logger';
 import { useStableStoreReference } from './useStableStoreReference';
 
@@ -58,6 +59,7 @@ const LocalSettingsStoreContext = createContext<LocalSettingsStore | null>(
 );
 
 type LocalSettingsStoreProviderProps = PropsWithChildren<{
+  allowTemporaryLogLevel?: boolean;
   initialLogLevel?: AppLogLevel;
   initialParentPin?: string | null;
   initialThemeMode?: ThemeMode;
@@ -65,31 +67,43 @@ type LocalSettingsStoreProviderProps = PropsWithChildren<{
 }>;
 
 export function createLocalSettingsStore({
+  allowTemporaryLogLevel,
   initialLogLevel = getDefaultAppLogLevel(),
   initialParentPin = null,
   initialThemeMode = 'system',
   storage = AsyncStorage,
 }: {
+  allowTemporaryLogLevel?: boolean;
   initialLogLevel?: AppLogLevel;
   initialParentPin?: string | null;
   initialThemeMode?: ThemeMode;
   storage?: StateStorage;
 } = {}) {
+  const normalizedInitialLogLevel = normalizeAppLogLevel(initialLogLevel, {
+    allowTemporaryLogLevel,
+  });
+
   return createStore<LocalSettingsState>()(
     persist(
       (set) => ({
         hasHydrated: false,
-        logLevel: initialLogLevel,
+        logLevel: normalizedInitialLogLevel,
         markHydrated: () => {
           set({ hasHydrated: true });
         },
         parentPin: initialParentPin,
         setLogLevel: (logLevel) => {
+          const normalizedLogLevel = normalizeAppLogLevel(logLevel, {
+            allowTemporaryLogLevel,
+            fallbackLogLevel: normalizedInitialLogLevel,
+          });
+
           logLocalSettingsMutation({
             action: 'setLogLevel',
-            logLevel,
+            logLevel: normalizedLogLevel,
+            requestedLogLevel: logLevel,
           });
-          set({ logLevel });
+          set({ logLevel: normalizedLogLevel });
         },
         setParentPin: (parentPin) => {
           logLocalSettingsMutation({
@@ -109,6 +123,19 @@ export function createLocalSettingsStore({
         themeMode: initialThemeMode,
       }),
       {
+        merge: (persistedState, currentState) => {
+          const persistedSettings =
+            (persistedState as Partial<LocalSettingsState> | undefined) ?? {};
+
+          return {
+            ...currentState,
+            ...persistedSettings,
+            logLevel: normalizeAppLogLevel(persistedSettings.logLevel, {
+              allowTemporaryLogLevel,
+              fallbackLogLevel: normalizedInitialLogLevel,
+            }),
+          };
+        },
         name: LOCAL_SETTINGS_STORAGE_KEY,
         onRehydrateStorage: () => (state, error) => {
           if (error) {
@@ -118,7 +145,7 @@ export function createLocalSettingsStore({
           } else {
             logLocalSettingsRehydrated({
               hasParentPin: Boolean(state?.parentPin),
-              logLevel: state?.logLevel ?? initialLogLevel,
+              logLevel: state?.logLevel ?? normalizedInitialLogLevel,
               themeMode: state?.themeMode ?? initialThemeMode,
             });
           }
@@ -137,6 +164,7 @@ export function createLocalSettingsStore({
 }
 
 export function LocalSettingsStoreProvider({
+  allowTemporaryLogLevel,
   children,
   initialLogLevel = getDefaultAppLogLevel(),
   initialParentPin = null,
@@ -146,6 +174,7 @@ export function LocalSettingsStoreProvider({
   const store = useStableStoreReference(
     () =>
       createLocalSettingsStore({
+        allowTemporaryLogLevel,
         initialLogLevel,
         initialParentPin,
         initialThemeMode,

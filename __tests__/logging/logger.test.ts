@@ -4,6 +4,10 @@ import {
   createStructuredLog,
   getAppLogLevel,
   getDefaultAppLogLevel,
+  getSelectableAppLogLevels,
+  isAppLogLevel,
+  normalizeAppLogLevel,
+  SUPPORTED_APP_LOG_LEVELS,
   setAppLogLevel,
 } from '../../src/logging/logger';
 
@@ -52,10 +56,34 @@ describe('logger', () => {
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain('Saved changes');
   });
 
+  it('supports temp logs and colorizes development terminal output', () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    const settingsLogger = createModuleLogger('settings-temp');
+
+    setAppLogLevel('temp');
+    settingsLogger.temp('Temporary log');
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(String(logSpy.mock.calls[0]?.[0])).toContain('settings-temp');
+    expect(String(logSpy.mock.calls[0]?.[0])).toContain('TEMP');
+    expect(String(logSpy.mock.calls[0]?.[0])).toContain('Temporary log');
+    expect(String(logSpy.mock.calls[0]?.[0])).toContain('\u001b[');
+  });
+
   it('updates the active root logger severity at runtime', () => {
     setAppLogLevel('error');
 
     expect(getAppLogLevel()).toBe('error');
+  });
+
+  it('filters temp logs when the active severity is debug', () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    const settingsLogger = createModuleLogger('settings-temp-filtered');
+
+    setAppLogLevel('debug');
+    settingsLogger.temp('Hidden temp log');
+
+    expect(logSpy).not.toHaveBeenCalled();
   });
 
   it('creates a fixed-message logger that forwards details', () => {
@@ -73,5 +101,18 @@ describe('logger', () => {
     expect(String(infoSpy.mock.calls[0]?.[0])).toContain('settings-structured');
     expect(String(infoSpy.mock.calls[0]?.[0])).toContain('Settings event');
     expect(String(infoSpy.mock.calls[0]?.[0])).toContain('save');
+  });
+
+  it('validates and normalizes app log levels', () => {
+    expect(SUPPORTED_APP_LOG_LEVELS).toContain('temp');
+    expect(isAppLogLevel('temp')).toBe(true);
+    expect(isAppLogLevel('verbose')).toBe(false);
+    expect(
+      getSelectableAppLogLevels({ allowTemporaryLogLevel: false }),
+    ).toEqual(['debug', 'info', 'warn', 'error']);
+    expect(
+      normalizeAppLogLevel('temp', { allowTemporaryLogLevel: false }),
+    ).toBe(getDefaultAppLogLevel());
+    expect(normalizeAppLogLevel('verbose')).toBe(getDefaultAppLogLevel());
   });
 });

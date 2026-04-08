@@ -12,7 +12,10 @@ import {
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
-import { APP_LOG_LEVELS, createModuleLogger } from '../../logging/logger';
+import {
+  createModuleLogger,
+  getSelectableAppLogLevels,
+} from '../../logging/logger';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useParentSession } from '../parent/parentSessionContext';
 import type { ThemeMode } from '../theme/theme';
@@ -29,6 +32,7 @@ export function SettingsScreen() {
   const parentPin = useLocalSettingsStore((state) => state.parentPin);
   const logLevel = useLocalSettingsStore((state) => state.logLevel);
   const setLogLevel = useLocalSettingsStore((state) => state.setLogLevel);
+  const selectableAppLogLevels = getSelectableAppLogLevels();
 
   useEffect(() => {
     log.debug('Settings screen initialized');
@@ -123,7 +127,7 @@ export function SettingsScreen() {
           release builds so we can raise or reduce logging without a rebuild.
         </Text>
         <View style={styles.logLevelOptionRow}>
-          {APP_LOG_LEVELS.map((option) => {
+          {selectableAppLogLevels.map((option) => {
             const isActive = logLevel === option;
 
             return (
