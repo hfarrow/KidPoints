@@ -1,7 +1,13 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  StyleSheet,
+  Switch,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { KeyboardModalFrame } from '../../components/KeyboardModalFrame';
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { ActionPill } from '../../components/Skeleton';
@@ -60,12 +66,15 @@ export function TimerCheckInModal() {
   const styles = useThemedStyles(createStyles);
   const { width: windowWidth } = useWindowDimensions();
   const parentPin = useLocalSettingsStore((state) => state.parentPin);
+  const restartCountdownAfterCheckIn = useLocalSettingsStore(
+    (state) => state.restartCountdownAfterCheckIn,
+  );
+  const setRestartCountdownAfterCheckIn = useLocalSettingsStore(
+    (state) => state.setRestartCountdownAfterCheckIn,
+  );
   const { isParentUnlocked } = useParentSession();
-  const {
-    activeExpiredTimerSession,
-    dismissCheckInFlow,
-    resolveExpiredTimerChild,
-  } = useNotifications();
+  const { activeExpiredTimerSession, resolveExpiredTimerChild } =
+    useNotifications();
   const { resolvedTheme, tokens } = useAppTheme();
 
   const closeModal = useCallback(() => {
@@ -149,6 +158,9 @@ export function TimerCheckInModal() {
                     void resolveExpiredTimerChild(
                       childAction.childId,
                       'dismissed',
+                      {
+                        restartTimerOnResolve: restartCountdownAfterCheckIn,
+                      },
                     )
                   }
                 />
@@ -181,6 +193,9 @@ export function TimerCheckInModal() {
                     void resolveExpiredTimerChild(
                       childAction.childId,
                       'awarded',
+                      {
+                        restartTimerOnResolve: restartCountdownAfterCheckIn,
+                      },
                     )
                   }
                 />
@@ -189,15 +204,25 @@ export function TimerCheckInModal() {
           </View>
         )}
 
-        <LoggedPressable
-          logLabel="Close Timer Check-In"
-          onPress={() => {
-            dismissCheckInFlow();
-          }}
-          style={styles.closeButton}
-        >
-          <Text style={styles.closeText}>Close</Text>
-        </LoggedPressable>
+        <View style={styles.toggleRow}>
+          <View style={styles.toggleCopy}>
+            <Text style={styles.toggleLabel}>Restart Countdown</Text>
+            <Text style={styles.toggleHelper}>
+              Start the next cadence automatically after every child has been
+              checked in.
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Restart countdown automatically"
+            onValueChange={setRestartCountdownAfterCheckIn}
+            thumbColor="#f8fafc"
+            trackColor={{
+              false: resolvedTheme === 'dark' ? '#475569' : '#94a3b8',
+              true: tokens.accent,
+            }}
+            value={restartCountdownAfterCheckIn}
+          />
+        </View>
       </View>
     </KeyboardModalFrame>
   );
@@ -258,20 +283,6 @@ const createStyles = ({
       fontWeight: '700',
       textAlign: 'center',
     },
-    closeButton: {
-      alignItems: 'center',
-      backgroundColor: tokens.controlSurface,
-      borderRadius: 999,
-      justifyContent: 'center',
-      minHeight: 40,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-    },
-    closeText: {
-      color: tokens.controlText,
-      fontSize: 14,
-      fontWeight: '800',
-    },
     eyebrow: {
       color: tokens.accent,
       fontSize: 11,
@@ -327,6 +338,30 @@ const createStyles = ({
       color: tokens.textPrimary,
       fontSize: 24,
       fontWeight: '900',
+    },
+    toggleCopy: {
+      flex: 1,
+      gap: 2,
+      minWidth: 0,
+    },
+    toggleHelper: {
+      color: tokens.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    toggleLabel: {
+      color: tokens.textPrimary,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    toggleRow: {
+      alignItems: 'center',
+      backgroundColor: tokens.controlSurface,
+      borderRadius: 16,
+      flexDirection: 'row',
+      gap: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
     },
     triggeredAt: {
       color: tokens.textMuted,

@@ -73,6 +73,29 @@ describe('localSettingsStore', () => {
     expect(secondStore.getState().notificationsEnabled).toBe(false);
   });
 
+  it('rehydrates the persisted restart-after-check-in setting', async () => {
+    const storage = createMemoryStorage();
+    const firstStore = createLocalSettingsStore({
+      initialRestartCountdownAfterCheckIn: true,
+      storage,
+    });
+
+    firstStore.getState().setRestartCountdownAfterCheckIn(false);
+
+    const secondStore = createLocalSettingsStore({
+      initialRestartCountdownAfterCheckIn: true,
+      storage,
+    });
+
+    await (
+      secondStore as typeof secondStore & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(secondStore.getState().restartCountdownAfterCheckIn).toBe(false);
+  });
+
   it('rehydrates the persisted log level', async () => {
     const storage = createMemoryStorage();
     const firstStore = createLocalSettingsStore({

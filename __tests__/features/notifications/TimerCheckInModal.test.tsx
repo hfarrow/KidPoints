@@ -16,7 +16,7 @@ const mockDismissCheckInFlow = jest.fn();
 const mockResolveExpiredTimerChild = jest.fn();
 const mockUseNotifications = jest.fn();
 const mockUseParentSession = jest.fn();
-const mockUseLocalSettingsStore = jest.fn();
+const mockSetRestartCountdownAfterCheckIn = jest.fn();
 const mockKeyboardModalFrame = jest.fn();
 
 jest.mock('@expo/vector-icons', () => {
@@ -107,8 +107,17 @@ jest.mock('../../../src/features/parent/parentSessionContext', () => ({
 
 jest.mock('../../../src/state/localSettingsStore', () => ({
   useLocalSettingsStore: (
-    selector: (state: { parentPin: string | null }) => unknown,
-  ) => selector({ parentPin: mockUseLocalSettingsStore() }),
+    selector: (state: {
+      parentPin: string | null;
+      restartCountdownAfterCheckIn: boolean;
+      setRestartCountdownAfterCheckIn: (value: boolean) => void;
+    }) => unknown,
+  ) =>
+    selector({
+      parentPin: '2468',
+      restartCountdownAfterCheckIn: true,
+      setRestartCountdownAfterCheckIn: mockSetRestartCountdownAfterCheckIn,
+    }),
 }));
 
 jest.mock('../../../src/features/theme/themeContext', () => ({
@@ -162,7 +171,6 @@ describe('TimerCheckInModal', () => {
       dismissCheckInFlow: mockDismissCheckInFlow,
       resolveExpiredTimerChild: mockResolveExpiredTimerChild,
     });
-    mockUseLocalSettingsStore.mockReturnValue('2468');
   });
 
   it('routes to parent unlock when the modal is opened while locked', () => {
@@ -187,23 +195,31 @@ describe('TimerCheckInModal', () => {
     expect(screen.getByText('Parent Check-In')).toBeTruthy();
     expect(screen.getByText('Avery')).toBeTruthy();
     expect(screen.queryByText(/Review the timer that triggered/i)).toBeNull();
+    expect(screen.queryByText('Close')).toBeNull();
+    expect(
+      screen.getByLabelText('Restart countdown automatically'),
+    ).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Award point to Avery'));
     expect(mockResolveExpiredTimerChild).toHaveBeenCalledWith(
       'child-1',
       'awarded',
+      { restartTimerOnResolve: true },
     );
   });
 
-  it('dismisses the flow without issuing a second immediate back navigation', () => {
+  it('updates the persisted restart setting when the toggle changes', () => {
     mockUseParentSession.mockReturnValue({ isParentUnlocked: true });
 
     render(<TimerCheckInModal />);
 
-    fireEvent.press(screen.getByText('Close'));
-
-    expect(mockDismissCheckInFlow).toHaveBeenCalled();
-    expect(mockBack).not.toHaveBeenCalled();
+    fireEvent(
+      screen.getByLabelText('Restart countdown automatically'),
+      'valueChange',
+      false,
+    );
+    expect(mockSetRestartCountdownAfterCheckIn).toHaveBeenCalledWith(false);
+    fireEvent.press(screen.getByLabelText('Dismiss point for Avery'));
   });
 
   it('closes with back navigation after the active session is cleared', async () => {

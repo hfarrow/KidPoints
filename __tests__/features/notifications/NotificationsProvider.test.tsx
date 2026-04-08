@@ -243,6 +243,19 @@ function NotificationsProbe() {
       </Text>
       <Text
         onPress={() => {
+          if (!activeChildId) {
+            return;
+          }
+
+          void resolveExpiredTimerChild(activeChildId, 'awarded', {
+            restartTimerOnResolve: false,
+          });
+        }}
+      >
+        Award child without restart
+      </Text>
+      <Text
+        onPress={() => {
           dismissCheckInFlow();
         }}
       >
@@ -622,6 +635,45 @@ describe('NotificationsProvider', () => {
       );
       expect(mockStopExpiredAlarmPlayback).toHaveBeenCalled();
       expect(mockStartNotificationTimer).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('resolves a final child action without restarting when restart is disabled', async () => {
+    try {
+      const runningFixture = createExpiredRunningSharedDocumentFixture();
+      mockLoadPersistedNotificationDocument.mockResolvedValue(
+        createExpiredNotificationDocument(runningFixture.childId),
+      );
+
+      renderProvider({
+        initialDocument: runningFixture.document,
+        initialParentUnlocked: true,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'interval-1',
+        ),
+      );
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Award child without restart'));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('points').props.children).toBe('1'),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('timer-mode').props.children).toBe('idle'),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'none',
+        ),
+      );
+      expect(mockStartNotificationTimer).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }

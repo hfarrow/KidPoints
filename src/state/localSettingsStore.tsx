@@ -28,9 +28,13 @@ type LocalSettingsState = {
   markHydrated: () => void;
   notificationsEnabled: boolean;
   parentPin: string | null;
+  restartCountdownAfterCheckIn: boolean;
   setLogLevel: (logLevel: AppLogLevel) => void;
   setNotificationsEnabled: (notificationsEnabled: boolean) => void;
   setParentPin: (parentPin: string) => void;
+  setRestartCountdownAfterCheckIn: (
+    restartCountdownAfterCheckIn: boolean,
+  ) => void;
   setThemeMode: (themeMode: ThemeMode) => void;
   themeMode: ThemeMode;
 };
@@ -65,6 +69,7 @@ type LocalSettingsStoreProviderProps = PropsWithChildren<{
   initialLogLevel?: AppLogLevel;
   initialNotificationsEnabled?: boolean;
   initialParentPin?: string | null;
+  initialRestartCountdownAfterCheckIn?: boolean;
   initialThemeMode?: ThemeMode;
   storage?: StateStorage;
 }>;
@@ -74,6 +79,7 @@ export function createLocalSettingsStore({
   initialLogLevel = getDefaultAppLogLevel(),
   initialNotificationsEnabled = true,
   initialParentPin = null,
+  initialRestartCountdownAfterCheckIn = true,
   initialThemeMode = 'system',
   storage = AsyncStorage,
 }: {
@@ -81,6 +87,7 @@ export function createLocalSettingsStore({
   initialLogLevel?: AppLogLevel;
   initialNotificationsEnabled?: boolean;
   initialParentPin?: string | null;
+  initialRestartCountdownAfterCheckIn?: boolean;
   initialThemeMode?: ThemeMode;
   storage?: StateStorage;
 } = {}) {
@@ -98,6 +105,7 @@ export function createLocalSettingsStore({
         },
         notificationsEnabled: initialNotificationsEnabled,
         parentPin: initialParentPin,
+        restartCountdownAfterCheckIn: initialRestartCountdownAfterCheckIn,
         setLogLevel: (logLevel) => {
           const normalizedLogLevel = normalizeAppLogLevel(logLevel, {
             allowTemporaryLogLevel,
@@ -126,6 +134,13 @@ export function createLocalSettingsStore({
           });
           set({ parentPin });
         },
+        setRestartCountdownAfterCheckIn: (restartCountdownAfterCheckIn) => {
+          logLocalSettingsMutation({
+            action: 'setRestartCountdownAfterCheckIn',
+            restartCountdownAfterCheckIn,
+          });
+          set({ restartCountdownAfterCheckIn });
+        },
         setThemeMode: (themeMode) => {
           logLocalSettingsMutation({
             action: 'setThemeMode',
@@ -150,6 +165,9 @@ export function createLocalSettingsStore({
             notificationsEnabled:
               persistedSettings.notificationsEnabled ??
               initialNotificationsEnabled,
+            restartCountdownAfterCheckIn:
+              persistedSettings.restartCountdownAfterCheckIn ??
+              initialRestartCountdownAfterCheckIn,
           };
         },
         name: LOCAL_SETTINGS_STORAGE_KEY,
@@ -164,6 +182,9 @@ export function createLocalSettingsStore({
               logLevel: state?.logLevel ?? normalizedInitialLogLevel,
               notificationsEnabled:
                 state?.notificationsEnabled ?? initialNotificationsEnabled,
+              restartCountdownAfterCheckIn:
+                state?.restartCountdownAfterCheckIn ??
+                initialRestartCountdownAfterCheckIn,
               themeMode: state?.themeMode ?? initialThemeMode,
             });
           }
@@ -174,11 +195,13 @@ export function createLocalSettingsStore({
           logLevel,
           notificationsEnabled,
           parentPin,
+          restartCountdownAfterCheckIn,
           themeMode,
         }) => ({
           logLevel,
           notificationsEnabled,
           parentPin,
+          restartCountdownAfterCheckIn,
           themeMode,
         }),
         storage: createJSONStorage(() => storage),
@@ -193,6 +216,7 @@ export function LocalSettingsStoreProvider({
   initialLogLevel = getDefaultAppLogLevel(),
   initialNotificationsEnabled = true,
   initialParentPin = null,
+  initialRestartCountdownAfterCheckIn = true,
   initialThemeMode = 'system',
   storage,
 }: LocalSettingsStoreProviderProps) {
@@ -203,6 +227,7 @@ export function LocalSettingsStoreProvider({
         initialLogLevel,
         initialNotificationsEnabled,
         initialParentPin,
+        initialRestartCountdownAfterCheckIn,
         initialThemeMode,
         storage,
       }),
@@ -216,12 +241,14 @@ export function LocalSettingsStoreProvider({
       initialLogLevel,
       initialNotificationsEnabled,
       initialParentPinConfigured: Boolean(initialParentPin),
+      initialRestartCountdownAfterCheckIn,
       initialThemeMode,
     });
   }, [
     initialLogLevel,
     initialNotificationsEnabled,
     initialParentPin,
+    initialRestartCountdownAfterCheckIn,
     initialThemeMode,
   ]);
 

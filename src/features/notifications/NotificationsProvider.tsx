@@ -81,6 +81,9 @@ type NotificationsContextValue = {
   resolveExpiredTimerChild: (
     childId: string,
     status: 'awarded' | 'dismissed',
+    options?: {
+      restartTimerOnResolve?: boolean;
+    },
   ) => Promise<void>;
   runtimeStatus: NotificationRuntimeStatus;
   setNotificationsEnabled: (notificationsEnabled: boolean) => void;
@@ -666,7 +669,13 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   ]);
 
   const resolveExpiredTimerChild = useCallback(
-    async (childId: string, status: 'awarded' | 'dismissed') => {
+    async (
+      childId: string,
+      status: 'awarded' | 'dismissed',
+      options?: {
+        restartTimerOnResolve?: boolean;
+      },
+    ) => {
       if (!isParentUnlocked) {
         queueStartupNavigationRequest({
           href: buildParentUnlockHref(parentPin),
@@ -688,6 +697,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       }
 
       await stopExpiredAlarmPlayback();
+      const shouldRestartTimer = options?.restartTimerOnResolve ?? true;
 
       const {
         didResolveSession,
@@ -707,6 +717,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         childId,
         didResolveSession,
         intervalId: activeExpiredTimerSession.intervalId,
+        restartTimerOnResolve: shouldRestartTimer,
         status,
       });
       setNotificationDocument(nextDocument);
@@ -720,7 +731,11 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         activeLaunchActionKeyRef.current = null;
         setPendingLaunchAction(null);
         removeStartupNavigationRequest(CHECK_IN_REQUEST_ID);
-        startSharedTimer();
+        if (shouldRestartTimer) {
+          startSharedTimer();
+        } else {
+          resetSharedTimer();
+        }
         return;
       }
 
@@ -732,6 +747,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       parentPin,
       queueStartupNavigationRequest,
       removeStartupNavigationRequest,
+      resetSharedTimer,
       startSharedTimer,
       syncResolvedDocument,
     ],
