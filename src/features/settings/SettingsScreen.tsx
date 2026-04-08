@@ -155,6 +155,13 @@ export function SettingsScreen() {
             );
           })}
         </View>
+        <ActionPillRow>
+          <ActionPill
+            label="View Logs"
+            onPress={() => router.push('/logs')}
+            tone="primary"
+          />
+        </ActionPillRow>
       </Tile>
     </ScreenScaffold>
   );

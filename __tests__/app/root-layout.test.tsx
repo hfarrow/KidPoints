@@ -63,6 +63,7 @@ describe('RootLayout', () => {
     expect(screen.getByText('(tabs):default')).toBeTruthy();
     expect(screen.getByText('settings:default')).toBeTruthy();
     expect(screen.getByText('list-browser:default')).toBeTruthy();
+    expect(screen.getByText('logs:default')).toBeTruthy();
     expect(screen.getByText('transactions:default')).toBeTruthy();
     expect(screen.getByText('parent-unlock:transparentModal')).toBeTruthy();
     expect(screen.getByText('timer-check-in:transparentModal')).toBeTruthy();

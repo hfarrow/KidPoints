@@ -3,6 +3,7 @@ import {
   logger,
   type transportFunctionType,
 } from 'react-native-logs';
+import { appendAppBufferedLogEntry } from './logBufferStore';
 
 const appLogLevels = {
   temp: 0,
@@ -14,6 +15,15 @@ const appLogLevels = {
 
 export type AppLogLevel = keyof typeof appLogLevels;
 export type AppLogDetails = Record<string, unknown>;
+export type ForwardedNativeAppLogLevel = Exclude<AppLogLevel, 'temp'>;
+
+export type ForwardedNativeLogEntry = {
+  level: ForwardedNativeAppLogLevel;
+  message: string;
+  sequence: number;
+  tag: string;
+  timestampMs: number;
+};
 
 export type AppLogger = LoggerInstance<AppLogLevel>;
 export const SUPPORTED_APP_LOG_LEVELS = Object.keys(
@@ -56,6 +66,11 @@ type AppConsoleTransportOptions = {
   colorsEnabled?: boolean;
   levelColors?: Partial<Record<AppLogLevel, string>>;
   mapLevels?: Record<string, ConsoleMethod>;
+};
+
+type FormattedAppLogMessage = {
+  fullText: string;
+  previewText: string;
 };
 
 const appConsoleTransport: transportFunctionType<AppConsoleTransportOptions> = (
@@ -142,12 +157,53 @@ function formatAppLogTimestamp(date: Date) {
   return `${hours}:${minutes}:${seconds}.${milliseconds}`;
 }
 
-function formatAppLogMessage(
-  level: string,
-  extension: string | null,
-  messages: unknown[],
-) {
-  const timestamp = formatAppLogTimestamp(new Date());
+function serializeAppLogMessagePart(message: unknown) {
+  if (typeof message === 'string') {
+    return message;
+  }
+
+  if (typeof message === 'function') {
+    return `[function ${message.name || 'anonymous'}()]`;
+  }
+
+  if (message instanceof Error) {
+    return message.message;
+  }
+
+  try {
+    return JSON.stringify(message, null, 2);
+  } catch {
+    return '[[Unserializable Value]]';
+  }
+}
+
+function buildAppLogPreview(messages: unknown[]) {
+  for (const message of messages) {
+    const serializedMessage = serializeAppLogMessagePart(message);
+    const previewLine = serializedMessage
+      .split(/\r?\n/u)
+      .find((line) => line.trim().length > 0);
+
+    if (previewLine) {
+      return previewLine.trim();
+    }
+  }
+
+  return 'Log entry';
+}
+
+function buildFormattedAppLogMessage({
+  extension,
+  level,
+  messages,
+  timestampMs,
+}: {
+  extension: string | null;
+  level: string;
+  messages: unknown[];
+  timestampMs: number;
+}): FormattedAppLogMessage {
+  const timestamp = formatAppLogTimestamp(new Date(timestampMs));
   const paddedLevelLabel = level.toUpperCase().padEnd(appLogLevelLabelWidth);
   const segments = [`[${paddedLevelLabel}]`, `[${timestamp}]`];
 
@@ -155,29 +211,36 @@ function formatAppLogMessage(
     segments.push(`[${extension}]`);
   }
 
-  const messageText = messages
-    .map((message) => {
-      if (typeof message === 'string') {
-        return message;
-      }
+  const messageText = messages.map(serializeAppLogMessagePart).join(' ');
 
-      if (typeof message === 'function') {
-        return `[function ${message.name || 'anonymous'}()]`;
-      }
+  return {
+    fullText: `${segments.join(' ')}: ${messageText}`,
+    previewText: buildAppLogPreview(messages),
+  };
+}
 
-      if (message instanceof Error) {
-        return message.message;
-      }
+function formatAppLogMessage(
+  level: string,
+  extension: string | null,
+  messages: unknown[],
+) {
+  const timestampMs = Date.now();
+  const { fullText, previewText } = buildFormattedAppLogMessage({
+    extension,
+    level,
+    messages,
+    timestampMs,
+  });
 
-      try {
-        return JSON.stringify(message, null, 2);
-      } catch {
-        return '[[Unserializable Value]]';
-      }
-    })
-    .join(' ');
+  appendAppBufferedLogEntry({
+    fullText,
+    level: isAppLogLevel(level) ? level : defaultAppLogLevel,
+    namespace: extension,
+    previewText,
+    timestampMs,
+  });
 
-  return `${segments.join(' ')}: ${messageText}`;
+  return fullText;
 }
 
 const rootLogger = logger.createLogger({
@@ -213,6 +276,27 @@ export function createStructuredLog(
 
 export function getDefaultAppLogLevel(): AppLogLevel {
   return defaultAppLogLevel;
+}
+
+export function isAppLogLevelAtLeast(
+  logLevel: AppLogLevel,
+  minimumLogLevel: AppLogLevel,
+) {
+  return appLogLevels[logLevel] >= appLogLevels[minimumLogLevel];
+}
+
+export function logForwardedNativeEntry(
+  loggerInstance: AppLogger,
+  entry: ForwardedNativeLogEntry,
+  details: AppLogDetails = {},
+) {
+  loggerInstance[entry.level](entry.message, {
+    ...details,
+    nativeSequence: entry.sequence,
+    nativeTag: entry.tag,
+    nativeTimestamp: formatAppLogTimestamp(new Date(entry.timestampMs)),
+    nativeTimestampMs: entry.timestampMs,
+  });
 }
 
 export function setAppLogLevel(logLevel: AppLogLevel): AppLogLevel {
