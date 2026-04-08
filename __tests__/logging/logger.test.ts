@@ -1,7 +1,20 @@
-import { appLogger, createModuleLogger } from '../../src/logging/logger';
+import {
+  appLogger,
+  createModuleLogger,
+  getAppLogLevel,
+  getDefaultAppLogLevel,
+  setAppLogLevel,
+} from '../../src/logging/logger';
 
 describe('logger', () => {
+  const initialLogLevel = getDefaultAppLogLevel();
+
+  beforeEach(() => {
+    setAppLogLevel(initialLogLevel);
+  });
+
   afterEach(() => {
+    setAppLogLevel(initialLogLevel);
     jest.restoreAllMocks();
   });
 
@@ -36,5 +49,11 @@ describe('logger', () => {
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain('settings-warn');
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain('WARN');
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain('Saved changes');
+  });
+
+  it('updates the active root logger severity at runtime', () => {
+    setAppLogLevel('error');
+
+    expect(getAppLogLevel()).toBe('error');
   });
 });

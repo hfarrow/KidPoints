@@ -1,8 +1,11 @@
-import type { PropsWithChildren } from 'react';
+import { type PropsWithChildren, useEffect } from 'react';
+import { createModuleLogger } from '../../logging/logger';
 import {
   SessionUiStoreProvider,
   useSessionUiStore,
 } from '../../state/sessionUiStore';
+
+const log = createModuleLogger('parent-session-context');
 
 type ParentSessionContextValue = {
   attemptUnlock: (pin: string) => boolean;
@@ -19,6 +22,12 @@ export function ParentSessionProvider({
   children,
   initialParentUnlocked,
 }: ParentSessionProviderProps) {
+  useEffect(() => {
+    log.info('Parent session provider initialized', {
+      initialParentUnlocked: initialParentUnlocked ?? null,
+    });
+  }, [initialParentUnlocked]);
+
   return (
     <SessionUiStoreProvider initialParentUnlocked={initialParentUnlocked}>
       {children}

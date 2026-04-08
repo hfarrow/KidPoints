@@ -1,17 +1,16 @@
 import type { PropsWithChildren, ReactNode } from 'react';
 import {
-  Pressable,
   type StyleProp,
   StyleSheet,
   Text,
   View,
   type ViewStyle,
 } from 'react-native';
-
 import {
   type useAppTheme,
   useThemedStyles,
 } from '../features/theme/themeContext';
+import { LoggedPressable } from './LoggedPressable';
 
 export function SkeletonLine({
   width = '100%',
@@ -67,13 +66,15 @@ export function ActionPill({
         : styles.neutralPillText;
 
   return (
-    <Pressable
+    <LoggedPressable
       accessibilityRole="button"
+      logContext={{ tone }}
+      logLabel={label}
       onPress={onPress}
       style={[styles.pill, toneStyle]}
     >
       <Text style={[styles.pillText, textStyle]}>{label}</Text>
-    </Pressable>
+    </LoggedPressable>
   );
 }
 

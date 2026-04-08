@@ -1,7 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { LoggedPressable } from '../../components/LoggedPressable';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
 import {
@@ -10,29 +12,39 @@ import {
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
+import { APP_LOG_LEVELS, createModuleLogger } from '../../logging/logger';
+import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useParentSession } from '../parent/parentSessionContext';
 import type { ThemeMode } from '../theme/theme';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 
 const THEME_OPTIONS: ThemeMode[] = ['light', 'dark', 'system'];
+const log = createModuleLogger('settings-screen');
 
 export function SettingsScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked, lockParentMode } = useParentSession();
   const { resolvedTheme, setThemeMode, themeMode, tokens } = useAppTheme();
+  const logLevel = useLocalSettingsStore((state) => state.logLevel);
+  const setLogLevel = useLocalSettingsStore((state) => state.setLogLevel);
+
+  useEffect(() => {
+    log.debug('Settings screen initialized');
+  }, []);
 
   return (
     <ScreenScaffold>
       <ScreenHeader
         leadingAction={
-          <Pressable
+          <LoggedPressable
             accessibilityLabel="Go Back"
+            logLabel="Go Back"
             onPress={() => router.back()}
             style={styles.backButton}
           >
             <Feather color={tokens.controlText} name="arrow-left" size={18} />
-          </Pressable>
+          </LoggedPressable>
         }
         title="Settings"
       />
@@ -43,10 +55,15 @@ export function SettingsScreen() {
             const isActive = themeMode === option;
 
             return (
-              <Pressable
+              <LoggedPressable
                 key={option}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isActive }}
+                logContext={{
+                  selected: isActive,
+                  themeMode: option,
+                }}
+                logLabel={`Set theme to ${option}`}
                 onPress={() => setThemeMode(option)}
                 style={[
                   styles.option,
@@ -57,7 +74,7 @@ export function SettingsScreen() {
                 ]}
               >
                 <Text style={styles.optionTitle}>{option}</Text>
-              </Pressable>
+              </LoggedPressable>
             );
           })}
         </View>
@@ -91,6 +108,42 @@ export function SettingsScreen() {
           />
         </ActionPillRow>
       </Tile>
+
+      <Tile accessory={<StatusBadge label={logLevel} />} title="Debug">
+        <Text style={styles.body}>
+          Choose the active app log level. This setting stays available in
+          release builds so we can raise or reduce logging without a rebuild.
+        </Text>
+        <View style={styles.logLevelOptionRow}>
+          {APP_LOG_LEVELS.map((option) => {
+            const isActive = logLevel === option;
+
+            return (
+              <LoggedPressable
+                key={option}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+                logContext={{
+                  logLevel: option,
+                  selected: isActive,
+                }}
+                logLabel={`Set log level to ${option}`}
+                onPress={() => setLogLevel(option)}
+                style={[
+                  styles.option,
+                  styles.logLevelOption,
+                  isActive && {
+                    backgroundColor: tokens.accentSoft,
+                    borderColor: tokens.accent,
+                  },
+                ]}
+              >
+                <Text style={styles.optionTitle}>{option}</Text>
+              </LoggedPressable>
+            );
+          })}
+        </View>
+      </Tile>
     </ScreenScaffold>
   );
 }
@@ -112,6 +165,15 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     },
     optionRow: {
       flexDirection: 'row',
+      gap: 8,
+    },
+    logLevelOption: {
+      flexBasis: '48%',
+      flexGrow: 1,
+    },
+    logLevelOptionRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 8,
     },
     option: {

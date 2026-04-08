@@ -1,6 +1,8 @@
 import type { KeyboardTypeOptions } from 'react-native';
 import { create } from 'zustand';
 
+import { createModuleLogger } from '../../logging/logger';
+
 export type TextInputModalSubmitResult =
   | { ok: true }
   | { error: string; ok: false };
@@ -22,11 +24,20 @@ type TextInputModalState = {
   request: TextInputModalRequest | null;
 };
 
+const log = createModuleLogger('text-input-modal-store');
+
 export const useTextInputModalStore = create<TextInputModalState>((set) => ({
   clearRequest: () => {
+    log.debug('Text input modal mutation committed', {
+      action: 'clearRequest',
+    });
     set({ request: null });
   },
   openRequest: (request) => {
+    log.debug('Text input modal mutation committed', {
+      action: 'openRequest',
+      title: request.title,
+    });
     set({ request });
   },
   request: null,

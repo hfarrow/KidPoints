@@ -1,8 +1,14 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { LoggedPressable } from '../../components/LoggedPressable';
+import { createModuleLogger } from '../../logging/logger';
+import { DEFAULT_PARENT_PIN } from '../../state/sessionUiStore';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 import { useParentSession } from './parentSessionContext';
+
+const log = createModuleLogger('parent-unlock-modal');
 
 export function ParentUnlockModal() {
   const router = useRouter();
@@ -11,6 +17,10 @@ export function ParentUnlockModal() {
   const { tokens } = useAppTheme();
   const [pin, setPin] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    log.debug('Parent unlock modal initialized');
+  }, []);
 
   const submitPin = (value: string) => {
     const didUnlock = attemptUnlock(value);
@@ -42,7 +52,10 @@ export function ParentUnlockModal() {
               setErrorMessage('');
             }
 
-            if (attemptUnlock(nextValue)) {
+            if (
+              nextValue.length === DEFAULT_PARENT_PIN.length &&
+              attemptUnlock(nextValue)
+            ) {
               router.back();
             }
           }}
@@ -54,18 +67,20 @@ export function ParentUnlockModal() {
         />
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
         <View style={styles.actions}>
-          <Pressable
+          <LoggedPressable
+            logLabel="Cancel Parent Unlock"
             onPress={() => router.back()}
             style={styles.secondaryAction}
           >
             <Text style={styles.secondaryText}>Cancel</Text>
-          </Pressable>
-          <Pressable
+          </LoggedPressable>
+          <LoggedPressable
+            logLabel="Unlock Parent Controls"
             onPress={() => submitPin(pin)}
             style={styles.primaryAction}
           >
             <Text style={styles.primaryText}>Unlock</Text>
-          </Pressable>
+          </LoggedPressable>
         </View>
       </View>
     </View>

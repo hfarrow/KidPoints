@@ -24,4 +24,27 @@ describe('localSettingsStore', () => {
 
     expect(secondStore.getState().themeMode).toBe('dark');
   });
+
+  it('rehydrates the persisted log level', async () => {
+    const storage = createMemoryStorage();
+    const firstStore = createLocalSettingsStore({
+      initialLogLevel: 'info',
+      storage,
+    });
+
+    firstStore.getState().setLogLevel('error');
+
+    const secondStore = createLocalSettingsStore({
+      initialLogLevel: 'debug',
+      storage,
+    });
+
+    await (
+      secondStore as typeof secondStore & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(secondStore.getState().logLevel).toBe('error');
+  });
 });

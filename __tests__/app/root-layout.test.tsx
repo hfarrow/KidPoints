@@ -3,6 +3,9 @@ import type { ReactNode } from 'react';
 
 import RootLayout from '../../app/_layout';
 
+const mockPathname = '/';
+const mockSegments = ['(tabs)', 'index'];
+
 jest.mock('expo-status-bar', () => ({
   StatusBar: () => null,
 }));
@@ -29,6 +32,8 @@ jest.mock('expo-router', () => {
 
   return {
     Stack,
+    usePathname: () => mockPathname,
+    useSegments: () => mockSegments,
   };
 });
 

@@ -1,14 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Pressable,
-  type ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { type ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { LoggedPressable } from '../../components/LoggedPressable';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
 import {
@@ -17,9 +12,12 @@ import {
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
+import { createModuleLogger } from '../../logging/logger';
 import { deriveTransactionRows, useSharedStore } from '../../state/sharedStore';
 import type { SharedDocument, TransactionRow } from '../../state/sharedTypes';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+
+const log = createModuleLogger('transactions-screen');
 
 type TransactionDisplayItem =
   | {
@@ -188,6 +186,10 @@ export function TransactionsScreen() {
     [document],
   );
 
+  useEffect(() => {
+    log.debug('Transactions screen initialized');
+  }, []);
+
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
       if (!showOrphaned && row.isOrphaned) {
@@ -305,13 +307,14 @@ export function TransactionsScreen() {
     <ScreenScaffold scrollViewRef={scrollViewRef}>
       <ScreenHeader
         leadingAction={
-          <Pressable
+          <LoggedPressable
             accessibilityLabel="Go Back"
+            logLabel="Go Back"
             onPress={() => router.back()}
             style={styles.backButton}
           >
             <Feather color={tokens.controlText} name="arrow-left" size={18} />
-          </Pressable>
+          </LoggedPressable>
         }
         title="Transactions"
       />
@@ -322,10 +325,16 @@ export function TransactionsScreen() {
             const isSelected = selectedChildIds.includes(child.id);
 
             return (
-              <Pressable
+              <LoggedPressable
                 key={child.id}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSelected }}
+                logContext={{
+                  childId: child.id,
+                  childName: child.name,
+                  selected: isSelected,
+                }}
+                logLabel={`Toggle ${child.name} transaction filter`}
                 onPress={() => {
                   setSelectedChildIds((currentIds) =>
                     currentIds.includes(child.id)
@@ -346,12 +355,14 @@ export function TransactionsScreen() {
                 >
                   {child.name}
                 </Text>
-              </Pressable>
+              </LoggedPressable>
             );
           })}
-          <Pressable
+          <LoggedPressable
             accessibilityRole="button"
             accessibilityState={{ selected: showOrphaned }}
+            logContext={{ selected: showOrphaned }}
+            logLabel="Toggle orphaned transaction filter"
             onPress={() => {
               setShowOrphaned((currentValue) => !currentValue);
             }}
@@ -368,7 +379,7 @@ export function TransactionsScreen() {
             >
               Orphaned
             </Text>
-          </Pressable>
+          </LoggedPressable>
         </View>
       </Tile>
 
@@ -463,9 +474,14 @@ export function TransactionsScreen() {
                                 styles.highlightedSubtile,
                             ]}
                           >
-                            <Pressable
+                            <LoggedPressable
                               accessibilityLabel={`${isNestedExpanded ? 'Collapse' : 'Expand'} ${row.summaryText}`}
                               accessibilityRole="button"
+                              logContext={{
+                                isExpanded: isNestedExpanded,
+                                transactionId: row.id,
+                              }}
+                              logLabel={`${isNestedExpanded ? 'Collapse' : 'Expand'} ${row.summaryText}`}
                               onPress={() => {
                                 setExpandedNestedRowIds((currentIds) =>
                                   currentIds.includes(row.id)
@@ -499,7 +515,7 @@ export function TransactionsScreen() {
                                   />
                                 </View>
                               </View>
-                            </Pressable>
+                            </LoggedPressable>
                             {isNestedExpanded ? (
                               <>
                                 {row.isOrphaned && !row.isRestorableNow ? (

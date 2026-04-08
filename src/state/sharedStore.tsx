@@ -3,6 +3,7 @@ import {
   createContext,
   type PropsWithChildren,
   useContext,
+  useEffect,
   useMemo,
   useRef,
 } from 'react';
@@ -14,6 +15,7 @@ import {
 } from 'zustand/middleware';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
+import { createModuleLogger } from '../logging/logger';
 import type {
   ChildSnapshot,
   HomeTimerSummary,
@@ -41,6 +43,7 @@ type SharedStoreState = {
 type SharedStore = StoreApi<SharedStoreState>;
 
 const SHARED_STORAGE_KEY = 'kidpoints.shared-document.v2';
+const log = createModuleLogger('shared-store');
 
 const DEFAULT_HOME_TIMER_SUMMARY: HomeTimerSummary = {
   intervalLabel: '15 minute cadence',
@@ -54,6 +57,46 @@ type SharedStoreProviderProps = PropsWithChildren<{
   initialDocument?: SharedDocument;
   storage?: StateStorage;
 }>;
+
+function logSharedStoreMutation(
+  action: string,
+  details: Record<string, unknown> = {},
+) {
+  log.debug('Shared store mutation committed', {
+    action,
+    ...details,
+  });
+}
+
+function logRejectedSharedStoreMutation(
+  action: string,
+  error: string,
+  details: Record<string, unknown> = {},
+) {
+  log.error('Shared store mutation rejected', {
+    action,
+    error,
+    ...details,
+  });
+}
+
+function logSharedTransaction(
+  transaction: TransactionRecord,
+  details: Record<string, unknown> = {},
+) {
+  log.info('Shared transaction committed', {
+    affectedChildIds: transaction.affectedChildIds,
+    childId: transaction.childId,
+    kind: transaction.kind,
+    parentTransactionId: transaction.parentTransactionId,
+    pointsAfter: transaction.pointsAfter ?? null,
+    pointsBefore: transaction.pointsBefore ?? null,
+    restoredFromTransactionId: transaction.restoredFromTransactionId ?? null,
+    restoredToTransactionId: transaction.restoredToTransactionId ?? null,
+    transactionId: transaction.id,
+    ...details,
+  });
+}
 
 function createEmptyHead(): SharedHead {
   return {
@@ -775,6 +818,10 @@ function createSharedStoreActions(
       const normalizedName = normalizeName(name);
 
       if (!normalizedName) {
+        logRejectedSharedStoreMutation(
+          'addChild',
+          'Enter a child name before saving.',
+        );
         return {
           error: 'Enter a child name before saving.',
           ok: false,
@@ -809,6 +856,15 @@ function createSharedStoreActions(
           stateAfter: nextHead,
         });
 
+        logSharedStoreMutation('addChild', {
+          childId: child.id,
+          eventId: event.eventId,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+        });
+
         return {
           ...state,
           document: commitDocumentChange({
@@ -825,6 +881,11 @@ function createSharedStoreActions(
     },
     adjustPoints(childId: string, delta: number): SharedCommandResult {
       if (!Number.isInteger(delta) || delta === 0) {
+        logRejectedSharedStoreMutation(
+          'adjustPoints',
+          'Point adjustments must change the total by at least one.',
+          { childId, delta },
+        );
         return {
           error: 'Point adjustments must change the total by at least one.',
           ok: false,
@@ -837,6 +898,11 @@ function createSharedStoreActions(
         const child = getChild(state.document.head, childId);
 
         if (!child || child.status !== 'active') {
+          logRejectedSharedStoreMutation(
+            'adjustPoints',
+            'Only active children can be adjusted.',
+            { childId, delta },
+          );
           result = {
             error: 'Only active children can be adjusted.',
             ok: false,
@@ -870,6 +936,19 @@ function createSharedStoreActions(
           stateAfter: nextHead,
         });
 
+        logSharedStoreMutation('adjustPoints', {
+          childId,
+          delta,
+          eventId: event.eventId,
+          pointsAfter: nextChild?.points ?? null,
+          pointsBefore: child.points,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          delta,
+          eventId: event.eventId,
+        });
+
         return {
           ...state,
           document: commitDocumentChange({
@@ -891,6 +970,11 @@ function createSharedStoreActions(
         const child = getChild(state.document.head, childId);
 
         if (!child || child.status !== 'active') {
+          logRejectedSharedStoreMutation(
+            'archiveChild',
+            'Only active children can be archived.',
+            { childId },
+          );
           result = {
             error: 'Only active children can be archived.',
             ok: false,
@@ -917,6 +1001,15 @@ function createSharedStoreActions(
           stateAfter: nextHead,
         });
 
+        logSharedStoreMutation('archiveChild', {
+          childId,
+          eventId: event.eventId,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+        });
+
         return {
           ...state,
           document: commitDocumentChange({
@@ -938,6 +1031,11 @@ function createSharedStoreActions(
         const child = getChild(state.document.head, childId);
 
         if (!child || child.status !== 'archived') {
+          logRejectedSharedStoreMutation(
+            'deleteChildPermanently',
+            'Only archived children can be deleted permanently.',
+            { childId },
+          );
           result = {
             error: 'Only archived children can be deleted permanently.',
             ok: false,
@@ -962,6 +1060,15 @@ function createSharedStoreActions(
           stateAfter: nextHead,
         });
 
+        logSharedStoreMutation('deleteChildPermanently', {
+          childId,
+          eventId: event.eventId,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+        });
+
         return {
           ...state,
           document: commitDocumentChange({
@@ -983,6 +1090,11 @@ function createSharedStoreActions(
         const child = getChild(state.document.head, childId);
 
         if (!child || child.status !== 'archived') {
+          logRejectedSharedStoreMutation(
+            'restoreChild',
+            'Only archived children can be restored.',
+            { childId },
+          );
           result = {
             error: 'Only archived children can be restored.',
             ok: false,
@@ -1009,6 +1121,15 @@ function createSharedStoreActions(
           stateAfter: nextHead,
         });
 
+        logSharedStoreMutation('restoreChild', {
+          childId,
+          eventId: event.eventId,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+        });
+
         return {
           ...state,
           document: commitDocumentChange({
@@ -1032,6 +1153,11 @@ function createSharedStoreActions(
         );
 
         if (!transactionRow) {
+          logRejectedSharedStoreMutation(
+            'restoreTransaction',
+            'The requested transaction could not be restored.',
+            { transactionId },
+          );
           result = {
             error: 'The requested transaction could not be restored.',
             ok: false,
@@ -1040,6 +1166,12 @@ function createSharedStoreActions(
         }
 
         if (!transactionRow.isRestorableNow) {
+          logRejectedSharedStoreMutation(
+            'restoreTransaction',
+            transactionRow.restoreDisabledReason ??
+              'That transaction cannot be restored right now.',
+            { transactionId },
+          );
           result = {
             error:
               transactionRow.restoreDisabledReason ??
@@ -1053,6 +1185,11 @@ function createSharedStoreActions(
           areHeadsEquivalent(state.document.head, transactionRow.stateAfter) &&
           transactionRow.id === state.document.currentHeadTransactionId
         ) {
+          logRejectedSharedStoreMutation(
+            'restoreTransaction',
+            'That transaction is already the current HEAD.',
+            { transactionId },
+          );
           result = {
             error: 'That transaction is already the current HEAD.',
             ok: false,
@@ -1082,6 +1219,15 @@ function createSharedStoreActions(
           transactionId: generateId('transaction'),
         });
 
+        logSharedStoreMutation('restoreTransaction', {
+          eventCount: eventsToAppend.length,
+          restoredToTransactionId: transactionRow.id,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventCount: eventsToAppend.length,
+        });
+
         return {
           ...state,
           document: commitDocumentChange({
@@ -1098,6 +1244,11 @@ function createSharedStoreActions(
     },
     setPoints(childId: string, points: number): SharedCommandResult {
       if (!Number.isInteger(points)) {
+        logRejectedSharedStoreMutation(
+          'setPoints',
+          'Exact point totals must be whole numbers.',
+          { childId, points },
+        );
         return {
           error: 'Exact point totals must be whole numbers.',
           ok: false,
@@ -1110,6 +1261,11 @@ function createSharedStoreActions(
         const child = getChild(state.document.head, childId);
 
         if (!child) {
+          logRejectedSharedStoreMutation(
+            'setPoints',
+            'That child could not be found.',
+            { childId, points },
+          );
           result = {
             error: 'That child could not be found.',
             ok: false,
@@ -1141,6 +1297,17 @@ function createSharedStoreActions(
           pointsAfter: nextChild?.points,
           pointsBefore: child.points,
           stateAfter: nextHead,
+        });
+
+        logSharedStoreMutation('setPoints', {
+          childId,
+          eventId: event.eventId,
+          pointsAfter: nextChild?.points ?? null,
+          pointsBefore: child.points,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
         });
 
         return {
@@ -1180,8 +1347,16 @@ export function createSharedStore({
           const nextState = persistedState as Partial<SharedStoreState> | null;
 
           if (!isSharedDocument(nextState?.document)) {
+            log.debug('Shared store rehydrate skipped invalid persisted state');
             return currentState;
           }
+
+          log.info('Shared store rehydrated persisted document', {
+            currentHeadTransactionId:
+              nextState.document.currentHeadTransactionId,
+            eventCount: nextState.document.events.length,
+            transactionCount: nextState.document.transactions.length,
+          });
 
           return {
             ...currentState,
@@ -1209,6 +1384,10 @@ export function SharedStoreProvider({
       storage,
     });
   }
+
+  useEffect(() => {
+    log.info('Shared store provider initialized');
+  }, []);
 
   return (
     <SharedStoreContext.Provider value={storeRef.current}>

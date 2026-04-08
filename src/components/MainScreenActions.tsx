@@ -1,8 +1,9 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useParentSession } from '../features/parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
+import { LoggedPressable } from './LoggedPressable';
 
 export function MainScreenActions() {
   const router = useRouter();
@@ -12,8 +13,9 @@ export function MainScreenActions() {
 
   return (
     <View style={styles.row}>
-      <Pressable
+      <LoggedPressable
         accessibilityLabel="Open Settings"
+        logLabel="Open Settings"
         onPress={() => router.push('/settings')}
         style={styles.action}
       >
@@ -22,11 +24,12 @@ export function MainScreenActions() {
           name="settings-outline"
           size={18}
         />
-      </Pressable>
-      <Pressable
+      </LoggedPressable>
+      <LoggedPressable
         accessibilityLabel={
           isParentUnlocked ? 'Lock Parent Mode' : 'Unlock Parent Mode'
         }
+        logLabel={isParentUnlocked ? 'Lock Parent Mode' : 'Unlock Parent Mode'}
         onPress={() => {
           if (isParentUnlocked) {
             lockParentMode();
@@ -51,7 +54,7 @@ export function MainScreenActions() {
           name={isParentUnlocked ? 'unlock' : 'lock'}
           size={18}
         />
-      </Pressable>
+      </LoggedPressable>
     </View>
   );
 }

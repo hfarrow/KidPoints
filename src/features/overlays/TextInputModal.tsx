@@ -1,14 +1,18 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { LoggedPressable } from '../../components/LoggedPressable';
 import { ActionPill } from '../../components/Skeleton';
+import { createModuleLogger } from '../../logging/logger';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 import {
   clearTextInputModal,
   useTextInputModalStore,
 } from './textInputModalStore';
+
+const log = createModuleLogger('text-input-modal');
 
 export function TextInputModal() {
   const router = useRouter();
@@ -19,6 +23,10 @@ export function TextInputModal() {
   const request = useTextInputModalStore((state) => state.request);
   const [value, setValue] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    log.debug('Text input modal initialized');
+  }, []);
 
   useEffect(() => {
     if (!request) {
@@ -105,12 +113,13 @@ export function TextInputModal() {
               tone="primary"
             />
           ) : (
-            <Pressable
+            <LoggedPressable
+              logLabel="Unlock Parent Mode"
               onPress={() => router.push('/parent-unlock')}
               style={styles.primaryAction}
             >
               <Text style={styles.primaryActionText}>Unlock Parent Mode</Text>
-            </Pressable>
+            </LoggedPressable>
           )}
         </View>
       </View>

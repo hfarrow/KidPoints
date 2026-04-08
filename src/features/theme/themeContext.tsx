@@ -1,7 +1,9 @@
 import type { StatusBarStyle } from 'expo-status-bar';
-import { type PropsWithChildren, useMemo } from 'react';
+import { type PropsWithChildren, useEffect, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
 import type { StateStorage } from 'zustand/middleware';
+import type { AppLogLevel } from '../../logging/logger';
+import { createModuleLogger } from '../../logging/logger';
 import {
   LocalSettingsStoreProvider,
   useLocalSettingsStore,
@@ -14,6 +16,8 @@ import {
   type ThemeTokens,
 } from './theme';
 
+const log = createModuleLogger('theme-context');
+
 type AppThemeValue = {
   getScreenSurface: (isParentMode: boolean) => string;
   resolvedTheme: ResolvedTheme;
@@ -24,17 +28,26 @@ type AppThemeValue = {
 };
 
 type AppThemeProviderProps = PropsWithChildren<{
+  initialLogLevel?: AppLogLevel;
   initialThemeMode?: ThemeMode;
   storage?: StateStorage;
 }>;
 
 export function AppThemeProvider({
   children,
+  initialLogLevel,
   initialThemeMode = 'system',
   storage,
 }: AppThemeProviderProps) {
+  useEffect(() => {
+    log.info('App theme provider initialized', {
+      initialThemeMode,
+    });
+  }, [initialThemeMode]);
+
   return (
     <LocalSettingsStoreProvider
+      initialLogLevel={initialLogLevel}
       initialThemeMode={initialThemeMode}
       storage={storage}
     >

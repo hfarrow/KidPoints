@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
+import { LoggedPressable } from '../../components/LoggedPressable';
 import { MainScreenActions } from '../../components/MainScreenActions';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
@@ -12,6 +13,7 @@ import {
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
+import { createModuleLogger } from '../../logging/logger';
 import {
   selectHomeTimerSummary,
   useSharedStore,
@@ -19,6 +21,8 @@ import {
 import { presentTextInputModal } from '../overlays/textInputModalStore';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+
+const log = createModuleLogger('home-screen');
 
 export function HomeScreen() {
   const router = useRouter();
@@ -38,6 +42,10 @@ export function HomeScreen() {
         .filter(Boolean),
     [head],
   );
+
+  useEffect(() => {
+    log.debug('Home screen initialized');
+  }, []);
 
   const openAddChildModal = () => {
     presentTextInputModal({
@@ -148,9 +156,15 @@ export function HomeScreen() {
                 ]}
               >
                 {isParentUnlocked ? (
-                  <Pressable
+                  <LoggedPressable
                     accessibilityLabel={`Decrease ${child.name} points`}
                     accessibilityRole="button"
+                    logContext={{
+                      childId: child.id,
+                      childName: child.name,
+                      delta: -1,
+                    }}
+                    logLabel={`Decrease ${child.name} points`}
                     onPress={() => {
                       adjustPoints(child.id, -1);
                     }}
@@ -161,11 +175,17 @@ export function HomeScreen() {
                     >
                       -1
                     </Text>
-                  </Pressable>
+                  </LoggedPressable>
                 ) : null}
-                <Pressable
+                <LoggedPressable
                   accessibilityLabel={`Edit ${child.name} points`}
                   accessibilityRole="button"
+                  logContext={{
+                    childId: child.id,
+                    childName: child.name,
+                    points: child.points,
+                  }}
+                  logLabel={`Edit ${child.name} points`}
                   onPress={() => {
                     if (!isParentUnlocked) {
                       router.push('/parent-unlock');
@@ -180,11 +200,17 @@ export function HomeScreen() {
                   ]}
                 >
                   <Text style={styles.pointsValue}>{child.points}</Text>
-                </Pressable>
+                </LoggedPressable>
                 {isParentUnlocked ? (
-                  <Pressable
+                  <LoggedPressable
                     accessibilityLabel={`Increase ${child.name} points`}
                     accessibilityRole="button"
+                    logContext={{
+                      childId: child.id,
+                      childName: child.name,
+                      delta: 1,
+                    }}
+                    logLabel={`Increase ${child.name} points`}
                     onPress={() => {
                       adjustPoints(child.id, 1);
                     }}
@@ -195,7 +221,7 @@ export function HomeScreen() {
                     >
                       +1
                     </Text>
-                  </Pressable>
+                  </LoggedPressable>
                 ) : null}
               </View>
             </View>

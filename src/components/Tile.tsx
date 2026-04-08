@@ -1,18 +1,17 @@
 import { Feather } from '@expo/vector-icons';
 import { type ReactNode, useState } from 'react';
 import {
-  Pressable,
   type StyleProp,
   StyleSheet,
   Text,
   View,
   type ViewStyle,
 } from 'react-native';
-
 import {
   type useAppTheme,
   useThemedStyles,
 } from '../features/theme/themeContext';
+import { LoggedPressable } from './LoggedPressable';
 
 type TileProps = {
   accessory?: ReactNode;
@@ -86,9 +85,15 @@ export function Tile({
       ]}
     >
       {collapsible ? (
-        <Pressable
+        <LoggedPressable
           accessibilityLabel={`${isCollapsed ? 'Expand' : 'Collapse'} ${titleText}`}
           accessibilityRole="button"
+          logContext={{
+            component: 'Tile',
+            isCollapsed,
+            title: titleText,
+          }}
+          logLabel={`${isCollapsed ? 'Expand' : 'Collapse'} ${titleText}`}
           onPress={toggleCollapsed}
           style={[
             styles.headerRow,
@@ -116,7 +121,7 @@ export function Tile({
               </View>
             </View>
           ) : null}
-        </Pressable>
+        </LoggedPressable>
       ) : (
         <View
           style={[

@@ -1,13 +1,21 @@
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs, useRouter } from 'expo-router';
+import { useEffect } from 'react';
 
 import { useParentSession } from '../../src/features/parent/parentSessionContext';
 import { useAppTheme } from '../../src/features/theme/themeContext';
+import { createModuleLogger } from '../../src/logging/logger';
+
+const log = createModuleLogger('tabs-layout');
 
 export default function TabsLayout() {
   const router = useRouter();
   const { isParentUnlocked } = useParentSession();
   const { tokens } = useAppTheme();
+
+  useEffect(() => {
+    log.debug('Tabs layout initialized');
+  }, []);
 
   return (
     <Tabs

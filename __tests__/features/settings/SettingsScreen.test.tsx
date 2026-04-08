@@ -73,4 +73,24 @@ describe('SettingsScreen', () => {
     fireEvent.press(screen.getByText('Lock'));
     expect(mockPush).not.toHaveBeenCalled();
   });
+
+  it('shows and updates the active app log level', () => {
+    render(
+      <ParentSessionProvider initialParentUnlocked={false}>
+        <AppThemeProvider
+          initialThemeMode="light"
+          storage={createMemoryStorage()}
+        >
+          <SettingsScreen />
+        </AppThemeProvider>
+      </ParentSessionProvider>,
+    );
+
+    expect(screen.getByText('Debug')).toBeTruthy();
+    expect(screen.getAllByText('debug')).toHaveLength(2);
+
+    fireEvent.press(screen.getByText('error'));
+
+    expect(screen.getAllByText('error')).toHaveLength(2);
+  });
 });

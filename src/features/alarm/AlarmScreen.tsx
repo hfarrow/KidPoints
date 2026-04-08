@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { MainScreenActions } from '../../components/MainScreenActions';
@@ -14,14 +15,21 @@ import {
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
+import { createModuleLogger } from '../../logging/logger';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+
+const log = createModuleLogger('alarm-screen');
 
 export function AlarmScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked } = useParentSession();
   const { tokens } = useAppTheme();
+
+  useEffect(() => {
+    log.debug('Alarm screen initialized');
+  }, []);
 
   return (
     <ScreenScaffold>
