@@ -451,7 +451,7 @@ function parseRuntimeStatus(
     promotedNotificationPermissionGranted:
       parsedValue.promotedNotificationPermissionGranted ??
       fallback.promotedNotificationPermissionGranted,
-    sessionId: parsedValue.sessionId ?? fallback.sessionId,
+    sessionId: normalizeOptionalString(parsedValue.sessionId),
   };
 }
 
@@ -483,10 +483,24 @@ function parsePendingNotificationLaunchAction(
   return {
     intervalId: parsedValue.intervalId ?? null,
     notificationId: parsedValue.notificationId ?? null,
-    sessionId: parsedValue.sessionId ?? null,
+    sessionId: normalizeOptionalString(parsedValue.sessionId),
     triggeredAt: parsedValue.triggeredAt ?? null,
     type: 'check-in',
   };
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue || normalizedValue === 'null') {
+    return null;
+  }
+
+  return normalizedValue;
 }
 
 function parseBufferedNotificationLogs(

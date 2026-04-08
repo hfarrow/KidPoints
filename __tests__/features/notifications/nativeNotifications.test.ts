@@ -281,4 +281,164 @@ describe('nativeNotifications', () => {
     launchSubscription?.remove();
     expect(remove).toHaveBeenCalledTimes(3);
   });
+
+  it('normalizes legacy string null session ids from native payloads', async () => {
+    const subscriptions: ((event: unknown) => void)[] = [];
+    const nativeModule = {
+      addListener: jest.fn(
+        (_eventName: string, listener: (event: unknown) => void) => {
+          subscriptions.push(listener);
+          return { remove: jest.fn() };
+        },
+      ),
+      canScheduleExactAlarms: jest.fn(async () => true),
+      consumePendingLaunchAction: jest.fn(async () =>
+        JSON.stringify({
+          intervalId: 'interval-1',
+          notificationId: 5001,
+          sessionId: 'null',
+          triggeredAt: 123,
+          type: 'check-in',
+        }),
+      ),
+      getBufferedLogs: jest.fn(() => '[]'),
+      getDocument: jest.fn(async () =>
+        JSON.stringify({
+          head: {
+            children: [],
+            expiredIntervals: [],
+            timerConfig: {
+              alarmDurationSeconds: 20,
+              intervalMinutes: 15,
+              intervalSeconds: 0,
+              notificationsEnabled: true,
+            },
+            timerRuntimeState: {
+              lastTriggeredAt: null,
+              nextTriggerAt: 123,
+              sessionId: 'null',
+            },
+            timerState: {
+              cycleStartedAt: 100,
+              isRunning: true,
+              pausedRemainingMs: null,
+            },
+          },
+          schemaVersion: 1,
+        }),
+      ),
+      getPendingLaunchAction: jest.fn(async () =>
+        JSON.stringify({
+          intervalId: 'interval-1',
+          notificationId: 5001,
+          sessionId: 'null',
+          triggeredAt: 123,
+          type: 'check-in',
+        }),
+      ),
+      getRuntimeStatus: jest.fn(async () =>
+        JSON.stringify({
+          exactAlarmPermissionGranted: true,
+          isRunning: true,
+          nextTriggerAt: 123,
+          notificationPermissionGranted: true,
+          sessionId: 'null',
+        }),
+      ),
+      openExactAlarmSettings: jest.fn(async () => undefined),
+      openFullScreenIntentSettings: jest.fn(async () => undefined),
+      openNotificationSettings: jest.fn(async () => undefined),
+      openPromotedNotificationSettings: jest.fn(async () => undefined),
+      pauseTimer: jest.fn(async (documentJson: string) => documentJson),
+      resetTimer: jest.fn(async (documentJson: string) => documentJson),
+      requestNotificationPermission: jest.fn(async () => true),
+      saveDocument: jest.fn(async (documentJson: string) => documentJson),
+      startTimer: jest.fn(async (documentJson: string) => documentJson),
+      stopExpiredAlarmPlayback: jest.fn(async () => undefined),
+      syncDocument: jest.fn(async (documentJson: string) => documentJson),
+    };
+
+    jest.doMock('expo-modules-core', () => ({
+      requireOptionalNativeModule: jest.fn(() => nativeModule),
+    }));
+
+    let nativeNotifications!: typeof import('../../../src/features/notifications/nativeNotifications');
+    jest.isolateModules(() => {
+      nativeNotifications = jest.requireActual(
+        '../../../src/features/notifications/nativeNotifications',
+      );
+    });
+
+    const stateListener = jest.fn();
+    nativeNotifications.addNotificationStateChangeListener(stateListener);
+
+    subscriptions[0]?.({
+      documentJson: JSON.stringify({
+        head: {
+          children: [],
+          expiredIntervals: [],
+          timerConfig: {
+            alarmDurationSeconds: 20,
+            intervalMinutes: 15,
+            intervalSeconds: 0,
+            notificationsEnabled: true,
+          },
+          timerRuntimeState: {
+            lastTriggeredAt: null,
+            nextTriggerAt: 123,
+            sessionId: 'null',
+          },
+          timerState: {
+            cycleStartedAt: 100,
+            isRunning: true,
+            pausedRemainingMs: null,
+          },
+        },
+        schemaVersion: 1,
+      }),
+      reason: 'timer-started',
+      runtimeStatusJson: JSON.stringify({
+        exactAlarmPermissionGranted: true,
+        isRunning: true,
+        nextTriggerAt: 123,
+        notificationPermissionGranted: true,
+        sessionId: 'null',
+      }),
+    });
+
+    await expect(
+      nativeNotifications.loadPersistedNotificationDocument(),
+    ).resolves.toMatchObject({
+      head: {
+        timerRuntimeState: {
+          nextTriggerAt: 123,
+          sessionId: null,
+        },
+      },
+    });
+    await expect(
+      nativeNotifications.getPendingNotificationLaunchAction(),
+    ).resolves.toEqual({
+      intervalId: 'interval-1',
+      notificationId: 5001,
+      sessionId: null,
+      triggeredAt: 123,
+      type: 'check-in',
+    });
+    await expect(
+      nativeNotifications.getNotificationRuntimeStatus(),
+    ).resolves.toMatchObject({
+      exactAlarmPermissionGranted: true,
+      isRunning: true,
+      nextTriggerAt: 123,
+      sessionId: null,
+    });
+    expect(stateListener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeStatus: expect.objectContaining({
+          sessionId: null,
+        }),
+      }),
+    );
+  });
 });

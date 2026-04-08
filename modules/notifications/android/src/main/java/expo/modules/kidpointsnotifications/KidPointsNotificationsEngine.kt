@@ -1224,7 +1224,7 @@ private fun JSONObject.optStringOrNull(key: String): String? {
     return null
   }
 
-  return optString(key)
+  return optString(key).takeIf { it.isNotBlank() && it != "null" }
 }
 
 private fun JSONArray.toJsonObjects(): List<JSONObject> =

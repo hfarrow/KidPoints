@@ -199,10 +199,12 @@ export function parseNotificationDocument(
       expiredIntervals: Array.isArray(head.expiredIntervals)
         ? (head.expiredIntervals
             .map((interval) => {
+              const sessionId = normalizeSessionId(interval?.sessionId);
+
               if (
                 typeof interval?.intervalId !== 'string' ||
                 typeof interval?.notificationId !== 'number' ||
-                typeof interval?.sessionId !== 'string' ||
+                !sessionId ||
                 typeof interval?.triggeredAt !== 'number'
               ) {
                 return null;
@@ -228,7 +230,7 @@ export function parseNotificationDocument(
                   : [],
                 intervalId: interval.intervalId,
                 notificationId: interval.notificationId,
-                sessionId: interval.sessionId,
+                sessionId,
                 triggeredAt: interval.triggeredAt,
               } satisfies ExpiredTimerSession;
             })
@@ -244,15 +246,26 @@ export function parseNotificationDocument(
           typeof head.timerRuntimeState?.nextTriggerAt === 'number'
             ? head.timerRuntimeState.nextTriggerAt
             : null,
-        sessionId:
-          typeof head.timerRuntimeState?.sessionId === 'string'
-            ? head.timerRuntimeState.sessionId
-            : null,
+        sessionId: normalizeSessionId(head.timerRuntimeState?.sessionId),
       },
       timerState: parseNotificationTimerState(head.timerState),
     },
     schemaVersion: 1,
   };
+}
+
+function normalizeSessionId(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue || normalizedValue === 'null') {
+    return null;
+  }
+
+  return normalizedValue;
 }
 
 function parseNotificationTimerConfig(
