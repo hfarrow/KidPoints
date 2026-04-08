@@ -8,6 +8,7 @@ import {
 } from '../../../src/features/overlays/textInputModalStore';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
+import { SharedStoreProvider } from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const keyboardControllerModule = jest.requireMock(
@@ -52,14 +53,16 @@ describe('TextInputModal', () => {
     });
 
     render(
-      <ParentSessionProvider initialParentUnlocked>
-        <AppThemeProvider
-          initialThemeMode="light"
-          storage={createMemoryStorage()}
-        >
-          <TextInputModal />
-        </AppThemeProvider>
-      </ParentSessionProvider>,
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <TextInputModal />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
     );
 
     expect(screen.getAllByText('Edit Point Total')).toHaveLength(1);

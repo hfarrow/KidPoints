@@ -6,6 +6,10 @@ import { ParentSessionProvider } from '../../../src/features/parent/parentSessio
 import { getThemeTokens } from '../../../src/features/theme/theme';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import { createLocalSettingsStore } from '../../../src/state/localSettingsStore';
+import {
+  createSharedStore,
+  SharedStoreProvider,
+} from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const keyboardControllerModule = jest.requireMock(
@@ -68,6 +72,20 @@ function expectPinSlotBorderColor(index: number, color: string) {
   ).toBe(color);
 }
 
+async function rehydrateSharedTransactions(
+  storage: ReturnType<typeof createMemoryStorage>,
+) {
+  const store = createSharedStore({ storage });
+
+  await (
+    store as typeof store & {
+      persist: { rehydrate: () => Promise<void> };
+    }
+  ).persist.rehydrate();
+
+  return store.getState().document.transactions;
+}
+
 describe('ParentUnlockModal', () => {
   beforeEach(() => {
     keyboardControllerModule.__resetKeyboardEvents();
@@ -79,22 +97,25 @@ describe('ParentUnlockModal', () => {
     jest.useRealTimers();
   });
 
-  it('rejects a bad configured pin and accepts the stored pin as soon as it is entered', () => {
+  it('rejects a bad configured pin and accepts the stored pin as soon as it is entered', async () => {
     jest.useFakeTimers();
     const accentColor = getThemeTokens('light').accent;
     const errorColor = getThemeTokens('light').critical;
     const successColor = getThemeTokens('light').success;
+    const sharedStorage = createMemoryStorage();
 
     render(
-      <ParentSessionProvider initialParentUnlocked={false}>
-        <AppThemeProvider
-          initialParentPin="2468"
-          initialThemeMode="light"
-          storage={createMemoryStorage()}
-        >
-          <ParentUnlockModal />
-        </AppThemeProvider>
-      </ParentSessionProvider>,
+      <SharedStoreProvider storage={sharedStorage}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppThemeProvider
+            initialParentPin="2468"
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <ParentUnlockModal />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
     );
 
     expect(
@@ -195,17 +216,26 @@ describe('ParentUnlockModal', () => {
     });
 
     expect(mockBack).toHaveBeenCalled();
+
+    const transactions = await rehydrateSharedTransactions(sharedStorage);
+
+    expect(transactions).toHaveLength(2);
+    expect(transactions.at(-1)?.kind).toBe('parent-unlock-succeeded');
+    expect(transactions.at(-2)?.kind).toBe('parent-unlock-failed');
   });
 
   it('requires a new pin on fresh install and confirms it before dismissing', async () => {
     const storage = createMemoryStorage();
+    const sharedStorage = createMemoryStorage();
 
     render(
-      <ParentSessionProvider initialParentUnlocked={false}>
-        <AppThemeProvider initialThemeMode="light" storage={storage}>
-          <ParentUnlockModal />
-        </AppThemeProvider>
-      </ParentSessionProvider>,
+      <SharedStoreProvider storage={sharedStorage}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppThemeProvider initialThemeMode="light" storage={storage}>
+            <ParentUnlockModal />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
     );
 
     expect(screen.getByText('Set Parent PIN')).toBeTruthy();
@@ -230,6 +260,7 @@ describe('ParentUnlockModal', () => {
     ).persist.rehydrate();
 
     expect(rehydratedStore.getState().parentPin).toBe('1234');
+    expect(await rehydrateSharedTransactions(sharedStorage)).toHaveLength(0);
     expect(
       StyleSheet.flatten(
         screen.getByTestId('parent-unlock-keyboard-frame').props.style,

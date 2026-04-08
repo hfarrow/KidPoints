@@ -3,6 +3,10 @@ import { ParentSessionProvider } from '../../../src/features/parent/parentSessio
 import { SettingsScreen } from '../../../src/features/settings/SettingsScreen';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import * as loggerModule from '../../../src/logging/logger';
+import {
+  createSharedStore,
+  SharedStoreProvider,
+} from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockBack = jest.fn();
@@ -35,17 +39,33 @@ describe('SettingsScreen', () => {
     mockPush.mockReset();
   });
 
+  async function rehydrateSharedTransactions(
+    storage: ReturnType<typeof createMemoryStorage>,
+  ) {
+    const store = createSharedStore({ storage });
+
+    await (
+      store as typeof store & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    return store.getState().document.transactions;
+  }
+
   it('shows Unlock in the locked state and opens the parent modal', () => {
     render(
-      <ParentSessionProvider initialParentUnlocked={false}>
-        <AppThemeProvider
-          initialParentPin="2468"
-          initialThemeMode="light"
-          storage={createMemoryStorage()}
-        >
-          <SettingsScreen />
-        </AppThemeProvider>
-      </ParentSessionProvider>,
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppThemeProvider
+            initialParentPin="2468"
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <SettingsScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
     );
 
     expect(screen.getByText('Settings')).toBeTruthy();
@@ -61,17 +81,21 @@ describe('SettingsScreen', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
-  it('shows Lock and Change PIN in the unlocked state', () => {
+  it('shows Lock and Change PIN in the unlocked state', async () => {
+    const sharedStorage = createMemoryStorage();
+
     render(
-      <ParentSessionProvider initialParentUnlocked>
-        <AppThemeProvider
-          initialParentPin="2468"
-          initialThemeMode="light"
-          storage={createMemoryStorage()}
-        >
-          <SettingsScreen />
-        </AppThemeProvider>
-      </ParentSessionProvider>,
+      <SharedStoreProvider storage={sharedStorage}>
+        <ParentSessionProvider initialParentUnlocked>
+          <AppThemeProvider
+            initialParentPin="2468"
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <SettingsScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
     );
 
     expect(screen.getByText('Change PIN')).toBeTruthy();
@@ -83,18 +107,24 @@ describe('SettingsScreen', () => {
 
     fireEvent.press(screen.getByText('Lock'));
     expect(mockPush).not.toHaveBeenCalled();
+
+    const transactions = await rehydrateSharedTransactions(sharedStorage);
+
+    expect(transactions.at(-1)?.kind).toBe('parent-mode-locked');
   });
 
   it('shows and updates the active app log level', () => {
     render(
-      <ParentSessionProvider initialParentUnlocked={false}>
-        <AppThemeProvider
-          initialThemeMode="light"
-          storage={createMemoryStorage()}
-        >
-          <SettingsScreen />
-        </AppThemeProvider>
-      </ParentSessionProvider>,
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <SettingsScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
     );
 
     expect(screen.getByText('Debug')).toBeTruthy();
@@ -116,14 +146,16 @@ describe('SettingsScreen', () => {
       .mockReturnValue(['debug', 'info', 'warn', 'error']);
 
     render(
-      <ParentSessionProvider initialParentUnlocked={false}>
-        <AppThemeProvider
-          initialThemeMode="light"
-          storage={createMemoryStorage()}
-        >
-          <SettingsScreen />
-        </AppThemeProvider>
-      </ParentSessionProvider>,
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <SettingsScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
     );
 
     expect(screen.queryByText('temp')).toBeNull();
@@ -131,14 +163,16 @@ describe('SettingsScreen', () => {
 
   it('shows Set PIN when the device has not configured one yet', () => {
     render(
-      <ParentSessionProvider initialParentUnlocked={false}>
-        <AppThemeProvider
-          initialThemeMode="light"
-          storage={createMemoryStorage()}
-        >
-          <SettingsScreen />
-        </AppThemeProvider>
-      </ParentSessionProvider>,
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <SettingsScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
     );
 
     fireEvent.press(screen.getByText('Set PIN'));

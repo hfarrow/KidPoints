@@ -135,6 +135,138 @@ describe('sharedStore transaction graph', () => {
     ).toBeUndefined();
     expect(store.getState().document.head.activeChildIds).toHaveLength(0);
   });
+
+  it('records failed parent unlock attempts as non-restorable audit transactions', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-parent-audit-failed',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const headBefore = store.getState().document.head;
+    const currentHeadTransactionIdBefore =
+      store.getState().document.currentHeadTransactionId;
+
+    expect(store.getState().recordParentUnlockAttempt(false).ok).toBe(true);
+
+    const document = store.getState().document;
+    const rows = deriveTransactionRows(document);
+
+    expect(document.head).toEqual(headBefore);
+    expect(document.currentHeadTransactionId).toBe(
+      currentHeadTransactionIdBefore,
+    );
+    expect(document.transactions.at(-1)).toMatchObject({
+      isRestorable: false,
+      kind: 'parent-unlock-failed',
+      parentTransactionId: currentHeadTransactionIdBefore,
+      participatesInHistory: false,
+    });
+    expect(rows[0]).toMatchObject({
+      isHead: false,
+      isOrphaned: false,
+      isRestorable: false,
+      isRestorableNow: false,
+      restoreDisabledReason: 'Audit entries cannot be restored.',
+      summaryText: 'Parent PIN Unlock Failed',
+    });
+  });
+
+  it('records successful parent unlock attempts without changing the history head', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-parent-audit-success',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().recordParentUnlockAttempt(true).ok).toBe(true);
+
+    const document = store.getState().document;
+    const rows = deriveTransactionRows(document);
+
+    expect(document.currentHeadTransactionId).toBeNull();
+    expect(document.transactions.at(-1)).toMatchObject({
+      isRestorable: false,
+      kind: 'parent-unlock-succeeded',
+      parentTransactionId: null,
+      participatesInHistory: false,
+    });
+    expect(rows[0]?.summaryText).toBe('Parent PIN Unlock Succeeded');
+    expect(rows[0]?.isHead).toBe(false);
+  });
+
+  it('records parent mode locking as a non-restorable audit transaction', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-parent-lock-audit',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const currentHeadTransactionIdBefore =
+      store.getState().document.currentHeadTransactionId;
+
+    expect(store.getState().recordParentModeLocked().ok).toBe(true);
+
+    const document = store.getState().document;
+    const rows = deriveTransactionRows(document);
+
+    expect(document.currentHeadTransactionId).toBe(
+      currentHeadTransactionIdBefore,
+    );
+    expect(document.transactions.at(-1)).toMatchObject({
+      isRestorable: false,
+      kind: 'parent-mode-locked',
+      parentTransactionId: currentHeadTransactionIdBefore,
+      participatesInHistory: false,
+    });
+    expect(rows[0]).toMatchObject({
+      isHead: false,
+      isOrphaned: false,
+      isRestorable: false,
+      isRestorableNow: false,
+      restoreDisabledReason: 'Audit entries cannot be restored.',
+      summaryText: 'Parent Mode Locked',
+    });
+  });
+
+  it('keeps the orphaned restore window open after a parent unlock audit entry', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-parent-audit-window',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+    expect(store.getState().setPoints(childId, 4).ok).toBe(true);
+
+    const targetRow = deriveTransactionRows(store.getState().document).find(
+      (row) => row.summaryText === 'Ava +1 Points [0 > 1]',
+    );
+
+    expect(store.getState().restoreTransaction(targetRow?.id ?? '').ok).toBe(
+      true,
+    );
+    expect(store.getState().recordParentUnlockAttempt(false).ok).toBe(true);
+
+    const document = store.getState().document;
+    const rows = deriveTransactionRows(document);
+    const orphanedSetRow = rows.find(
+      (row) => row.summaryText === 'Ava Set Points [1 > 4]',
+    );
+
+    expect(document.isOrphanedRestoreWindowOpen).toBe(true);
+    expect(orphanedSetRow?.isOrphaned).toBe(true);
+    expect(orphanedSetRow?.isRestorableNow).toBe(true);
+    expect(rows[0]?.summaryText).toBe('Parent PIN Unlock Failed');
+  });
 });
 
 describe('sharedStore timer state', () => {

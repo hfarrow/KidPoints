@@ -229,4 +229,47 @@ describe('TransactionsScreen', () => {
       'Restored App to Test Deleted',
     );
   });
+
+  it('shows parent session audit entries without restore actions', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'tx-parent-audit',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().recordParentUnlockAttempt(false).ok).toBe(true);
+    expect(store.getState().recordParentUnlockAttempt(true).ok).toBe(true);
+    expect(store.getState().recordParentModeLocked().ok).toBe(true);
+
+    render(
+      <SharedStoreProvider
+        initialDocument={store.getState().document}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <TransactionsScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(screen.getByTestId('transaction-summary-0').props.children).toBe(
+      'Parent Mode Locked',
+    );
+    expect(screen.getByTestId('transaction-summary-1').props.children).toBe(
+      'Parent PIN Unlock Succeeded',
+    );
+    expect(screen.getByTestId('transaction-summary-2').props.children).toBe(
+      'Parent PIN Unlock Failed',
+    );
+
+    fireEvent.press(screen.getByLabelText('Expand Parent Mode Locked'));
+    expect(screen.getByText('Audit entries cannot be restored.')).toBeTruthy();
+    expect(screen.queryByText('Restore To This Point')).toBeNull();
+  });
 });

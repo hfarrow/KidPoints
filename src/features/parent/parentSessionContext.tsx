@@ -5,6 +5,7 @@ import {
   SessionUiStoreProvider,
   useSessionUiStore,
 } from '../../state/sessionUiStore';
+import { useSharedStore } from '../../state/sharedStore';
 
 const log = createModuleLogger('parent-session-context');
 
@@ -38,14 +39,43 @@ export function ParentSessionProvider({
 
 export function useParentSession() {
   const parentPin = useLocalSettingsStore((state) => state.parentPin);
+  const isParentUnlocked = useSessionUiStore((state) => state.isParentUnlocked);
   const attemptSessionUnlock = useSessionUiStore(
     (state) => state.attemptUnlock,
   );
+  const lockSessionParentMode = useSessionUiStore(
+    (state) => state.lockParentMode,
+  );
+  const unlockSessionParentMode = useSessionUiStore(
+    (state) => state.unlockParentMode,
+  );
+  const recordParentModeLocked = useSharedStore(
+    (state) => state.recordParentModeLocked,
+  );
+  const recordParentUnlockAttempt = useSharedStore(
+    (state) => state.recordParentUnlockAttempt,
+  );
 
   return {
-    attemptUnlock: (pin) => attemptSessionUnlock(pin, parentPin),
-    isParentUnlocked: useSessionUiStore((state) => state.isParentUnlocked),
-    lockParentMode: useSessionUiStore((state) => state.lockParentMode),
-    unlockParentMode: useSessionUiStore((state) => state.unlockParentMode),
+    attemptUnlock: (pin) => {
+      const didUnlock = attemptSessionUnlock(pin, parentPin);
+
+      if (parentPin) {
+        recordParentUnlockAttempt(didUnlock);
+      }
+
+      return didUnlock;
+    },
+    isParentUnlocked,
+    lockParentMode: () => {
+      if (!isParentUnlocked) {
+        lockSessionParentMode();
+        return;
+      }
+
+      lockSessionParentMode();
+      recordParentModeLocked();
+    },
+    unlockParentMode: unlockSessionParentMode,
   } satisfies ParentSessionContextValue;
 }

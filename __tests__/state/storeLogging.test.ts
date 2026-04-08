@@ -158,6 +158,68 @@ describe('store logging', () => {
     );
   });
 
+  it('logs parent unlock audit transactions through the shared store logger', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-log-parent-audit',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().recordParentUnlockAttempt(false).ok).toBe(true);
+    expect(store.getState().recordParentUnlockAttempt(true).ok).toBe(true);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Shared store mutation committed',
+      expect.objectContaining({
+        action: 'recordParentUnlockAttempt',
+        outcome: 'failed',
+      }),
+    );
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'Shared transaction committed',
+      expect.objectContaining({
+        isRestorable: false,
+        kind: 'parent-unlock-failed',
+        participatesInHistory: false,
+      }),
+    );
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'Shared transaction committed',
+      expect.objectContaining({
+        isRestorable: false,
+        kind: 'parent-unlock-succeeded',
+        participatesInHistory: false,
+      }),
+    );
+  });
+
+  it('logs parent mode locking audit transactions through the shared store logger', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-log-parent-lock',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().recordParentModeLocked().ok).toBe(true);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Shared store mutation committed',
+      expect.objectContaining({
+        action: 'recordParentModeLocked',
+      }),
+    );
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'Shared transaction committed',
+      expect.objectContaining({
+        isRestorable: false,
+        kind: 'parent-mode-locked',
+        participatesInHistory: false,
+      }),
+    );
+  });
+
   it('logs text input modal state changes as debug', () => {
     presentTextInputModal({
       confirmLabel: 'Save',

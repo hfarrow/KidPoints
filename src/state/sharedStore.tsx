@@ -48,6 +48,8 @@ type SharedStoreState = {
   deleteChildPermanently: (childId: string) => SharedCommandResult;
   document: SharedDocument;
   pauseTimer: () => SharedCommandResult;
+  recordParentModeLocked: () => SharedCommandResult;
+  recordParentUnlockAttempt: (success: boolean) => SharedCommandResult;
   resetTimer: () => SharedCommandResult;
   restoreChild: (childId: string) => SharedCommandResult;
   restoreTransaction: (transactionId: string) => SharedCommandResult;
@@ -125,8 +127,10 @@ function logSharedTransaction(
   logSharedTransactionCommitted({
     affectedChildIds: transaction.affectedChildIds,
     childId: transaction.childId,
+    isRestorable: transaction.isRestorable,
     kind: transaction.kind,
     parentTransactionId: transaction.parentTransactionId,
+    participatesInHistory: transaction.participatesInHistory,
     pointsAfter: transaction.pointsAfter ?? null,
     pointsBefore: transaction.pointsBefore ?? null,
     restoredFromTransactionId: transaction.restoredFromTransactionId ?? null,
@@ -136,6 +140,10 @@ function logSharedTransaction(
   });
 }
 
+/**
+ * Creates the canonical empty HEAD snapshot so every new or recovered document
+ * starts from the same baseline state shape.
+ */
 function createEmptyHead(): SharedHead {
   return {
     activeChildIds: [],
@@ -156,6 +164,10 @@ function cloneChildSnapshot(child: ChildSnapshot): ChildSnapshot {
   return { ...child };
 }
 
+/**
+ * Produces a deep-enough clone of the current shared HEAD so history snapshots
+ * stay immutable once they are recorded.
+ */
 function cloneHead(head: SharedHead): SharedHead {
   return {
     activeChildIds: [...head.activeChildIds],
@@ -195,6 +207,10 @@ function normalizeHead(
   };
 }
 
+/**
+ * Keeps restored and user-entered names consistent so transaction summaries and
+ * list rendering do not drift because of whitespace differences.
+ */
 function normalizeName(name: string) {
   return name.trim().replace(/\s+/g, ' ');
 }
@@ -244,6 +260,10 @@ function sortEventsCanonical(events: SharedEvent[]) {
   });
 }
 
+/**
+ * Builds the persisted shared document shell used for first launch, tests, and
+ * any recovery path that needs a safe starting point.
+ */
 export function createInitialSharedDocument({
   deviceId = generateId('device'),
 }: {
@@ -261,6 +281,10 @@ export function createInitialSharedDocument({
   };
 }
 
+/**
+ * Replays one domain event into a new HEAD snapshot so the store can derive
+ * current state from append-only event history without mutating old snapshots.
+ */
 export function applySharedEvent(head: SharedHead, event: SharedEvent) {
   const nextHead = cloneHead(head);
 
@@ -378,6 +402,11 @@ export function applySharedEvent(head: SharedHead, event: SharedEvent) {
   }
 }
 
+/**
+ * Resolves which transaction should define the active HEAD after rehydrate.
+ * This keeps display-only audit rows from accidentally becoming the source of
+ * truth for restorable app state.
+ */
 function getHeadForCurrentTransaction(
   transactions: TransactionRecord[],
   currentHeadTransactionId: string | null,
@@ -389,11 +418,38 @@ function getHeadForCurrentTransaction(
   const headTransaction =
     transactions.find(
       (transaction) => transaction.id === currentHeadTransactionId,
-    ) ?? transactions.at(-1);
+    ) ?? findLatestHistoryTransaction(transactions);
 
   return headTransaction
     ? cloneHead(headTransaction.stateAfter)
     : createEmptyHead();
+}
+
+/**
+ * Backfills persisted transactions into the current in-memory shape so older
+ * documents continue to work after transaction metadata grows new fields.
+ */
+function normalizeTransactionRecord(
+  transaction: TransactionRecord,
+): TransactionRecord {
+  return {
+    ...transaction,
+    affectedChildIds: [...transaction.affectedChildIds],
+    eventIds: [...transaction.eventIds],
+    isRestorable: transaction.isRestorable ?? true,
+    participatesInHistory: transaction.participatesInHistory ?? true,
+    stateAfter: normalizeHead(transaction.stateAfter),
+  };
+}
+
+/**
+ * Finds the newest transaction that still participates in restore history.
+ * Audit-only rows are intentionally ignored here.
+ */
+function findLatestHistoryTransaction(transactions: TransactionRecord[]) {
+  return [...transactions]
+    .reverse()
+    .find((transaction) => transaction.participatesInHistory);
 }
 
 function deriveNextSequence(events: SharedEvent[]) {
@@ -422,6 +478,11 @@ function isSharedDocument(value: unknown): value is SharedDocument {
   );
 }
 
+/**
+ * Rebuilds a persisted document into the latest safe runtime shape, including
+ * repairing the history head when older data or audit rows would otherwise
+ * point at the wrong transaction.
+ */
 export function cloneSharedDocument(
   document: SharedDocument | null | undefined,
 ): SharedDocument {
@@ -430,17 +491,16 @@ export function cloneSharedDocument(
   }
 
   const events = sortEventsCanonical(document.events);
-  const transactions = document.transactions.map((transaction) => ({
-    ...transaction,
-    affectedChildIds: [...transaction.affectedChildIds],
-    eventIds: [...transaction.eventIds],
-    stateAfter: normalizeHead(transaction.stateAfter),
-  }));
+  const transactions = document.transactions.map(normalizeTransactionRecord);
+  const fallbackHeadTransactionId =
+    findLatestHistoryTransaction(transactions)?.id ?? null;
   const currentHeadTransactionId = transactions.some(
-    (transaction) => transaction.id === document.currentHeadTransactionId,
+    (transaction) =>
+      transaction.id === document.currentHeadTransactionId &&
+      transaction.participatesInHistory,
   )
     ? document.currentHeadTransactionId
-    : (transactions.at(-1)?.id ?? null);
+    : fallbackHeadTransactionId;
 
   return {
     currentHeadTransactionId,
@@ -454,6 +514,10 @@ export function cloneSharedDocument(
   };
 }
 
+/**
+ * Creates an event builder that owns sequence assignment for a single commit so
+ * multi-event transactions can stay internally consistent.
+ */
 function createEventBuilder(document: SharedDocument) {
   let nextSequence = document.nextSequence;
 
@@ -478,15 +542,22 @@ function createEventBuilder(document: SharedDocument) {
   };
 }
 
+/**
+ * Shapes a transaction record from command metadata and snapshots so every
+ * entry in the log carries the fields needed for summaries, restore rules, and
+ * audit display.
+ */
 function createTransactionRecord(args: {
   affectedChildIds: string[];
   childAfter: ChildSnapshot | null;
   childBefore: ChildSnapshot | null;
   childId: string | null;
   eventIds: string[];
+  isRestorable?: boolean;
   kind: TransactionKind;
   occurredAt: string;
   parentTransactionId: string | null;
+  participatesInHistory?: boolean;
   pointsAfter?: number;
   pointsBefore?: number;
   restoredFromTransactionId?: string;
@@ -500,9 +571,11 @@ function createTransactionRecord(args: {
     childBefore,
     childId,
     eventIds,
+    isRestorable = true,
     kind,
     occurredAt,
     parentTransactionId,
+    participatesInHistory = true,
     pointsAfter,
     pointsBefore,
     restoredFromTransactionId,
@@ -517,9 +590,11 @@ function createTransactionRecord(args: {
     childName: childAfter?.name ?? childBefore?.name ?? null,
     eventIds,
     id: transactionId ?? `tx-${eventIds[0] ?? generateId('transaction')}`,
+    isRestorable,
     kind,
     occurredAt,
     parentTransactionId,
+    participatesInHistory,
     pointsAfter,
     pointsBefore,
     restoredFromTransactionId,
@@ -528,6 +603,26 @@ function createTransactionRecord(args: {
   } satisfies TransactionRecord;
 }
 
+/**
+ * Appends audit-style transactions that should appear in the log without
+ * changing restore HEAD, event history, or branch state.
+ */
+function appendDisplayOnlyTransaction(args: {
+  document: SharedDocument;
+  transaction: TransactionRecord;
+}) {
+  const { document, transaction } = args;
+
+  return {
+    ...document,
+    transactions: [...document.transactions, transaction],
+  } satisfies SharedDocument;
+}
+
+/**
+ * Commits a history-driving transaction by advancing the active HEAD and
+ * appending any new events produced by that command.
+ */
 function commitDocumentChange(args: {
   document: SharedDocument;
   isOrphanedRestoreWindowOpen: boolean;
@@ -567,6 +662,11 @@ function getTransactionMap(transactions: TransactionRecord[]) {
   );
 }
 
+/**
+ * Walks backward from the current history head to identify the transactions
+ * that still belong to the active branch. The Transactions screen uses this to
+ * distinguish live history from orphaned branches.
+ */
 function getActiveTransactionIds(document: SharedDocument) {
   const transactionsById = getTransactionMap(document.transactions);
   const activeTransactionIds = new Set<string>();
@@ -584,6 +684,11 @@ function getActiveTransactionIds(document: SharedDocument) {
   return activeTransactionIds;
 }
 
+/**
+ * Compares two HEAD snapshots as restore targets rather than as object
+ * identities. This prevents no-op restores when the state is already at the
+ * requested point in history.
+ */
 function areHeadsEquivalent(left: SharedHead, right: SharedHead) {
   const leftIds = Object.keys(left.childrenById).sort();
   const rightIds = Object.keys(right.childrenById).sort();
@@ -606,6 +711,10 @@ function areHeadsEquivalent(left: SharedHead, right: SharedHead) {
   );
 }
 
+/**
+ * Derives the timer state that represents "running now", preserving elapsed
+ * progress when resuming from a paused snapshot.
+ */
 function buildStartedTimerState(
   timerConfig: SharedTimerConfig,
   timerState: SharedTimerState,
@@ -624,6 +733,10 @@ function buildStartedTimerState(
   });
 }
 
+/**
+ * Captures a paused timer snapshot using the currently remaining duration so
+ * the timer can resume from the same point later.
+ */
 function buildPausedTimerState(
   timerConfig: SharedTimerConfig,
   timerState: SharedTimerState,
@@ -638,10 +751,19 @@ function buildPausedTimerState(
   });
 }
 
+/**
+ * Centralizes the timer's canonical reset snapshot so reset actions and
+ * rehydrate paths point at the same baseline.
+ */
 function buildResetTimerState() {
   return cloneTimerState(DEFAULT_TIMER_STATE);
 }
 
+/**
+ * Reconstructs the event sequence needed to move the current HEAD to an older
+ * transaction snapshot. Restore works by replaying forward into that target
+ * state rather than mutating history in place.
+ */
 function buildRestoreEvents(
   document: SharedDocument,
   targetHead: SharedHead,
@@ -765,6 +887,10 @@ function formatTransactionTimestamp(occurredAt: string) {
   });
 }
 
+/**
+ * Builds readable labels for restore targets so restore transactions can refer
+ * back to the meaningful point in history they returned the app to.
+ */
 function summarizeRestoreTarget(
   targetTransaction: TransactionRecord | undefined,
   transactionsById: Map<string, TransactionRecord>,
@@ -825,6 +951,12 @@ function summarizeRestoreTarget(
         ? summarizeRestoreTarget(nestedTarget, transactionsById)
         : 'Earlier State';
     }
+    case 'parent-mode-locked':
+      return 'Parent Mode Locked';
+    case 'parent-unlock-succeeded':
+      return 'Parent PIN Unlock Succeeded';
+    case 'parent-unlock-failed':
+      return 'Parent PIN Unlock Failed';
     case 'timer-started':
       return 'Started Timer';
     case 'timer-paused':
@@ -836,6 +968,10 @@ function summarizeRestoreTarget(
   }
 }
 
+/**
+ * Produces the user-facing summary for a single transaction row. This keeps the
+ * screen copy aligned across direct actions, restores, and audit events.
+ */
 function summarizeTransactionRow(
   transaction: TransactionRecord,
   transactionsById: Map<string, TransactionRecord>,
@@ -892,6 +1028,12 @@ function summarizeTransactionRow(
         transactionsById,
       )}`;
     }
+    case 'parent-mode-locked':
+      return 'Parent Mode Locked';
+    case 'parent-unlock-succeeded':
+      return 'Parent PIN Unlock Succeeded';
+    case 'parent-unlock-failed':
+      return 'Parent PIN Unlock Failed';
     case 'timer-started':
       return 'Started Timer';
     case 'timer-paused':
@@ -903,6 +1045,11 @@ function summarizeTransactionRow(
   }
 }
 
+/**
+ * Converts raw persisted transactions into the richer row model consumed by the
+ * Transactions screen, including HEAD/orphaned/restorable state that depends on
+ * the current history graph.
+ */
 export function deriveTransactionRows(document: SharedDocument) {
   const activeTransactionIds = getActiveTransactionIds(document);
   const transactionsById = getTransactionMap(document.transactions);
@@ -916,15 +1063,22 @@ export function deriveTransactionRows(document: SharedDocument) {
 
   return [...document.transactions].reverse().map((transaction) => {
     const isHead =
-      transaction.id === document.currentHeadTransactionId ||
-      transaction.id === currentRestoreTargetId;
-    const isOrphaned = !activeTransactionIds.has(transaction.id);
+      transaction.participatesInHistory &&
+      (transaction.id === document.currentHeadTransactionId ||
+        transaction.id === currentRestoreTargetId);
+    const isOrphaned = transaction.participatesInHistory
+      ? !activeTransactionIds.has(transaction.id)
+      : false;
     const isRestorableNow =
-      !isHead && (!isOrphaned || document.isOrphanedRestoreWindowOpen);
+      transaction.isRestorable &&
+      !isHead &&
+      (!isOrphaned || document.isOrphanedRestoreWindowOpen);
 
     let restoreDisabledReason: string | undefined;
 
-    if (isHead) {
+    if (!transaction.isRestorable) {
+      restoreDisabledReason = 'Audit entries cannot be restored.';
+    } else if (isHead) {
       restoreDisabledReason = 'This is the current HEAD transaction.';
     } else if (isOrphaned && !document.isOrphanedRestoreWindowOpen) {
       restoreDisabledReason =
@@ -938,10 +1092,12 @@ export function deriveTransactionRows(document: SharedDocument) {
       id: transaction.id,
       isHead,
       isOrphaned,
+      isRestorable: transaction.isRestorable,
       isRestorableNow,
       kind: transaction.kind,
       occurredAt: transaction.occurredAt,
       parentTransactionId: transaction.parentTransactionId,
+      participatesInHistory: transaction.participatesInHistory,
       pointsAfter: transaction.pointsAfter,
       pointsBefore: transaction.pointsBefore,
       restoreDisabledReason,
@@ -954,6 +1110,10 @@ export function deriveTransactionRows(document: SharedDocument) {
   });
 }
 
+/**
+ * Derives the child filter options from transaction history so archived and
+ * deleted children remain filterable as long as they appear in the log.
+ */
 function deriveTransactionFilterChildren(document: SharedDocument) {
   const children = new Map<string, TransactionFilterChild>();
 
@@ -969,6 +1129,11 @@ function deriveTransactionFilterChildren(document: SharedDocument) {
   return [...children.values()];
 }
 
+/**
+ * Houses the command-style shared store API. Each action validates intent,
+ * shapes any resulting events/transactions, and commits them through the
+ * history model in one place.
+ */
 function createSharedStoreActions(
   set: (updater: (state: SharedStoreState) => SharedStoreState) => void,
 ) {
@@ -1385,6 +1550,79 @@ function createSharedStoreActions(
             eventsToAppend: [event],
             isOrphanedRestoreWindowOpen: false,
             nextHead,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
+    recordParentUnlockAttempt(success: boolean): SharedCommandResult {
+      const result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const occurredAt = new Date().toISOString();
+        const transaction = createTransactionRecord({
+          affectedChildIds: [],
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: [],
+          isRestorable: false,
+          kind: success ? 'parent-unlock-succeeded' : 'parent-unlock-failed',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          participatesInHistory: false,
+          stateAfter: state.document.head,
+        });
+
+        logSharedStoreMutation('recordParentUnlockAttempt', {
+          outcome: success ? 'succeeded' : 'failed',
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          outcome: success ? 'succeeded' : 'failed',
+        });
+
+        return {
+          ...state,
+          document: appendDisplayOnlyTransaction({
+            document: state.document,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
+    recordParentModeLocked(): SharedCommandResult {
+      const result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const occurredAt = new Date().toISOString();
+        const transaction = createTransactionRecord({
+          affectedChildIds: [],
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: [],
+          isRestorable: false,
+          kind: 'parent-mode-locked',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          participatesInHistory: false,
+          stateAfter: state.document.head,
+        });
+
+        logSharedStoreMutation('recordParentModeLocked', {
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction);
+
+        return {
+          ...state,
+          document: appendDisplayOnlyTransaction({
+            document: state.document,
             transaction,
           }),
         };

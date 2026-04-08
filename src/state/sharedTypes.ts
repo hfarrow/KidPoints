@@ -113,6 +113,9 @@ export type TransactionKind =
   | 'child-deleted'
   | 'child-restored'
   | 'history-restored'
+  | 'parent-mode-locked'
+  | 'parent-unlock-failed'
+  | 'parent-unlock-succeeded'
   | 'points-adjusted'
   | 'points-set'
   | 'timer-config-updated'
@@ -129,8 +132,10 @@ export type TransactionRecord = {
   kind: TransactionKind;
   occurredAt: string;
   parentTransactionId: string | null;
+  participatesInHistory: boolean;
   pointsAfter?: number;
   pointsBefore?: number;
+  isRestorable: boolean;
   restoredFromTransactionId?: string;
   restoredToTransactionId?: string;
   stateAfter: SharedHead;
@@ -148,10 +153,12 @@ export type TransactionRow = {
   id: string;
   isHead: boolean;
   isOrphaned: boolean;
+  isRestorable: boolean;
   isRestorableNow: boolean;
   kind: TransactionKind;
   occurredAt: string;
   parentTransactionId: string | null;
+  participatesInHistory: boolean;
   pointsAfter?: number;
   pointsBefore?: number;
   restoreDisabledReason?: string;
