@@ -52,7 +52,7 @@ export function HomeScreen() {
   const openAddChildModal = () => {
     presentTextInputModal({
       confirmLabel: 'Add Child',
-      description: 'Add a child tile to the home screen.',
+      description: 'What is the name of the child to add?',
       initialValue: '',
       inputAccessibilityLabel: 'Child Name',
       onSubmit: (nextValue) => addChild(nextValue),
