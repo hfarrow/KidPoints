@@ -1,6 +1,18 @@
 import { usePathname, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  BackHandler,
+  InteractionManager,
+  Keyboard,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import {
+  KeyboardAvoidingView,
+  useResizeMode,
+} from 'react-native-keyboard-controller';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { ActionPill } from '../../components/Skeleton';
@@ -10,10 +22,150 @@ import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 import {
   clearTextInputModal,
+  type TextInputModalRequest,
   useTextInputModalStore,
 } from './textInputModalStore';
 
 const log = createModuleLogger('text-input-modal');
+
+type ActiveTextInputModalProps = {
+  errorMessage: string;
+  handleClose: () => void;
+  handleSave: () => void;
+  inputRef: React.RefObject<TextInput | null>;
+  isParentUnlocked: boolean;
+  request: TextInputModalRequest;
+  setErrorMessage: (value: string) => void;
+  setValue: (value: string) => void;
+  styles: ReturnType<typeof createStyles>;
+  tokens: ReturnType<typeof useAppTheme>['tokens'];
+  value: string;
+};
+
+function scheduleAfterInteractionCommit(callback: () => void) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let firstFrameId: number | null = null;
+  let secondFrameId: number | null = null;
+
+  const scheduleAfterPaint = () => {
+    if (
+      typeof requestAnimationFrame === 'function' &&
+      typeof cancelAnimationFrame === 'function'
+    ) {
+      firstFrameId = requestAnimationFrame(() => {
+        secondFrameId = requestAnimationFrame(() => {
+          callback();
+        });
+      });
+
+      return;
+    }
+
+    timeoutId = setTimeout(() => {
+      callback();
+    }, 0);
+  };
+
+  const interactionHandle =
+    InteractionManager.runAfterInteractions(scheduleAfterPaint);
+
+  return () => {
+    interactionHandle.cancel();
+
+    if (firstFrameId != null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(firstFrameId);
+    }
+
+    if (secondFrameId != null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(secondFrameId);
+    }
+
+    if (timeoutId != null) {
+      clearTimeout(timeoutId);
+    }
+  };
+}
+
+function ActiveTextInputModal({
+  errorMessage,
+  handleClose,
+  handleSave,
+  inputRef,
+  isParentUnlocked,
+  request,
+  setErrorMessage,
+  setValue,
+  styles,
+  tokens,
+  value,
+}: ActiveTextInputModalProps) {
+  useResizeMode();
+
+  useEffect(() => {
+    return scheduleAfterInteractionCommit(() => {
+      inputRef.current?.focus();
+    });
+  }, [inputRef]);
+
+  return (
+    <View
+      style={[styles.overlayRoot, { backgroundColor: tokens.modalBackdrop }]}
+    >
+      <KeyboardAvoidingView
+        behavior="height"
+        style={styles.keyboardFrame}
+        testID="text-input-keyboard-frame"
+      >
+        <View style={styles.card}>
+          <Text style={styles.title}>{request.title}</Text>
+          <Text style={styles.body}>{request.description}</Text>
+          {isParentUnlocked ? null : (
+            <Text style={styles.lockedCopy}>
+              Unlock Parent Mode to save changes here.
+            </Text>
+          )}
+          <TextInput
+            accessibilityLabel={request.inputAccessibilityLabel}
+            keyboardType={request.keyboardType ?? 'default'}
+            onChangeText={(nextValue) => {
+              setValue(nextValue);
+              if (errorMessage) {
+                setErrorMessage('');
+              }
+            }}
+            placeholder={request.placeholder ?? ''}
+            placeholderTextColor={tokens.textMuted}
+            ref={inputRef}
+            showSoftInputOnFocus
+            style={styles.input}
+            value={value}
+          />
+          {errorMessage ? (
+            <Text style={styles.error}>{errorMessage}</Text>
+          ) : null}
+          <View style={styles.footer}>
+            <ActionPill label="Cancel" onPress={handleClose} />
+            {isParentUnlocked ? (
+              <ActionPill
+                label={request.confirmLabel}
+                onPress={handleSave}
+                tone="primary"
+              />
+            ) : (
+              <LoggedPressable
+                logLabel="Unlock Parent Mode"
+                onPress={handleSave}
+                style={styles.primaryAction}
+              >
+                <Text style={styles.primaryActionText}>Unlock Parent Mode</Text>
+              </LoggedPressable>
+            )}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
+  );
+}
 
 export function TextInputModal() {
   const router = useRouter();
@@ -23,6 +175,7 @@ export function TextInputModal() {
   const { isParentUnlocked } = useParentSession();
   const clearRequest = useTextInputModalStore((state) => state.clearRequest);
   const request = useTextInputModalStore((state) => state.request);
+  const inputRef = useRef<TextInput>(null);
   const [value, setValue] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -43,14 +196,39 @@ export function TextInputModal() {
 
   useEffect(() => {
     return () => {
+      Keyboard.dismiss();
       clearTextInputModal();
     };
   }, []);
 
   const isVisible = !!request && !isBlockingRouteModalPath(pathname);
 
-  const handleClose = () => {
+  useEffect(() => {
+    if (!isVisible) {
+      return;
+    }
+
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        clearRequest();
+        return true;
+      },
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [clearRequest, isVisible]);
+
+  const closeInputModal = () => {
+    inputRef.current?.blur();
+    Keyboard.dismiss();
     clearRequest();
+  };
+
+  const handleClose = () => {
+    closeInputModal();
   };
 
   const handleSave = () => {
@@ -71,76 +249,39 @@ export function TextInputModal() {
       return;
     }
 
-    clearRequest();
+    closeInputModal();
   };
 
-  if (!request) {
+  if (!request || !isVisible) {
     return null;
   }
 
   return (
-    <Modal
-      animationType="fade"
-      onRequestClose={handleClose}
-      transparent
-      visible={isVisible}
-    >
-      <View
-        style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}
-      >
-        <View style={styles.card}>
-          <Text style={styles.title}>{request.title}</Text>
-          <Text style={styles.body}>{request.description}</Text>
-          {isParentUnlocked ? null : (
-            <Text style={styles.lockedCopy}>
-              Unlock Parent Mode to save changes here.
-            </Text>
-          )}
-          <TextInput
-            accessibilityLabel={request.inputAccessibilityLabel}
-            autoFocus
-            keyboardType={request.keyboardType ?? 'default'}
-            onChangeText={(nextValue) => {
-              setValue(nextValue);
-              if (errorMessage) {
-                setErrorMessage('');
-              }
-            }}
-            placeholder={request.placeholder ?? ''}
-            placeholderTextColor={tokens.textMuted}
-            style={styles.input}
-            value={value}
-          />
-          {errorMessage ? (
-            <Text style={styles.error}>{errorMessage}</Text>
-          ) : null}
-          <View style={styles.footer}>
-            <ActionPill label="Cancel" onPress={handleClose} />
-            {isParentUnlocked ? (
-              <ActionPill
-                label={request.confirmLabel}
-                onPress={handleSave}
-                tone="primary"
-              />
-            ) : (
-              <LoggedPressable
-                logLabel="Unlock Parent Mode"
-                onPress={() => router.push('/parent-unlock')}
-                style={styles.primaryAction}
-              >
-                <Text style={styles.primaryActionText}>Unlock Parent Mode</Text>
-              </LoggedPressable>
-            )}
-          </View>
-        </View>
-      </View>
-    </Modal>
+    <ActiveTextInputModal
+      errorMessage={errorMessage}
+      handleClose={handleClose}
+      handleSave={handleSave}
+      inputRef={inputRef}
+      isParentUnlocked={isParentUnlocked}
+      key={request.requestId}
+      request={request}
+      setErrorMessage={setErrorMessage}
+      setValue={setValue}
+      styles={styles}
+      tokens={tokens}
+      value={value}
+    />
   );
 }
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
-    backdrop: {
+    overlayRoot: {
+      ...StyleSheet.absoluteFillObject,
+      elevation: 1000,
+      zIndex: 1000,
+    },
+    keyboardFrame: {
       alignItems: 'center',
       flex: 1,
       justifyContent: 'center',
@@ -151,7 +292,9 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       borderColor: tokens.border,
       borderRadius: 22,
       borderWidth: 1,
+      flexShrink: 1,
       gap: 10,
+      maxHeight: '100%',
       maxWidth: 420,
       paddingHorizontal: 18,
       paddingVertical: 18,

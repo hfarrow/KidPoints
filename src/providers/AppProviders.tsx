@@ -1,5 +1,6 @@
 import { type PropsWithChildren, useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import {
   initialWindowMetrics,
   SafeAreaProvider,
@@ -85,14 +86,16 @@ export function AppProviders({ children }: PropsWithChildren) {
 
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <SharedStoreProvider>
-        <ParentSessionProvider>
-          <AppThemeProvider>
-            <AppLogLevelObserver />
-            {children}
-          </AppThemeProvider>
-        </ParentSessionProvider>
-      </SharedStoreProvider>
+      <KeyboardProvider>
+        <SharedStoreProvider>
+          <ParentSessionProvider>
+            <AppThemeProvider>
+              <AppLogLevelObserver />
+              {children}
+            </AppThemeProvider>
+          </ParentSessionProvider>
+        </SharedStoreProvider>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }

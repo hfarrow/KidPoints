@@ -7,7 +7,7 @@ export type TextInputModalSubmitResult =
   | { ok: true }
   | { error: string; ok: false };
 
-export type TextInputModalRequest = {
+export type TextInputModalRequestInput = {
   confirmLabel: string;
   description: string;
   initialValue?: string;
@@ -18,6 +18,10 @@ export type TextInputModalRequest = {
   title: string;
 };
 
+export type TextInputModalRequest = TextInputModalRequestInput & {
+  requestId: number;
+};
+
 type TextInputModalState = {
   clearRequest: () => void;
   openRequest: (request: TextInputModalRequest) => void;
@@ -25,6 +29,7 @@ type TextInputModalState = {
 };
 
 const log = createModuleLogger('text-input-modal-store');
+let nextTextInputModalRequestId = 1;
 const logTextInputModalMutation = createStructuredLog(
   log,
   'debug',
@@ -48,8 +53,11 @@ export const useTextInputModalStore = create<TextInputModalState>((set) => ({
   request: null,
 }));
 
-export function presentTextInputModal(request: TextInputModalRequest) {
-  useTextInputModalStore.getState().openRequest(request);
+export function presentTextInputModal(request: TextInputModalRequestInput) {
+  useTextInputModalStore.getState().openRequest({
+    ...request,
+    requestId: nextTextInputModalRequestId++,
+  });
 }
 
 export function clearTextInputModal() {

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { InteractionManager } from 'react-native';
 import { TextInputModal } from '../../../src/features/overlays/TextInputModal';
 import {
   clearTextInputModal,
@@ -20,10 +21,22 @@ jest.mock('expo-router', () => ({
 }));
 
 describe('TextInputModal', () => {
+  let runAfterInteractionsSpy: jest.SpiedFunction<
+    typeof InteractionManager.runAfterInteractions
+  >;
+
   beforeEach(() => {
     clearTextInputModal();
     mockPush.mockReset();
     mockPathname = '/';
+    runAfterInteractionsSpy = jest.spyOn(
+      InteractionManager,
+      'runAfterInteractions',
+    );
+  });
+
+  afterEach(() => {
+    runAfterInteractionsSpy.mockRestore();
   });
 
   it('renders caller-provided copy and submits the current text', () => {
@@ -54,6 +67,10 @@ describe('TextInputModal', () => {
     expect(screen.getAllByText('Edit Point Total')).toHaveLength(1);
     expect(screen.getByText('Set the exact point total for Ava.')).toBeTruthy();
     expect(screen.getByText('Cancel')).toBeTruthy();
+    expect(screen.getByTestId('text-input-keyboard-frame').props.behavior).toBe(
+      'height',
+    );
+    expect(runAfterInteractionsSpy).toHaveBeenCalled();
 
     fireEvent.changeText(screen.getByLabelText('Exact Point Total'), '12');
     fireEvent.press(screen.getByText('Save Total'));

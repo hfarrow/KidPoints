@@ -37,6 +37,9 @@ describe('ParentUnlockModal', () => {
       </ParentSessionProvider>,
     );
 
+    expect(
+      screen.getByTestId('parent-unlock-keyboard-frame').props.behavior,
+    ).toBe('height');
     fireEvent.changeText(screen.getByLabelText('Parent PIN'), '1111');
     fireEvent.press(screen.getByText('Unlock'));
 
@@ -84,6 +87,9 @@ describe('ParentUnlockModal', () => {
     ).persist.rehydrate();
 
     expect(rehydratedStore.getState().parentPin).toBe('1234');
+    expect(
+      screen.getByTestId('parent-unlock-keyboard-frame').props.behavior,
+    ).toBe('height');
     expect(mockBack).toHaveBeenCalled();
   });
 });

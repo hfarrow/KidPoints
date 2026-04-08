@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { createModuleLogger } from '../../logging/logger';
@@ -175,7 +176,11 @@ export function ParentUnlockModal() {
           };
 
   return (
-    <View style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}>
+    <KeyboardAvoidingView
+      behavior="height"
+      style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}
+      testID="parent-unlock-keyboard-frame"
+    >
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Parent Mode</Text>
         <Text style={styles.title}>{copy.title}</Text>
@@ -227,7 +232,7 @@ export function ParentUnlockModal() {
           </LoggedPressable>
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -244,7 +249,9 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       borderColor: tokens.border,
       borderRadius: 24,
       borderWidth: 1,
+      flexShrink: 1,
       gap: 10,
+      maxHeight: '100%',
       maxWidth: 420,
       paddingHorizontal: 18,
       paddingVertical: 18,

@@ -25,3 +25,24 @@ jest.mock('react-native-safe-area-context', () => {
     useSafeAreaInsets: () => insetValues,
   };
 });
+
+jest.mock('react-native-keyboard-controller', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  return {
+    KeyboardAvoidingView: ({ children, ...props }) =>
+      React.createElement(View, props, children),
+    KeyboardProvider: ({ children, ...props }) =>
+      React.createElement(
+        View,
+        { testID: props.testID ?? 'keyboard-provider', ...props },
+        children,
+      ),
+    useKeyboardController: () => ({
+      enabled: true,
+      setEnabled: jest.fn(),
+    }),
+    useResizeMode: jest.fn(),
+  };
+});

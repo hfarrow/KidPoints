@@ -69,12 +69,13 @@ describe('AppProviders', () => {
         return { remove };
       });
 
-    const { unmount } = render(
+    const { getByTestId, unmount } = render(
       <AppProviders>
         <Text>Child</Text>
       </AppProviders>,
     );
 
+    expect(getByTestId('keyboard-provider')).toBeTruthy();
     expect(setAppLogLevel).toHaveBeenCalledWith('debug');
     expect(handleAppStateChange).toBeTruthy();
 
