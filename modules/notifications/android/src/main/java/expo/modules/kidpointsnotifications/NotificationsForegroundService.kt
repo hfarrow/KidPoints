@@ -26,12 +26,17 @@ class NotificationsForegroundService : Service() {
 
     val runtimeStatus = KidPointsNotificationsEngine.getRuntimeStatus(this)
     if (!runtimeStatus.isRunning) {
+      KidPointsNotificationsEngine.cancelInProcessTrigger()
       stopForeground(STOP_FOREGROUND_REMOVE)
       stopSelf()
       KidPointsNotificationsEngine.logService(
         "Stopping self because runtime is not running",
       )
       return START_NOT_STICKY
+    }
+
+    runtimeStatus.nextTriggerAt?.let { nextTriggerAt ->
+      KidPointsNotificationsEngine.ensureInProcessTrigger(this, nextTriggerAt)
     }
 
     startForeground(

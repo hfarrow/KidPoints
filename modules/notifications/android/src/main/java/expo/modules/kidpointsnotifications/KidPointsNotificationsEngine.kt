@@ -95,7 +95,10 @@ object KidPointsNotificationsEngine {
   @Volatile
   private var isAppInForeground = false
   private val alarmPlaybackHandler = Handler(Looper.getMainLooper())
+  private val inProcessTriggerHandler = Handler(Looper.getMainLooper())
   private var activeAlarmRingtone: Ringtone? = null
+  private var pendingInProcessTriggerAt: Long? = null
+  private var pendingInProcessTriggerRunnable: Runnable? = null
   private var stopAlarmPlaybackRunnable: Runnable? = null
 
   fun getStoredDocument(context: Context): String? =
@@ -283,11 +286,32 @@ object KidPointsNotificationsEngine {
     val timerConfig = getOrCreateObject(head, "timerConfig")
     val timerState = getOrCreateObject(head, "timerState")
     val runtime = getOrCreateObject(head, "timerRuntimeState")
+    val expectedTriggerAt = runtime.optLongOrNull("nextTriggerAt")
 
     if (!timerState.optBoolean("isRunning", false)) {
       logDebug(
         "Ignored trigger because timer is not running",
         createLogContext("triggerAt" to triggerAt),
+      )
+      return
+    }
+
+    if (expectedTriggerAt == null) {
+      logDebug(
+        "Ignored trigger because no next trigger is scheduled",
+        createLogContext("triggerAt" to triggerAt),
+      )
+      return
+    }
+
+    if (expectedTriggerAt != triggerAt) {
+      logDebug(
+        "Ignored stale trigger",
+        createLogContext(
+          "expectedTriggerAt" to expectedTriggerAt,
+          "sessionId" to runtime.optStringOrNull("sessionId"),
+          "triggerAt" to triggerAt,
+        ),
       )
       return
     }
@@ -683,6 +707,66 @@ object KidPointsNotificationsEngine {
     isAppInForeground = isForeground
   }
 
+  fun ensureInProcessTrigger(context: Context, triggerAt: Long) {
+    if (
+      pendingInProcessTriggerAt == triggerAt &&
+      pendingInProcessTriggerRunnable != null
+    ) {
+      return
+    }
+
+    cancelInProcessTrigger()
+
+    val delayMs = max(triggerAt - System.currentTimeMillis(), 0L)
+    val appContext = context.applicationContext
+    val runnable = Runnable {
+      if (pendingInProcessTriggerAt != triggerAt) {
+        logService(
+          "Ignored stale in-process trigger runnable",
+          createLogContext(
+            "currentTriggerAt" to pendingInProcessTriggerAt,
+            "triggerAt" to triggerAt,
+          ),
+        )
+        return@Runnable
+      }
+
+      pendingInProcessTriggerRunnable = null
+      pendingInProcessTriggerAt = null
+      handleTrigger(appContext, triggerAt)
+    }
+
+    pendingInProcessTriggerRunnable = runnable
+    pendingInProcessTriggerAt = triggerAt
+    inProcessTriggerHandler.postDelayed(runnable, delayMs)
+    logService(
+      "Scheduled in-process trigger",
+      createLogContext(
+        "delayMs" to delayMs,
+        "triggerAt" to triggerAt,
+      ),
+    )
+  }
+
+  fun cancelInProcessTrigger() {
+    val runnable = pendingInProcessTriggerRunnable
+    val triggerAt = pendingInProcessTriggerAt
+
+    if (runnable != null) {
+      inProcessTriggerHandler.removeCallbacks(runnable)
+    }
+
+    pendingInProcessTriggerRunnable = null
+    pendingInProcessTriggerAt = null
+
+    if (runnable != null || triggerAt != null) {
+      logService(
+        "Cancelled in-process trigger",
+        createLogContext("triggerAt" to triggerAt),
+      )
+    }
+  }
+
   fun logService(message: String, context: JSONObject? = null) {
     log(LOG_SERVICE_TAG, message, context)
   }
@@ -938,6 +1022,8 @@ object KidPointsNotificationsEngine {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       )
 
+    ensureInProcessTrigger(context, triggerAt)
+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
       alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
       logDebug(
@@ -963,6 +1049,7 @@ object KidPointsNotificationsEngine {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       )
 
+    cancelInProcessTrigger()
     alarmManager.cancel(pendingIntent)
     pendingIntent.cancel()
     logDebug("Cancelled exact trigger")

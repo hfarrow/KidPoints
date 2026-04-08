@@ -90,6 +90,7 @@ const {
   getBufferedNotificationLogs: mockGetBufferedNotificationLogs,
   getNotificationRuntimeStatus: mockGetNotificationRuntimeStatus,
   loadPersistedNotificationDocument: mockLoadPersistedNotificationDocument,
+  pauseNotificationTimer: mockPauseNotificationTimer,
   requestNotificationPermission: mockRequestNotificationPermission,
   startNotificationTimer: mockStartNotificationTimer,
   stopExpiredAlarmPlayback: mockStopExpiredAlarmPlayback,
@@ -109,6 +110,7 @@ const {
     Promise<NotificationDocument | null>,
     []
   >;
+  pauseNotificationTimer: jest.Mock;
   requestNotificationPermission: jest.Mock;
   startNotificationTimer: jest.Mock;
   stopExpiredAlarmPlayback: jest.Mock;
@@ -214,6 +216,7 @@ function NotificationsProbe() {
   } = useNotifications();
   const sharedDocument = useSharedStore((state) => state.document);
   const activeChildId = sharedDocument.head.activeChildIds[0] ?? null;
+  const pauseTimer = useSharedStore((state) => state.pauseTimer);
   const startTimer = useSharedStore((state) => state.startTimer);
 
   return (
@@ -260,6 +263,13 @@ function NotificationsProbe() {
         }}
       >
         Dismiss flow
+      </Text>
+      <Text
+        onPress={() => {
+          pauseTimer();
+        }}
+      >
+        Pause timer
       </Text>
       <Text
         onPress={() => {
@@ -763,6 +773,64 @@ describe('NotificationsProvider', () => {
       await waitFor(() =>
         expect(mockStartNotificationTimer).toHaveBeenCalledTimes(1),
       );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reissues native pause and start scheduling across repeated pause and resume transitions', async () => {
+    try {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-04-08T12:00:00.000Z'));
+      mockConsumePendingNotificationLaunchAction.mockResolvedValue(null);
+      mockLoadPersistedNotificationDocument.mockResolvedValue(null);
+
+      renderProvider({
+        initialDocument: sharedFixture.document,
+        initialParentUnlocked: true,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('notifications-ready').props.children).toBe(
+          'ready',
+        ),
+      );
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Start timer'));
+      });
+
+      await waitFor(() =>
+        expect(mockStartNotificationTimer).toHaveBeenCalledTimes(1),
+      );
+
+      jest.advanceTimersByTime(2_000);
+      jest.setSystemTime(new Date('2026-04-08T12:00:02.000Z'));
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Pause timer'));
+      });
+
+      await waitFor(() =>
+        expect(mockPauseNotificationTimer).toHaveBeenCalledTimes(1),
+      );
+
+      jest.advanceTimersByTime(3_000);
+      jest.setSystemTime(new Date('2026-04-08T12:00:05.000Z'));
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Start timer'));
+      });
+
+      await waitFor(() =>
+        expect(mockStartNotificationTimer).toHaveBeenCalledTimes(2),
+      );
+
+      const resumedDocument = mockStartNotificationTimer.mock
+        .calls[1]?.[0] as NotificationDocument;
+
+      expect(resumedDocument.head.timerState.isRunning).toBe(true);
+      expect(resumedDocument.head.timerState.cycleStartedAt).not.toBeNull();
     } finally {
       jest.useRealTimers();
     }
