@@ -23,10 +23,10 @@ const logSessionUiMutation = createStructuredLog(
   'debug',
   'Session UI mutation committed',
 );
-const logRejectedSessionUiMutation = createStructuredLog(
+const logFailedSessionUnlockAttempt = createStructuredLog(
   log,
-  'error',
-  'Session UI mutation rejected',
+  'info',
+  'Parent unlock attempt failed',
 );
 const logSkippedInvalidSessionUiRehydrate = createStructuredLog(
   log,
@@ -75,7 +75,7 @@ export function createSessionUiStore({
             });
             set({ isParentUnlocked: true });
           } else {
-            logRejectedSessionUiMutation({
+            logFailedSessionUnlockAttempt({
               action: 'attemptUnlock',
               hasExpectedPin: Boolean(expectedPin),
             });

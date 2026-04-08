@@ -126,7 +126,7 @@ describe('store logging', () => {
     );
   });
 
-  it('logs session ui failures as errors and unlocks as debug', () => {
+  it('logs failed unlock attempts as info and successful unlocks as debug', () => {
     const store = createSessionUiStore({
       initialParentUnlocked: false,
     });
@@ -134,10 +134,11 @@ describe('store logging', () => {
     expect(store.getState().attemptUnlock('1234', '2468')).toBe(false);
     expect(store.getState().attemptUnlock('2468', '2468')).toBe(true);
 
-    expect(mockLogger.error).toHaveBeenCalledWith(
-      'Session UI mutation rejected',
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'Parent unlock attempt failed',
       expect.objectContaining({
         action: 'attemptUnlock',
+        hasExpectedPin: true,
       }),
     );
     expect(mockLogger.debug).toHaveBeenCalledWith(

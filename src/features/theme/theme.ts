@@ -17,6 +17,7 @@ export type ThemeTokens = {
   screenBackgroundParent: string;
   shadowColor: string;
   skeleton: string;
+  success: string;
   successSurface: string;
   tabBarActiveBackground: string;
   tabBarActiveTint: string;
@@ -45,6 +46,7 @@ const lightTokens: ThemeTokens = {
   screenBackgroundParent: '#fff7ff',
   shadowColor: '#120f29',
   skeleton: '#d2caef',
+  success: '#15803d',
   successSurface: '#dcecff',
   tabBarActiveBackground: '#d6c2ff',
   tabBarActiveTint: '#231a52',
@@ -73,6 +75,7 @@ const darkTokens: ThemeTokens = {
   screenBackgroundParent: '#120d1d',
   shadowColor: '#000000',
   skeleton: '#4a3d7f',
+  success: '#4ade80',
   successSurface: '#2a4470',
   tabBarActiveBackground: '#4b397f',
   tabBarActiveTint: '#eef6ff',

@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { KeyboardModalFrame } from '../../components/KeyboardModalFrame';
@@ -15,6 +15,12 @@ import {
 import { useParentSession } from './parentSessionContext';
 
 const log = createModuleLogger('parent-unlock-modal');
+const PIN_SLOT_KEYS = ['pin-slot-0', 'pin-slot-1', 'pin-slot-2', 'pin-slot-3'];
+const PIN_REVEAL_DURATION_MS = 700;
+const UNLOCK_ERROR_DELAY_MS = 900;
+const UNLOCK_SUCCESS_DELAY_MS = 300;
+const BODY_LINE_HEIGHT = 20;
+const UNLOCK_BODY_MIN_LINES = 3;
 
 type ParentModalMode = 'change' | 'setup' | 'unlock';
 type ParentModalStage = 'confirm' | 'entry';
@@ -42,9 +48,18 @@ export function ParentUnlockModal() {
   const requestedMode = resolveParentModalMode(mode);
   const effectiveMode = parentPin ? requestedMode : 'setup';
   const canDismiss = effectiveMode !== 'setup';
+  const unlockFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [pin, setPin] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [isPinInputFocused, setIsPinInputFocused] = useState(false);
+  const [isUnlockErrorPending, setIsUnlockErrorPending] = useState(false);
+  const [isUnlockSuccessPending, setIsUnlockSuccessPending] = useState(false);
   const [pendingPin, setPendingPin] = useState('');
+  const [revealedDigitIndex, setRevealedDigitIndex] = useState<number | null>(
+    null,
+  );
   const [stage, setStage] = useState<ParentModalStage>('entry');
 
   useEffect(() => {
@@ -56,14 +71,30 @@ export function ParentUnlockModal() {
   }, [canDismiss, effectiveMode, stage]);
 
   useEffect(() => {
+    if (unlockFeedbackTimeoutRef.current) {
+      clearTimeout(unlockFeedbackTimeoutRef.current);
+      unlockFeedbackTimeoutRef.current = null;
+    }
+
     log.debug('Parent unlock flow reset', {
       mode: effectiveMode,
     });
     setErrorMessage('');
+    setIsUnlockErrorPending(false);
+    setIsUnlockSuccessPending(false);
     setPendingPin('');
     setPin('');
+    setRevealedDigitIndex(null);
     setStage('entry');
   }, [effectiveMode]);
+
+  useEffect(() => {
+    return () => {
+      if (unlockFeedbackTimeoutRef.current) {
+        clearTimeout(unlockFeedbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (canDismiss) {
@@ -82,10 +113,29 @@ export function ParentUnlockModal() {
 
   const resetPinSetup = (nextErrorMessage = '') => {
     setErrorMessage(nextErrorMessage);
+    setIsUnlockErrorPending(false);
+    setIsUnlockSuccessPending(false);
     setPendingPin('');
     setPin('');
+    setRevealedDigitIndex(null);
     setStage('entry');
   };
+
+  useEffect(() => {
+    if (revealedDigitIndex === null || !pin[revealedDigitIndex]) {
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setRevealedDigitIndex((currentValue) =>
+        currentValue === revealedDigitIndex ? null : currentValue,
+      );
+    }, PIN_REVEAL_DURATION_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [pin, revealedDigitIndex]);
 
   const moveToPinConfirmation = (value: string) => {
     const validationError = validateParentPin(value);
@@ -101,18 +151,52 @@ export function ParentUnlockModal() {
     setStage('confirm');
   };
 
+  const closeModal = () => {
+    if (unlockFeedbackTimeoutRef.current) {
+      clearTimeout(unlockFeedbackTimeoutRef.current);
+      unlockFeedbackTimeoutRef.current = null;
+    }
+
+    router.back();
+  };
+
+  const beginSuccessfulUnlockFeedback = () => {
+    setErrorMessage('');
+    setIsUnlockErrorPending(false);
+    setIsUnlockSuccessPending(true);
+    unlockFeedbackTimeoutRef.current = setTimeout(() => {
+      unlockFeedbackTimeoutRef.current = null;
+      closeModal();
+    }, UNLOCK_SUCCESS_DELAY_MS);
+  };
+
+  const beginFailedUnlockFeedback = () => {
+    setErrorMessage('That PIN does not match the parent PIN for this device.');
+    setIsUnlockErrorPending(true);
+    setIsUnlockSuccessPending(false);
+    unlockFeedbackTimeoutRef.current = setTimeout(() => {
+      unlockFeedbackTimeoutRef.current = null;
+      setIsUnlockErrorPending(false);
+      setIsPinInputFocused(true);
+      setPin('');
+      setRevealedDigitIndex(null);
+    }, UNLOCK_ERROR_DELAY_MS);
+  };
+
   const submitPin = (value: string) => {
     if (effectiveMode === 'unlock') {
-      const didUnlock = attemptUnlock(value);
-
-      if (!didUnlock) {
-        setErrorMessage(
-          'That PIN does not match the parent PIN for this device.',
-        );
+      if (isUnlockErrorPending || isUnlockSuccessPending) {
         return;
       }
 
-      router.back();
+      const didUnlock = attemptUnlock(value);
+
+      if (!didUnlock) {
+        beginFailedUnlockFeedback();
+        return;
+      }
+
+      beginSuccessfulUnlockFeedback();
       return;
     }
 
@@ -135,7 +219,38 @@ export function ParentUnlockModal() {
 
     setParentPin(value);
     unlockParentMode();
-    router.back();
+    closeModal();
+  };
+
+  const handlePinChange = (nextValue: string) => {
+    if (isUnlockErrorPending || isUnlockSuccessPending) {
+      return;
+    }
+
+    const normalizedValue = normalizeParentPin(nextValue);
+
+    setPin(normalizedValue);
+    if (normalizedValue.length > pin.length) {
+      setRevealedDigitIndex(normalizedValue.length - 1);
+    } else {
+      setRevealedDigitIndex(null);
+    }
+    if (errorMessage) {
+      setErrorMessage('');
+    }
+
+    if (
+      effectiveMode === 'unlock' &&
+      normalizedValue.length === PARENT_PIN_LENGTH
+    ) {
+      const didUnlock = attemptUnlock(normalizedValue);
+
+      if (didUnlock) {
+        beginSuccessfulUnlockFeedback();
+      } else {
+        beginFailedUnlockFeedback();
+      }
+    }
   };
 
   const copy =
@@ -143,7 +258,6 @@ export function ParentUnlockModal() {
       ? {
           accessibilityLabel: 'Parent PIN',
           body: 'Enter the parent PIN for this device to unlock parent-gated controls.',
-          confirmLabel: 'Unlock',
           title: 'Unlock Parent Controls',
         }
       : stage === 'confirm'
@@ -174,6 +288,16 @@ export function ParentUnlockModal() {
                 ? 'Change Parent PIN'
                 : 'Set Parent PIN',
           };
+  const isUnlockFeedbackPending =
+    isUnlockErrorPending || isUnlockSuccessPending;
+  const actionConfirmLabel =
+    effectiveMode === 'unlock' ? null : copy.confirmLabel;
+  const bodyMessage =
+    effectiveMode === 'unlock' && errorMessage ? errorMessage : copy.body;
+  const bodyStyle =
+    effectiveMode === 'unlock'
+      ? [styles.body, styles.unlockBody, errorMessage && styles.bodyError]
+      : [styles.body, errorMessage && styles.bodyError];
 
   return (
     <KeyboardModalFrame
@@ -183,56 +307,112 @@ export function ParentUnlockModal() {
       style={{ backgroundColor: tokens.modalBackdrop }}
       testID="parent-unlock-keyboard-frame"
     >
-      <View style={styles.card}>
+      <View style={styles.card} testID="parent-unlock-card">
         <Text style={styles.eyebrow}>Parent Mode</Text>
         <Text style={styles.title}>{copy.title}</Text>
-        <Text style={styles.body}>{copy.body}</Text>
-        <TextInput
-          accessibilityLabel={copy.accessibilityLabel}
-          autoFocus
-          keyboardType="number-pad"
-          onChangeText={(nextValue) => {
-            const normalizedValue = normalizeParentPin(nextValue);
+        <Text style={bodyStyle}>{bodyMessage}</Text>
+        <View style={styles.pinEntry}>
+          <View pointerEvents="none" style={styles.pinRow}>
+            {PIN_SLOT_KEYS.map((slotKey, index) => {
+              const digit = pin[index] ?? '';
+              const isFilled = Boolean(digit);
+              const shouldRevealDigit =
+                isFilled && revealedDigitIndex === index;
+              const isErrorState = isUnlockErrorPending && isFilled;
+              const isSuccessState = isUnlockSuccessPending && isFilled;
+              const isActive =
+                !isUnlockFeedbackPending &&
+                isPinInputFocused &&
+                (pin.length === index ||
+                  (pin.length === PARENT_PIN_LENGTH &&
+                    index === PARENT_PIN_LENGTH - 1));
 
-            setPin(normalizedValue);
-            if (errorMessage) {
-              setErrorMessage('');
-            }
-
-            if (
-              effectiveMode === 'unlock' &&
-              normalizedValue.length === PARENT_PIN_LENGTH &&
-              attemptUnlock(normalizedValue)
-            ) {
-              router.back();
-            }
-          }}
-          placeholder="0000"
-          placeholderTextColor={tokens.textMuted}
-          secureTextEntry
-          style={styles.input}
-          value={pin}
-          maxLength={PARENT_PIN_LENGTH}
-        />
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-        <View style={styles.actions}>
-          {canDismiss ? (
+              return (
+                <View
+                  key={slotKey}
+                  style={[
+                    styles.pinSlot,
+                    isFilled && styles.pinSlotFilled,
+                    isErrorState && styles.pinSlotError,
+                    isSuccessState && styles.pinSlotSuccess,
+                    isActive && styles.pinSlotActive,
+                  ]}
+                  testID={`parent-pin-slot-${index}`}
+                >
+                  {shouldRevealDigit ? (
+                    <Text
+                      style={styles.pinDigit}
+                      testID={`parent-pin-slot-digit-${index}`}
+                    >
+                      {digit}
+                    </Text>
+                  ) : isFilled ? (
+                    <View
+                      style={styles.pinMask}
+                      testID={`parent-pin-slot-digit-${index}`}
+                    />
+                  ) : (
+                    <View
+                      style={styles.pinPlaceholder}
+                      testID={`parent-pin-slot-digit-${index}`}
+                    />
+                  )}
+                </View>
+              );
+            })}
+          </View>
+          <TextInput
+            accessibilityLabel={copy.accessibilityLabel}
+            autoFocus
+            caretHidden
+            keyboardType="number-pad"
+            key={copy.accessibilityLabel}
+            maxLength={PARENT_PIN_LENGTH}
+            editable={!isUnlockSuccessPending}
+            onBlur={() => setIsPinInputFocused(false)}
+            onChangeText={handlePinChange}
+            onFocus={() => setIsPinInputFocused(true)}
+            placeholder=""
+            placeholderTextColor={tokens.textMuted}
+            selection={{ end: pin.length, start: pin.length }}
+            showSoftInputOnFocus
+            style={styles.hiddenInput}
+            value={pin}
+          />
+        </View>
+        {effectiveMode !== 'unlock' && errorMessage ? (
+          <Text style={styles.error}>{errorMessage}</Text>
+        ) : null}
+        {effectiveMode === 'unlock' ? (
+          canDismiss ? (
             <LoggedPressable
               logLabel="Cancel Parent Unlock"
-              onPress={() => router.back()}
+              onPress={closeModal}
               style={styles.secondaryAction}
             >
               <Text style={styles.secondaryText}>Cancel</Text>
             </LoggedPressable>
-          ) : null}
-          <LoggedPressable
-            logLabel={copy.confirmLabel}
-            onPress={() => submitPin(pin)}
-            style={styles.primaryAction}
-          >
-            <Text style={styles.primaryText}>{copy.confirmLabel}</Text>
-          </LoggedPressable>
-        </View>
+          ) : null
+        ) : (
+          <View style={styles.actions}>
+            {canDismiss ? (
+              <LoggedPressable
+                logLabel="Cancel Parent Unlock"
+                onPress={closeModal}
+                style={styles.secondaryAction}
+              >
+                <Text style={styles.secondaryText}>Cancel</Text>
+              </LoggedPressable>
+            ) : null}
+            <LoggedPressable
+              logLabel={actionConfirmLabel ?? ''}
+              onPress={() => submitPin(pin)}
+              style={styles.primaryAction}
+            >
+              <Text style={styles.primaryText}>{actionConfirmLabel}</Text>
+            </LoggedPressable>
+          </View>
+        )}
       </View>
     </KeyboardModalFrame>
   );
@@ -244,7 +424,7 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       alignSelf: 'center',
       backgroundColor: tokens.modalSurface,
       borderColor: tokens.border,
-      borderRadius: 24,
+      borderRadius: 22,
       borderWidth: 1,
       flexShrink: 1,
       gap: 10,
@@ -269,19 +449,89 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     body: {
       color: tokens.textMuted,
       fontSize: 14,
-      lineHeight: 20,
+      lineHeight: BODY_LINE_HEIGHT,
     },
-    input: {
+    unlockBody: {
+      minHeight: BODY_LINE_HEIGHT * UNLOCK_BODY_MIN_LINES,
+    },
+    bodyError: {
+      color: tokens.critical,
+      fontWeight: '700',
+    },
+    pinEntry: {
+      minHeight: 72,
+      position: 'relative',
+    },
+    pinRow: {
+      flexDirection: 'row',
+      gap: 10,
+      justifyContent: 'center',
+    },
+    pinSlot: {
+      alignItems: 'center',
       backgroundColor: tokens.inputSurface,
       borderColor: tokens.border,
       borderRadius: 16,
-      borderWidth: 1,
+      borderWidth: 3,
+      flexBasis: 0,
+      flexGrow: 1,
+      justifyContent: 'center',
+      maxWidth: 72,
+      minHeight: 72,
+    },
+    pinSlotFilled: {
+      borderColor: tokens.accent,
+    },
+    pinSlotActive: {
+      borderColor: tokens.accent,
+      shadowColor: tokens.accent,
+      shadowOffset: {
+        height: 0,
+        width: 0,
+      },
+      shadowOpacity: 0.16,
+      shadowRadius: 10,
+    },
+    pinSlotError: {
+      borderColor: tokens.critical,
+      shadowColor: tokens.critical,
+      shadowOffset: {
+        height: 0,
+        width: 0,
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
+    },
+    pinSlotSuccess: {
+      borderColor: tokens.success,
+      shadowColor: tokens.success,
+      shadowOffset: {
+        height: 0,
+        width: 0,
+      },
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+    },
+    pinDigit: {
       color: tokens.textPrimary,
-      fontSize: 17,
-      fontWeight: '700',
-      letterSpacing: 4,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      fontSize: 28,
+      fontWeight: '800',
+    },
+    pinMask: {
+      backgroundColor: tokens.textPrimary,
+      borderRadius: 999,
+      height: 12,
+      width: 12,
+    },
+    pinPlaceholder: {
+      height: 12,
+      width: 12,
+    },
+    hiddenInput: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'transparent',
+      color: 'transparent',
+      opacity: 0.02,
     },
     error: {
       color: tokens.critical,
