@@ -40,11 +40,11 @@ const appLogConsoleMethods = {
   error: 'error',
 } as const;
 const appLogColorCodes = {
-  debug: '\x1b[94m',
-  error: '\x1b[91m',
-  info: '\x1b[96m',
-  temp: '\x1b[95m',
-  warn: '\x1b[93m',
+  debug: '\x1b[38;5;246m',
+  error: '\x1b[38;5;248m',
+  info: '\x1b[38;5;254m',
+  temp: '\x1b[38;5;67m',
+  warn: '\x1b[38;5;250m',
 } as const;
 const resetTerminalColor = '\x1b[0m';
 
