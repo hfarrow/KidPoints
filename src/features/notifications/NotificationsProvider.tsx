@@ -94,6 +94,22 @@ function buildParentUnlockHref(parentPin: string | null) {
   return parentPin ? '/parent-unlock' : '/parent-unlock?mode=setup';
 }
 
+function createLaunchActionKey(
+  launchAction: PendingNotificationLaunchAction | null | undefined,
+) {
+  if (!launchAction) {
+    return null;
+  }
+
+  return JSON.stringify({
+    intervalId: launchAction.intervalId,
+    notificationId: launchAction.notificationId,
+    sessionId: launchAction.sessionId,
+    triggeredAt: launchAction.triggeredAt,
+    type: launchAction.type,
+  });
+}
+
 export function NotificationsProvider({ children }: PropsWithChildren) {
   const engineAvailable = isNotificationsModuleAvailable();
   const sharedStoreApi = useSharedStoreApi() as SharedStoreWithPersist;
@@ -133,6 +149,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   const didConsumeStartupLaunchActionRef = useRef(false);
   const notificationDocumentRef = useRef(notificationDocument);
   const pendingLaunchActionRef = useRef(pendingLaunchAction);
+  const activeLaunchActionKeyRef = useRef<string | null>(null);
   const sharedDocumentRef = useRef(document);
   const skipNextResumeConsumeRef = useRef(false);
   const lastSyncedDocumentRef = useRef<NotificationDocument | null>(null);
@@ -147,6 +164,8 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     pendingLaunchActionRef.current = pendingLaunchAction;
+    activeLaunchActionKeyRef.current =
+      createLaunchActionKey(pendingLaunchAction);
   }, [pendingLaunchAction]);
 
   useEffect(() => {
@@ -318,10 +337,26 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   );
 
   const dismissCheckInFlow = useCallback(() => {
+    const activeExpiredTimerSession = getExpiredTimerSession(
+      notificationDocumentRef.current,
+      pendingLaunchActionRef.current,
+    );
+
+    activeLaunchActionKeyRef.current = null;
     setPendingLaunchAction(null);
     removeStartupNavigationRequest(CHECK_IN_REQUEST_ID);
     removeStartupNavigationRequest(PARENT_UNLOCK_REQUEST_ID);
-  }, [removeStartupNavigationRequest]);
+
+    if (!activeExpiredTimerSession) {
+      return;
+    }
+
+    log.info('Dismissed expired timer check-in flow', {
+      intervalId: activeExpiredTimerSession.intervalId,
+      resetSharedTimer: true,
+    });
+    resetSharedTimer();
+  }, [removeStartupNavigationRequest, resetSharedTimer]);
 
   const handleLaunchAction = useCallback(
     async (
@@ -331,6 +366,22 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       if (!launchAction) {
         return;
       }
+
+      const launchActionKey = createLaunchActionKey(launchAction);
+
+      if (
+        launchActionKey &&
+        launchActionKey === activeLaunchActionKeyRef.current
+      ) {
+        log.debug('Ignored duplicate notification launch action', {
+          intervalId: launchAction.intervalId,
+          notificationId: launchAction.notificationId,
+          source,
+        });
+        return;
+      }
+
+      activeLaunchActionKeyRef.current = launchActionKey;
 
       log.info('Handling notification launch action', {
         intervalId: launchAction.intervalId,
@@ -351,14 +402,6 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         removeStartupNavigationRequest(CHECK_IN_REQUEST_ID);
         return;
       }
-
-      queueStartupNavigationRequest({
-        href: CHECK_IN_ROUTE,
-        id: CHECK_IN_REQUEST_ID,
-        priority: 1,
-        source: 'notifications',
-        targetPathname: CHECK_IN_ROUTE,
-      });
     },
     [
       isParentUnlocked,
@@ -674,6 +717,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       }
 
       if (didResolveSession) {
+        activeLaunchActionKeyRef.current = null;
         setPendingLaunchAction(null);
         removeStartupNavigationRequest(CHECK_IN_REQUEST_ID);
         startSharedTimer();

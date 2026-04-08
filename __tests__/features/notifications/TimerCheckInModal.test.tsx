@@ -1,10 +1,17 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import { TimerCheckInModal } from '../../../src/features/notifications/TimerCheckInModal';
 
 const mockBack = jest.fn();
+const mockCanGoBack = jest.fn();
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 const mockDismissCheckInFlow = jest.fn();
 const mockResolveExpiredTimerChild = jest.fn();
 const mockUseNotifications = jest.fn();
@@ -23,7 +30,9 @@ jest.mock('@expo/vector-icons', () => {
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: mockBack,
+    canGoBack: mockCanGoBack,
     push: mockPush,
+    replace: mockReplace,
   }),
 }));
 
@@ -139,6 +148,7 @@ jest.mock('../../../src/features/theme/themeContext', () => ({
 describe('TimerCheckInModal', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCanGoBack.mockReturnValue(true);
     mockUseNotifications.mockReturnValue({
       activeExpiredTimerSession: {
         childActions: [
@@ -183,5 +193,49 @@ describe('TimerCheckInModal', () => {
       'child-1',
       'awarded',
     );
+  });
+
+  it('dismisses the flow without issuing a second immediate back navigation', () => {
+    mockUseParentSession.mockReturnValue({ isParentUnlocked: true });
+
+    render(<TimerCheckInModal />);
+
+    fireEvent.press(screen.getByText('Close'));
+
+    expect(mockDismissCheckInFlow).toHaveBeenCalled();
+    expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it('closes with back navigation after the active session is cleared', async () => {
+    mockUseParentSession.mockReturnValue({ isParentUnlocked: true });
+    mockUseNotifications.mockReturnValue({
+      activeExpiredTimerSession: null,
+      dismissCheckInFlow: mockDismissCheckInFlow,
+      resolveExpiredTimerChild: mockResolveExpiredTimerChild,
+    });
+
+    render(<TimerCheckInModal />);
+
+    await waitFor(() => {
+      expect(mockBack).toHaveBeenCalledTimes(1);
+    });
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('falls back to replacing the root route when no back navigation is available', async () => {
+    mockCanGoBack.mockReturnValue(false);
+    mockUseParentSession.mockReturnValue({ isParentUnlocked: true });
+    mockUseNotifications.mockReturnValue({
+      activeExpiredTimerSession: null,
+      dismissCheckInFlow: mockDismissCheckInFlow,
+      resolveExpiredTimerChild: mockResolveExpiredTimerChild,
+    });
+
+    render(<TimerCheckInModal />);
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/');
+    });
+    expect(mockBack).not.toHaveBeenCalled();
   });
 });

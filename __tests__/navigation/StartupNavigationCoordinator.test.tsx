@@ -103,4 +103,30 @@ describe('StartupNavigationCoordinator', () => {
       expect(useStartupNavigationStore.getState().requests).toHaveLength(0);
     });
   });
+
+  it('does not dispatch the same startup navigation request twice when it is queued redundantly', async () => {
+    useStartupNavigationStore.getState().queueRequest({
+      href: '/timer-check-in',
+      id: 'notifications-check-in',
+      source: 'notifications',
+      targetPathname: '/timer-check-in',
+    });
+    useStartupNavigationStore.getState().queueRequest({
+      href: '/timer-check-in',
+      id: 'notifications-check-in',
+      source: 'notifications',
+      targetPathname: '/timer-check-in',
+    });
+
+    render(<StartupNavigationCoordinator />);
+
+    act(() => {
+      jest.advanceTimersByTime(32);
+    });
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      expect(mockPush).toHaveBeenCalledWith('/timer-check-in');
+    });
+  });
 });

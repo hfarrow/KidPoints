@@ -34,6 +34,7 @@ export const DEFAULT_TIMER_CONFIG: SharedTimerConfig = {
 };
 
 export const DEFAULT_TIMER_STATE: SharedTimerState = {
+  activeIntervalMs: null,
   cycleStartedAt: null,
   mode: 'idle',
   pausedRemainingMs: null,
@@ -94,6 +95,11 @@ export function normalizeTimerState(
   timerState: Partial<SharedTimerState> | null | undefined,
 ): SharedTimerState {
   const mode = normalizeTimerMode(timerState?.mode);
+  const activeIntervalMs =
+    typeof timerState?.activeIntervalMs === 'number' &&
+    Number.isFinite(timerState.activeIntervalMs)
+      ? Math.max(Math.trunc(timerState.activeIntervalMs), 1_000)
+      : null;
   const cycleStartedAt =
     typeof timerState?.cycleStartedAt === 'number' &&
     Number.isFinite(timerState.cycleStartedAt)
@@ -107,6 +113,7 @@ export function normalizeTimerState(
 
   if (mode === 'running' && cycleStartedAt !== null) {
     return {
+      activeIntervalMs,
       cycleStartedAt,
       mode,
       pausedRemainingMs: null,
@@ -115,6 +122,7 @@ export function normalizeTimerState(
 
   if (mode === 'paused') {
     return {
+      activeIntervalMs,
       cycleStartedAt: null,
       mode,
       pausedRemainingMs,
@@ -140,10 +148,26 @@ export function areTimerStatesEquivalent(
   right: SharedTimerState,
 ) {
   return (
+    left.activeIntervalMs === right.activeIntervalMs &&
     left.cycleStartedAt === right.cycleStartedAt &&
     left.mode === right.mode &&
     left.pausedRemainingMs === right.pausedRemainingMs
   );
+}
+
+function getSnapshotIntervalMs(
+  timerConfig: SharedTimerConfig,
+  timerState: SharedTimerState,
+) {
+  if (
+    timerState.mode !== 'idle' &&
+    typeof timerState.activeIntervalMs === 'number' &&
+    Number.isFinite(timerState.activeIntervalMs)
+  ) {
+    return Math.max(Math.trunc(timerState.activeIntervalMs), 1_000);
+  }
+
+  return getTimerIntervalMs(timerConfig);
 }
 
 export function getTimerIntervalMs(timerConfig: SharedTimerConfig) {
@@ -158,7 +182,7 @@ export function computeSharedTimerSnapshot(
   timerState: SharedTimerState,
   now: number,
 ): SharedTimerSnapshot {
-  const intervalMs = getTimerIntervalMs(timerConfig);
+  const intervalMs = getSnapshotIntervalMs(timerConfig, timerState);
 
   if (timerState.mode === 'paused') {
     const pausedRemainingMs = clamp(
@@ -231,6 +255,22 @@ export function formatTimerCadenceLabel(timerConfig: SharedTimerConfig) {
   return `${timerConfig.intervalMinutes}m ${timerConfig.intervalSeconds}s cadence`;
 }
 
+export function formatTimerCadenceLabelFromIntervalMs(intervalMs: number) {
+  const totalSeconds = Math.max(Math.round(intervalMs / 1_000), 1);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes > 0 && seconds === 0) {
+    return `${minutes}m cadence`;
+  }
+
+  if (minutes === 0) {
+    return `${totalSeconds}s cadence`;
+  }
+
+  return `${minutes}m ${seconds}s cadence`;
+}
+
 export function formatAlarmDurationLabel(timerConfig: SharedTimerConfig) {
   return `${timerConfig.alarmDurationSeconds}s alarm`;
 }
@@ -272,7 +312,7 @@ export function buildSharedTimerViewModel(
     canPause: snapshot.status === 'running',
     canReset: snapshot.status !== 'idle',
     canStart: snapshot.status !== 'running',
-    cadenceLabel: formatTimerCadenceLabel(timerConfig),
+    cadenceLabel: formatTimerCadenceLabelFromIntervalMs(snapshot.intervalMs),
     remainingLabel: formatTimerDuration(snapshot.remainingMs),
     statusLabel: getTimerStatusLabel(snapshot.status),
     statusTone: getTimerStatusTone(snapshot.status),

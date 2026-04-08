@@ -23,6 +23,7 @@ import {
   computeSharedTimerSnapshot,
   DEFAULT_TIMER_CONFIG,
   DEFAULT_TIMER_STATE,
+  getTimerIntervalMs,
   normalizeTimerConfig,
   normalizeTimerState,
 } from './sharedTimer';
@@ -721,12 +722,17 @@ function buildStartedTimerState(
   now: number,
 ) {
   const snapshot = computeSharedTimerSnapshot(timerConfig, timerState, now);
+  const activeIntervalMs =
+    snapshot.status === 'paused'
+      ? snapshot.intervalMs
+      : getTimerIntervalMs(timerConfig);
   const elapsedBeforeStart =
     snapshot.status === 'paused' && snapshot.remainingMs > 0
-      ? snapshot.intervalMs - snapshot.remainingMs
+      ? activeIntervalMs - snapshot.remainingMs
       : 0;
 
   return normalizeTimerState({
+    activeIntervalMs,
     cycleStartedAt: now - elapsedBeforeStart,
     mode: 'running',
     pausedRemainingMs: null,
@@ -745,6 +751,7 @@ function buildPausedTimerState(
   const snapshot = computeSharedTimerSnapshot(timerConfig, timerState, now);
 
   return normalizeTimerState({
+    activeIntervalMs: snapshot.intervalMs,
     cycleStartedAt: null,
     mode: 'paused',
     pausedRemainingMs: snapshot.remainingMs,

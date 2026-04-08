@@ -335,7 +335,8 @@ describe('sharedStore timer state', () => {
         Date.now(),
       ),
     ).toMatchObject({
-      cadenceLabel: '1s cadence',
+      cadenceLabel: '15m cadence',
+      remainingLabel: '13:59',
       statusLabel: 'Running',
     });
 
@@ -351,17 +352,83 @@ describe('sharedStore timer state', () => {
       statusLabel: 'Ready',
     });
 
+    expect(store.getState().startTimer().ok).toBe(true);
+    expect(
+      buildSharedTimerViewModel(
+        store.getState().document.head.timerConfig,
+        store.getState().document.head.timerState,
+        Date.now(),
+      ),
+    ).toMatchObject({
+      cadenceLabel: '1s cadence',
+      remainingLabel: '00:01',
+      statusLabel: 'Running',
+    });
+
     expect(
       deriveTransactionRows(store.getState().document).map(
         (row) => row.summaryText,
       ),
     ).toEqual([
+      'Started Timer',
       'Reset Timer',
       'Started Timer',
       'Updated Timer Settings',
       'Paused Timer',
       'Started Timer',
     ]);
+  });
+
+  it('keeps the active countdown cadence frozen while running after config edits', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-timer-cadence-freeze',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(
+      store.getState().updateTimerConfig({
+        intervalMinutes: 0,
+        intervalSeconds: 5,
+      }).ok,
+    ).toBe(true);
+    expect(store.getState().startTimer().ok).toBe(true);
+
+    jest.advanceTimersByTime(2_000);
+
+    expect(
+      store.getState().updateTimerConfig({
+        intervalMinutes: 0,
+        intervalSeconds: 10,
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      buildSharedTimerViewModel(
+        store.getState().document.head.timerConfig,
+        store.getState().document.head.timerState,
+        Date.now(),
+      ),
+    ).toMatchObject({
+      cadenceLabel: '5s cadence',
+      remainingLabel: '00:03',
+      statusLabel: 'Running',
+    });
+
+    expect(store.getState().resetTimer().ok).toBe(true);
+
+    expect(
+      buildSharedTimerViewModel(
+        store.getState().document.head.timerConfig,
+        store.getState().document.head.timerState,
+        Date.now(),
+      ),
+    ).toMatchObject({
+      cadenceLabel: '10s cadence',
+      remainingLabel: '00:10',
+      statusLabel: 'Ready',
+    });
   });
 
   it('clamps at zero and catches up from persisted state after resume', () => {

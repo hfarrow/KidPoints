@@ -19,6 +19,7 @@ export type SharedTimerConfig = {
 export type SharedTimerMode = 'idle' | 'paused' | 'running';
 
 export type SharedTimerState = {
+  activeIntervalMs: number | null;
   cycleStartedAt: number | null;
   mode: SharedTimerMode;
   pausedRemainingMs: number | null;

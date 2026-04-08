@@ -26,6 +26,19 @@ type StartupNavigationState = {
 
 const log = createModuleLogger('startup-navigation-store');
 
+function areStartupNavigationRequestsEquivalent(
+  left: StartupNavigationRequest,
+  right: StartupNavigationRequest,
+) {
+  return (
+    left.href === right.href &&
+    left.id === right.id &&
+    (left.priority ?? 0) === (right.priority ?? 0) &&
+    left.source === right.source &&
+    left.targetPathname === right.targetPathname
+  );
+}
+
 function sortRequests(
   requests: QueuedStartupNavigationRequest[],
 ): QueuedStartupNavigationRequest[] {
@@ -39,7 +52,7 @@ function sortRequests(
 }
 
 export const useStartupNavigationStore = create<StartupNavigationState>(
-  (set) => ({
+  (set, get) => ({
     completeRequest: (id) => {
       log.debug('Startup navigation mutation committed', {
         action: 'completeRequest',
@@ -53,6 +66,17 @@ export const useStartupNavigationStore = create<StartupNavigationState>(
     },
     nextSequence: 1,
     queueRequest: (request) => {
+      const existingRequest = get().requests.find(
+        (candidate) => candidate.id === request.id,
+      );
+
+      if (
+        existingRequest &&
+        areStartupNavigationRequestsEquivalent(existingRequest, request)
+      ) {
+        return;
+      }
+
       log.debug('Startup navigation mutation committed', {
         action: 'queueRequest',
         href: request.href,
@@ -62,11 +86,11 @@ export const useStartupNavigationStore = create<StartupNavigationState>(
       });
 
       set((state) => {
-        const existingRequest = state.requests.find(
+        const currentRequest = state.requests.find(
           (candidate) => candidate.id === request.id,
         );
 
-        if (existingRequest) {
+        if (currentRequest) {
           return {
             ...state,
             requests: sortRequests(

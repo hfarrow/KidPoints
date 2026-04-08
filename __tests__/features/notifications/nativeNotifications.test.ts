@@ -92,6 +92,7 @@ describe('nativeNotifications', () => {
               sessionId: 'session-1',
             },
             timerState: {
+              activeIntervalMs: 900000,
               cycleStartedAt: 100,
               isRunning: true,
               pausedRemainingMs: null,
@@ -174,6 +175,7 @@ describe('nativeNotifications', () => {
             sessionId: 'session-1',
           },
           timerState: {
+            activeIntervalMs: 900000,
             cycleStartedAt: 100,
             isRunning: true,
             pausedRemainingMs: null,
@@ -319,6 +321,7 @@ describe('nativeNotifications', () => {
               sessionId: 'null',
             },
             timerState: {
+              activeIntervalMs: 900000,
               cycleStartedAt: 100,
               isRunning: true,
               pausedRemainingMs: null,
@@ -389,6 +392,7 @@ describe('nativeNotifications', () => {
             sessionId: 'null',
           },
           timerState: {
+            activeIntervalMs: 900000,
             cycleStartedAt: 100,
             isRunning: true,
             pausedRemainingMs: null,

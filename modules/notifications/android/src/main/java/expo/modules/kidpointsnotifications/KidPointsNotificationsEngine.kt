@@ -145,8 +145,11 @@ object KidPointsNotificationsEngine {
     val head = getHead(document)
     val timerState = getOrCreateObject(head, "timerState")
     val timerRuntimeState = getOrCreateObject(head, "timerRuntimeState")
+    val activeIntervalMs = getIntervalMs(head)
     val nextTriggerAt =
-      timerState.optLong("cycleStartedAt", System.currentTimeMillis()) + getIntervalMs(head)
+      timerState.optLong("cycleStartedAt", System.currentTimeMillis()) + activeIntervalMs
+
+    timerState.put("activeIntervalMs", activeIntervalMs)
 
     timerRuntimeState.put(
       "sessionId",
@@ -251,6 +254,7 @@ object KidPointsNotificationsEngine {
     val head = getHead(document)
 
     getOrCreateObject(head, "timerState").apply {
+      put("activeIntervalMs", JSONObject.NULL)
       put("cycleStartedAt", JSONObject.NULL)
       put("isRunning", false)
       put("pausedRemainingMs", JSONObject.NULL)
@@ -290,6 +294,7 @@ object KidPointsNotificationsEngine {
 
     runtime.put("lastTriggeredAt", triggerAt)
     runtime.put("nextTriggerAt", JSONObject.NULL)
+    timerState.put("activeIntervalMs", JSONObject.NULL)
     timerState.put("cycleStartedAt", JSONObject.NULL)
     timerState.put("isRunning", false)
     timerState.put("pausedRemainingMs", JSONObject.NULL)
@@ -355,6 +360,7 @@ object KidPointsNotificationsEngine {
     val head = getHead(document)
 
     getOrCreateObject(head, "timerState").apply {
+      put("activeIntervalMs", JSONObject.NULL)
       put("cycleStartedAt", JSONObject.NULL)
       put("isRunning", false)
       put("pausedRemainingMs", JSONObject.NULL)
@@ -903,6 +909,16 @@ object KidPointsNotificationsEngine {
   }
 
   private fun getIntervalMs(head: JSONObject): Long {
+    val timerState = head.optJSONObject("timerState")
+    val activeIntervalMs =
+      timerState
+        ?.optLongOrNull("activeIntervalMs")
+        ?.takeIf { it >= 1_000L }
+
+    if (activeIntervalMs != null) {
+      return activeIntervalMs
+    }
+
     val config = getOrCreateObject(head, "timerConfig")
     val intervalMinutes = max(config.optInt("intervalMinutes", 15), 0)
     val intervalSeconds = config.optInt("intervalSeconds", 0).coerceIn(0, 59)

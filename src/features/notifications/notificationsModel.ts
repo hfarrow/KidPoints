@@ -51,6 +51,7 @@ export type NotificationTimerConfig = {
 };
 
 export type NotificationTimerState = {
+  activeIntervalMs: number | null;
   cycleStartedAt: number | null;
   isRunning: boolean;
   pausedRemainingMs: number | null;
@@ -130,6 +131,7 @@ export function createEmptyNotificationDocument(): NotificationDocument {
       },
       timerRuntimeState: createEmptyNotificationTimerRuntimeState(),
       timerState: {
+        activeIntervalMs: null,
         cycleStartedAt: null,
         isRunning: false,
         pausedRemainingMs: null,
@@ -297,6 +299,10 @@ function parseNotificationTimerState(
   timerState: Partial<NotificationTimerState> | null | undefined,
 ): NotificationTimerState {
   return {
+    activeIntervalMs:
+      typeof timerState?.activeIntervalMs === 'number'
+        ? timerState.activeIntervalMs
+        : null,
     cycleStartedAt:
       typeof timerState?.cycleStartedAt === 'number'
         ? timerState.cycleStartedAt
@@ -322,23 +328,35 @@ function buildNotificationTimerState(
   switch (snapshot.status) {
     case 'running':
       return {
+        activeIntervalMs: snapshot.intervalMs,
         cycleStartedAt: snapshot.currentCycleStartedAt,
         isRunning: true,
         pausedRemainingMs: null,
       };
     case 'paused':
       return {
+        activeIntervalMs: snapshot.intervalMs,
         cycleStartedAt: null,
         isRunning: false,
         pausedRemainingMs: snapshot.remainingMs,
       };
     default:
       return {
+        activeIntervalMs: null,
         cycleStartedAt: null,
         isRunning: false,
         pausedRemainingMs: null,
       };
   }
+}
+
+function hasStaleExpiredNotificationState(
+  snapshotStatus: ReturnType<typeof computeSharedTimerSnapshot>['status'],
+  document: NotificationDocument,
+) {
+  return (
+    snapshotStatus !== 'expired' && document.head.expiredIntervals.length > 0
+  );
 }
 
 function buildNotificationTimerConfig(
@@ -362,18 +380,33 @@ export function deriveNotificationDocument(
 ): NotificationDocument {
   const { existingDocument, notificationsEnabled } = options;
   const currentDocument = cloneNotificationDocument(existingDocument);
-  const timerRuntimeState = notificationsEnabled
-    ? currentDocument.head.timerRuntimeState
-    : createEmptyNotificationTimerRuntimeState();
-  const timerState = notificationsEnabled
-    ? buildNotificationTimerState(
+  const timerSnapshot = notificationsEnabled
+    ? computeSharedTimerSnapshot(
         sharedDocument.head.timerConfig,
         sharedDocument.head.timerState,
+        Date.now(),
       )
-    : createEmptyNotificationDocument().head.timerState;
-  const expiredIntervals = notificationsEnabled
-    ? currentDocument.head.expiredIntervals
-    : [];
+    : null;
+  const shouldClearExpiredNotificationState =
+    notificationsEnabled &&
+    timerSnapshot != null &&
+    hasStaleExpiredNotificationState(timerSnapshot.status, currentDocument);
+  const timerRuntimeState = !notificationsEnabled
+    ? createEmptyNotificationTimerRuntimeState()
+    : shouldClearExpiredNotificationState
+      ? createEmptyNotificationTimerRuntimeState()
+      : currentDocument.head.timerRuntimeState;
+  const timerState =
+    notificationsEnabled && timerSnapshot
+      ? buildNotificationTimerState(
+          sharedDocument.head.timerConfig,
+          sharedDocument.head.timerState,
+        )
+      : createEmptyNotificationDocument().head.timerState;
+  const expiredIntervals =
+    notificationsEnabled && !shouldClearExpiredNotificationState
+      ? currentDocument.head.expiredIntervals
+      : [];
 
   return {
     head: {
@@ -411,7 +444,7 @@ export function getExpiredTimerSession(
   const expiredIntervals = document?.head.expiredIntervals ?? [];
 
   if (!launchAction?.intervalId) {
-    return expiredIntervals.at(-1) ?? null;
+    return null;
   }
 
   return (

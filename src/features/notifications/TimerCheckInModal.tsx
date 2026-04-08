@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { KeyboardModalFrame } from '../../components/KeyboardModalFrame';
 import { LoggedPressable } from '../../components/LoggedPressable';
@@ -68,14 +68,22 @@ export function TimerCheckInModal() {
   } = useNotifications();
   const { resolvedTheme, tokens } = useAppTheme();
 
+  const closeModal = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/');
+  }, [router]);
+
   useEffect(() => {
     if (activeExpiredTimerSession) {
       return;
     }
 
-    dismissCheckInFlow();
-    router.back();
-  }, [activeExpiredTimerSession, dismissCheckInFlow, router]);
+    closeModal();
+  }, [activeExpiredTimerSession, closeModal]);
 
   if (!activeExpiredTimerSession) {
     return null;
@@ -185,7 +193,6 @@ export function TimerCheckInModal() {
           logLabel="Close Timer Check-In"
           onPress={() => {
             dismissCheckInFlow();
-            router.back();
           }}
           style={styles.closeButton}
         >

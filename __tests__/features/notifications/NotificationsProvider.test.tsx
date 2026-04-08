@@ -169,6 +169,7 @@ function createExpiredNotificationDocument(
         sessionId: 'session-1',
       },
       timerState: {
+        activeIntervalMs: null,
         cycleStartedAt: null,
         isRunning: false,
         pausedRemainingMs: null,
@@ -205,10 +206,15 @@ function createExpiredRunningSharedDocumentFixture() {
 }
 
 function NotificationsProbe() {
-  const { activeExpiredTimerSession, isReady, resolveExpiredTimerChild } =
-    useNotifications();
+  const {
+    activeExpiredTimerSession,
+    dismissCheckInFlow,
+    isReady,
+    resolveExpiredTimerChild,
+  } = useNotifications();
   const sharedDocument = useSharedStore((state) => state.document);
   const activeChildId = sharedDocument.head.activeChildIds[0] ?? null;
+  const startTimer = useSharedStore((state) => state.startTimer);
 
   return (
     <>
@@ -234,6 +240,20 @@ function NotificationsProbe() {
         }}
       >
         Award child
+      </Text>
+      <Text
+        onPress={() => {
+          dismissCheckInFlow();
+        }}
+      >
+        Dismiss flow
+      </Text>
+      <Text
+        onPress={() => {
+          startTimer();
+        }}
+      >
+        Start timer
       </Text>
     </>
   );
@@ -497,6 +517,52 @@ describe('NotificationsProvider', () => {
     expect(mockRequestNotificationPermission).not.toHaveBeenCalled();
   });
 
+  it('ignores duplicate launch-action events for the same pending check-in', async () => {
+    mockConsumePendingNotificationLaunchAction.mockResolvedValue(null);
+
+    renderProvider({
+      initialDocument: sharedFixture.document,
+      initialParentUnlocked: true,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('notifications-ready').props.children).toBe(
+        'ready',
+      ),
+    );
+
+    const launchActionListener =
+      mockAddNotificationLaunchActionListener.mock.calls[0]?.[0];
+
+    expect(typeof launchActionListener).toBe('function');
+
+    await act(async () => {
+      launchActionListener?.({
+        intervalId: 'interval-1',
+        notificationId: 5001,
+        sessionId: 'session-1',
+        triggeredAt: 100,
+        type: 'check-in',
+      });
+      launchActionListener?.({
+        intervalId: 'interval-1',
+        notificationId: 5001,
+        sessionId: 'session-1',
+        triggeredAt: 100,
+        type: 'check-in',
+      });
+    });
+
+    expect(mockStopExpiredAlarmPlayback).toHaveBeenCalledTimes(1);
+    expect(useStartupNavigationStore.getState().requests).toEqual([
+      expect.objectContaining({
+        href: '/timer-check-in',
+        id: 'notifications-check-in',
+        targetPathname: '/timer-check-in',
+      }),
+    ]);
+  });
+
   it('queues parent unlock first when a notification launch arrives while locked', async () => {
     renderProvider({
       initialDocument: sharedFixture.document,
@@ -522,32 +588,102 @@ describe('NotificationsProvider', () => {
   });
 
   it('awards a point, clears the expired session, and restarts the shared timer when the last action is resolved', async () => {
-    renderProvider({
-      initialDocument: sharedFixture.document,
-      initialParentUnlocked: true,
-    });
+    try {
+      const runningFixture = createExpiredRunningSharedDocumentFixture();
+      mockLoadPersistedNotificationDocument.mockResolvedValue(
+        createExpiredNotificationDocument(runningFixture.childId),
+      );
 
-    await waitFor(() =>
-      expect(screen.getByTestId('active-session').props.children).toBe(
-        'interval-1',
-      ),
-    );
+      renderProvider({
+        initialDocument: runningFixture.document,
+        initialParentUnlocked: true,
+      });
 
-    await act(async () => {
-      fireEvent.press(screen.getByText('Award child'));
-    });
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'interval-1',
+        ),
+      );
 
-    await waitFor(() =>
-      expect(screen.getByTestId('points').props.children).toBe('1'),
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId('timer-mode').props.children).toBe('running'),
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId('active-session').props.children).toBe('none'),
-    );
-    expect(mockStopExpiredAlarmPlayback).toHaveBeenCalled();
-    expect(mockStartNotificationTimer).toHaveBeenCalled();
+      await act(async () => {
+        fireEvent.press(screen.getByText('Award child'));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('points').props.children).toBe('1'),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('timer-mode').props.children).toBe('running'),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'none',
+        ),
+      );
+      expect(mockStopExpiredAlarmPlayback).toHaveBeenCalled();
+      expect(mockStartNotificationTimer).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('clears dismissed expired notification state before a manual timer restart', async () => {
+    try {
+      const runningFixture = createExpiredRunningSharedDocumentFixture();
+      mockLoadPersistedNotificationDocument.mockResolvedValue(
+        createExpiredNotificationDocument(runningFixture.childId),
+      );
+
+      renderProvider({
+        initialDocument: runningFixture.document,
+        initialParentUnlocked: true,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'interval-1',
+        ),
+      );
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Dismiss flow'));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'none',
+        ),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('timer-mode').props.children).toBe('idle'),
+      );
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Start timer'));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('timer-mode').props.children).toBe('running'),
+      );
+
+      expect(mockStartNotificationTimer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          head: expect.objectContaining({
+            expiredIntervals: [],
+            timerRuntimeState: expect.objectContaining({
+              lastTriggeredAt: null,
+              nextTriggerAt: null,
+              sessionId: null,
+            }),
+            timerState: expect.objectContaining({
+              activeIntervalMs: 900000,
+            }),
+          }),
+        }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('restarts native scheduling when startup hydrates an expired session over a stale running shared timer', async () => {
