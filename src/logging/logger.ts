@@ -19,7 +19,10 @@ export type AppLogger = LoggerInstance<AppLogLevel>;
 export const SUPPORTED_APP_LOG_LEVELS = Object.keys(
   appLogLevels,
 ) as AppLogLevel[];
-
+const appLogLevelLabelWidth = SUPPORTED_APP_LOG_LEVELS.reduce(
+  (maxWidth, logLevel) => Math.max(maxWidth, logLevel.length),
+  0,
+);
 const isDevelopment =
   typeof __DEV__ === 'boolean'
     ? __DEV__
@@ -130,13 +133,23 @@ export function normalizeAppLogLevel(
   return logLevel;
 }
 
+function formatAppLogTimestamp(date: Date) {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+
+  return `${hours}:${minutes}:${seconds}.${milliseconds}`;
+}
+
 function formatAppLogMessage(
   level: string,
   extension: string | null,
   messages: unknown[],
 ) {
-  const timestamp = new Date().toLocaleTimeString();
-  const segments = [`[${level.toUpperCase()}]`, `[${timestamp}]`];
+  const timestamp = formatAppLogTimestamp(new Date());
+  const paddedLevelLabel = level.toUpperCase().padEnd(appLogLevelLabelWidth);
+  const segments = [`[${paddedLevelLabel}]`, `[${timestamp}]`];
 
   if (extension) {
     segments.push(`[${extension}]`);

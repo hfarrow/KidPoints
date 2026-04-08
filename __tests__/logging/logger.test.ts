@@ -52,7 +52,10 @@ describe('logger', () => {
 
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain('settings-warn');
-    expect(String(warnSpy.mock.calls[0]?.[0])).toContain('WARN');
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain('[WARN ]');
+    expect(String(warnSpy.mock.calls[0]?.[0])).toMatch(
+      /\[WARN \] \[[^\]]*\.\d{3}[^\]]*\]/,
+    );
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain('Saved changes');
   });
 
@@ -65,7 +68,7 @@ describe('logger', () => {
 
     expect(logSpy).toHaveBeenCalledTimes(1);
     expect(String(logSpy.mock.calls[0]?.[0])).toContain('settings-temp');
-    expect(String(logSpy.mock.calls[0]?.[0])).toContain('TEMP');
+    expect(String(logSpy.mock.calls[0]?.[0])).toContain('[TEMP ]');
     expect(String(logSpy.mock.calls[0]?.[0])).toContain('Temporary log');
     expect(String(logSpy.mock.calls[0]?.[0])).toContain('\u001b[');
     expect(String(logSpy.mock.calls[0]?.[0]).startsWith(' ')).toBe(true);
