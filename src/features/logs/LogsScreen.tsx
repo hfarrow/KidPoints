@@ -1,12 +1,16 @@
 import { Feather } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
-import { StatusBadge } from '../../components/Skeleton';
+import {
+  ActionPill,
+  ActionPillRow,
+  StatusBadge,
+} from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
 import { useAppLogBuffer } from '../../logging/logBufferStore';
 import {
@@ -16,6 +20,7 @@ import {
 } from '../../logging/logger';
 import { presentListPickerModal } from '../overlays/listPickerModalStore';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { shareBufferedLogsAsync } from './shareLogs';
 
 const ALL_LOG_LEVELS_OPTION = 'all';
 
@@ -37,6 +42,7 @@ export function LogsScreen() {
   const [selectedNamespaceIds, setSelectedNamespaceIds] = useState<string[]>(
     [],
   );
+  const [isSharingLogs, setIsSharingLogs] = useState(false);
 
   const availableNamespaces = useMemo(() => {
     return [
@@ -92,6 +98,44 @@ export function LogsScreen() {
       selectionMode: 'multiple',
       title: 'Filter Namespaces',
     });
+  };
+
+  const handleShareLogs = async () => {
+    if (isSharingLogs) {
+      return;
+    }
+
+    if (filteredEntries.length === 0) {
+      Alert.alert(
+        'No Logs To Share',
+        'There are no visible logs to share right now.',
+      );
+      return;
+    }
+
+    setIsSharingLogs(true);
+
+    try {
+      const result = await shareBufferedLogsAsync({
+        entries: filteredEntries,
+        selectedLogLevel,
+        selectedNamespaceIds: activeSelectedNamespaceIds,
+      });
+
+      if (!result.ok && result.reason === 'sharing-unavailable') {
+        Alert.alert(
+          'Sharing Unavailable',
+          'This device does not currently support sharing exported log files.',
+        );
+      }
+    } catch {
+      Alert.alert(
+        'Unable To Share Logs',
+        'The log export could not be prepared right now.',
+      );
+    } finally {
+      setIsSharingLogs(false);
+    }
   };
 
   return (
@@ -171,6 +215,17 @@ export function LogsScreen() {
               </View>
             </View>
           </LoggedPressable>
+
+          <ActionPillRow>
+            <ActionPill
+              disableLogging
+              label={isSharingLogs ? 'Sharing...' : 'Share Visible Logs'}
+              onPress={() => {
+                void handleShareLogs();
+              }}
+              tone="primary"
+            />
+          </ActionPillRow>
         </View>
       </Tile>
 

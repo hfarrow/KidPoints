@@ -1,6 +1,14 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react-native';
+import { Alert } from 'react-native';
 
 import { LogsScreen } from '../../../src/features/logs/LogsScreen';
+import { shareBufferedLogsAsync } from '../../../src/features/logs/shareLogs';
 import { ListPickerModal } from '../../../src/features/overlays/ListPickerModal';
 import { clearListPickerModal } from '../../../src/features/overlays/listPickerModalStore';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
@@ -39,6 +47,10 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
+jest.mock('../../../src/features/logs/shareLogs', () => ({
+  shareBufferedLogsAsync: jest.fn(),
+}));
+
 describe('LogsScreen', () => {
   beforeEach(() => {
     clearListPickerModal();
@@ -46,10 +58,12 @@ describe('LogsScreen', () => {
     setAppLogLevel('debug');
     mockBack.mockReset();
     mockPathname = '/';
+    jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'info').mockImplementation(() => {});
     jest.spyOn(console, 'warn').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.mocked(shareBufferedLogsAsync).mockResolvedValue({ ok: true });
   });
 
   afterEach(() => {
@@ -170,5 +184,59 @@ describe('LogsScreen', () => {
     expect(screen.getByText('Alpha error log')).toBeTruthy();
     expect(screen.queryByText('Beta warn log')).toBeNull();
     expect(screen.getByText('1 On')).toBeTruthy();
+  });
+
+  it('shares the currently visible logs', async () => {
+    const alphaLogger = createModuleLogger('alpha');
+    const betaLogger = createModuleLogger('beta');
+
+    renderLogsScreen();
+
+    act(() => {
+      alphaLogger.info('Alpha visible log');
+      betaLogger.warn('Beta hidden log');
+    });
+
+    fireEvent.press(screen.getByLabelText('Choose namespace filter'));
+    fireEvent.press(screen.getByLabelText('Select alpha'));
+    fireEvent.press(screen.getByText('Close'));
+    fireEvent.press(screen.getByText('Share Visible Logs'));
+
+    await waitFor(() => {
+      expect(shareBufferedLogsAsync).toHaveBeenCalledWith({
+        entries: [
+          expect.objectContaining({
+            namespace: 'alpha',
+            previewText: 'Alpha visible log',
+          }),
+        ],
+        selectedLogLevel: 'all',
+        selectedNamespaceIds: ['alpha'],
+      });
+    });
+  });
+
+  it('shows an alert when sharing is unavailable', async () => {
+    const alphaLogger = createModuleLogger('alpha');
+
+    jest.mocked(shareBufferedLogsAsync).mockResolvedValue({
+      ok: false,
+      reason: 'sharing-unavailable',
+    });
+
+    renderLogsScreen();
+
+    act(() => {
+      alphaLogger.info('Alpha visible log');
+    });
+
+    fireEvent.press(screen.getByText('Share Visible Logs'));
+
+    await waitFor(() => {
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Sharing Unavailable',
+        'This device does not currently support sharing exported log files.',
+      );
+    });
   });
 });

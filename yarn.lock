@@ -5612,6 +5612,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-sharing@npm:~14.0.8":
+  version: 14.0.8
+  resolution: "expo-sharing@npm:14.0.8"
+  peerDependencies:
+    expo: "*"
+  checksum: 10c0/64c6f42272b7e762988dbb92af6eabb71bd8229366cdc675cda78513fea39c46c9a46bb250ffaf5587b8361bd824a89820e46771cb5f97fc16bbfc87e3f00518
+  languageName: node
+  linkType: hard
+
 "expo-status-bar@npm:~3.0.9":
   version: 3.0.9
   resolution: "expo-status-bar@npm:3.0.9"
@@ -7588,8 +7597,10 @@ __metadata:
     eslint-config-expo: "npm:~10.0.0"
     expo: "npm:~54.0.33"
     expo-constants: "npm:~18.0.13"
+    expo-file-system: "npm:~19.0.21"
     expo-linking: "npm:~8.0.11"
     expo-router: "npm:~6.0.23"
+    expo-sharing: "npm:~14.0.8"
     expo-status-bar: "npm:~3.0.9"
     jest: "npm:~29.7.0"
     jest-expo: "npm:~54.0.17"
