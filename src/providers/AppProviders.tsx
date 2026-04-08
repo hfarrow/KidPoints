@@ -1,5 +1,9 @@
 import { type PropsWithChildren, useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
+import {
+  initialWindowMetrics,
+  SafeAreaProvider,
+} from 'react-native-safe-area-context';
 import { ParentSessionProvider } from '../features/parent/parentSessionContext';
 import { AppThemeProvider } from '../features/theme/themeContext';
 import {
@@ -80,13 +84,15 @@ export function AppProviders({ children }: PropsWithChildren) {
   }, []);
 
   return (
-    <SharedStoreProvider>
-      <ParentSessionProvider>
-        <AppThemeProvider>
-          <AppLogLevelObserver />
-          {children}
-        </AppThemeProvider>
-      </ParentSessionProvider>
-    </SharedStoreProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <SharedStoreProvider>
+        <ParentSessionProvider>
+          <AppThemeProvider>
+            <AppLogLevelObserver />
+            {children}
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>
+    </SafeAreaProvider>
   );
 }

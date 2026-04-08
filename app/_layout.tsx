@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { TextInputModal } from '../src/features/overlays/TextInputModal';
 import { ParentPinSetupGate } from '../src/features/parent/ParentPinSetupGate';
 import { useAppTheme } from '../src/features/theme/themeContext';
 import { RootNavigationLifecycleLogger } from '../src/navigation/RootNavigationLifecycleLogger';
@@ -21,11 +22,8 @@ function RootNavigator() {
           name="parent-unlock"
           options={{ gestureEnabled: false, presentation: 'transparentModal' }}
         />
-        <Stack.Screen
-          name="text-input-modal"
-          options={{ presentation: 'transparentModal' }}
-        />
       </Stack>
+      <TextInputModal />
     </>
   );
 }

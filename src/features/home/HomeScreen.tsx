@@ -58,7 +58,6 @@ export function HomeScreen() {
       onSubmit: (nextValue) => addChild(nextValue),
       title: 'Add Child',
     });
-    router.push('/text-input-modal');
   };
 
   const openEditPointTotalModal = (
@@ -85,7 +84,6 @@ export function HomeScreen() {
       placeholder: '0',
       title: 'Edit Point Total',
     });
-    router.push('/text-input-modal');
   };
 
   const openAlarmScreen = () => {

@@ -1,10 +1,11 @@
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { ActionPill } from '../../components/Skeleton';
 import { createModuleLogger } from '../../logging/logger';
+import { isBlockingRouteModalPath } from '../../navigation/modalPaths';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 import {
@@ -16,6 +17,7 @@ const log = createModuleLogger('text-input-modal');
 
 export function TextInputModal() {
   const router = useRouter();
+  const pathname = usePathname();
   const styles = useThemedStyles(createStyles);
   const { tokens } = useAppTheme();
   const { isParentUnlocked } = useParentSession();
@@ -45,10 +47,15 @@ export function TextInputModal() {
     };
   }, []);
 
+  const isVisible = !!request && !isBlockingRouteModalPath(pathname);
+
+  const handleClose = () => {
+    clearRequest();
+  };
+
   const handleSave = () => {
     if (!request) {
       clearRequest();
-      router.back();
       return;
     }
 
@@ -65,7 +72,6 @@ export function TextInputModal() {
     }
 
     clearRequest();
-    router.back();
   };
 
   if (!request) {
@@ -73,57 +79,62 @@ export function TextInputModal() {
   }
 
   return (
-    <View style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}>
-      <View style={styles.card}>
-        <Text style={styles.title}>{request.title}</Text>
-        <Text style={styles.body}>{request.description}</Text>
-        {isParentUnlocked ? null : (
-          <Text style={styles.lockedCopy}>
-            Unlock Parent Mode to save changes here.
-          </Text>
-        )}
-        <TextInput
-          accessibilityLabel={request.inputAccessibilityLabel}
-          autoFocus
-          keyboardType={request.keyboardType ?? 'default'}
-          onChangeText={(nextValue) => {
-            setValue(nextValue);
-            if (errorMessage) {
-              setErrorMessage('');
-            }
-          }}
-          placeholder={request.placeholder ?? ''}
-          placeholderTextColor={tokens.textMuted}
-          style={styles.input}
-          value={value}
-        />
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-        <View style={styles.footer}>
-          <ActionPill
-            label="Cancel"
-            onPress={() => {
-              clearRequest();
-              router.back();
-            }}
-          />
-          {isParentUnlocked ? (
-            <ActionPill
-              label={request.confirmLabel}
-              onPress={handleSave}
-              tone="primary"
-            />
-          ) : (
-            <LoggedPressable
-              logLabel="Unlock Parent Mode"
-              onPress={() => router.push('/parent-unlock')}
-              style={styles.primaryAction}
-            >
-              <Text style={styles.primaryActionText}>Unlock Parent Mode</Text>
-            </LoggedPressable>
+    <Modal
+      animationType="fade"
+      onRequestClose={handleClose}
+      transparent
+      visible={isVisible}
+    >
+      <View
+        style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}
+      >
+        <View style={styles.card}>
+          <Text style={styles.title}>{request.title}</Text>
+          <Text style={styles.body}>{request.description}</Text>
+          {isParentUnlocked ? null : (
+            <Text style={styles.lockedCopy}>
+              Unlock Parent Mode to save changes here.
+            </Text>
           )}
+          <TextInput
+            accessibilityLabel={request.inputAccessibilityLabel}
+            autoFocus
+            keyboardType={request.keyboardType ?? 'default'}
+            onChangeText={(nextValue) => {
+              setValue(nextValue);
+              if (errorMessage) {
+                setErrorMessage('');
+              }
+            }}
+            placeholder={request.placeholder ?? ''}
+            placeholderTextColor={tokens.textMuted}
+            style={styles.input}
+            value={value}
+          />
+          {errorMessage ? (
+            <Text style={styles.error}>{errorMessage}</Text>
+          ) : null}
+          <View style={styles.footer}>
+            <ActionPill label="Cancel" onPress={handleClose} />
+            {isParentUnlocked ? (
+              <ActionPill
+                label={request.confirmLabel}
+                onPress={handleSave}
+                tone="primary"
+              />
+            ) : (
+              <LoggedPressable
+                logLabel="Unlock Parent Mode"
+                onPress={() => router.push('/parent-unlock')}
+                style={styles.primaryAction}
+              >
+                <Text style={styles.primaryActionText}>Unlock Parent Mode</Text>
+              </LoggedPressable>
+            )}
+          </View>
         </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 

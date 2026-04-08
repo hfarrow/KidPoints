@@ -3,17 +3,18 @@ import { TextInputModal } from '../../../src/features/overlays/TextInputModal';
 import {
   clearTextInputModal,
   presentTextInputModal,
+  useTextInputModalStore,
 } from '../../../src/features/overlays/textInputModalStore';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
-const mockBack = jest.fn();
 const mockPush = jest.fn();
+let mockPathname = '/';
 
 jest.mock('expo-router', () => ({
+  usePathname: () => mockPathname,
   useRouter: () => ({
-    back: mockBack,
     push: mockPush,
   }),
 }));
@@ -21,8 +22,8 @@ jest.mock('expo-router', () => ({
 describe('TextInputModal', () => {
   beforeEach(() => {
     clearTextInputModal();
-    mockBack.mockReset();
     mockPush.mockReset();
+    mockPathname = '/';
   });
 
   it('renders caller-provided copy and submits the current text', () => {
@@ -58,6 +59,6 @@ describe('TextInputModal', () => {
     fireEvent.press(screen.getByText('Save Total'));
 
     expect(onSubmit).toHaveBeenCalledWith('12');
-    expect(mockBack).toHaveBeenCalled();
+    expect(useTextInputModalStore.getState().request).toBeNull();
   });
 });

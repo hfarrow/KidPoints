@@ -2,9 +2,9 @@ import { usePathname, useSegments } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 import { createModuleLogger } from '../logging/logger';
+import { isBlockingRouteModalPath } from './modalPaths';
 
 const log = createModuleLogger('root-layout');
-const MODAL_PATHS = new Set(['/parent-unlock', '/text-input-modal']);
 
 export function RootNavigationLifecycleLogger() {
   const pathname = usePathname();
@@ -46,7 +46,7 @@ export function RootNavigationLifecycleLogger() {
 
     if (
       previousPath &&
-      MODAL_PATHS.has(previousPath) &&
+      isBlockingRouteModalPath(previousPath) &&
       previousPath !== currentPath
     ) {
       log.info('Modal closed', {
@@ -55,7 +55,7 @@ export function RootNavigationLifecycleLogger() {
       });
     }
 
-    if (MODAL_PATHS.has(currentPath) && previousPath !== currentPath) {
+    if (isBlockingRouteModalPath(currentPath) && previousPath !== currentPath) {
       log.info('Modal opened', {
         from: previousPath,
         pathname: currentPath,

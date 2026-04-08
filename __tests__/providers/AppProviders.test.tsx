@@ -1,4 +1,5 @@
 import { act, render } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
 import { AppState, Text } from 'react-native';
 
 import { AppProviders } from '../../src/providers/AppProviders';
@@ -28,6 +29,20 @@ jest.mock('../../src/logging/logger', () => {
 const { __mockLogger: mockLogger, setAppLogLevel } = jest.requireMock(
   '../../src/logging/logger',
 );
+
+jest.mock('react-native-safe-area-context', () => {
+  const { View } = jest.requireActual('react-native');
+
+  return {
+    SafeAreaProvider: ({ children }: { children: ReactNode }) => (
+      <View>{children}</View>
+    ),
+    initialWindowMetrics: {
+      frame: { height: 800, width: 400, x: 0, y: 0 },
+      insets: { bottom: 0, left: 0, right: 0, top: 0 },
+    },
+  };
+});
 
 describe('AppProviders', () => {
   beforeEach(() => {

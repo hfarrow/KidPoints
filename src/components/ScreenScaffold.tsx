@@ -1,6 +1,6 @@
 import type { PropsWithChildren, ReactNode, RefObject } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useParentSession } from '../features/parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
@@ -18,39 +18,57 @@ export function ScreenScaffold({
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked } = useParentSession();
   const { getScreenSurface } = useAppTheme();
+  const insets = useSafeAreaInsets();
 
   return (
-    <SafeAreaView
-      edges={['top']}
+    <View
       style={[
-        styles.safeArea,
+        styles.container,
         { backgroundColor: getScreenSurface(isParentUnlocked) },
       ]}
     >
-      <ScrollView contentContainerStyle={styles.content} ref={scrollViewRef}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + 8,
+          },
+        ]}
+        ref={scrollViewRef}
+      >
         {children}
       </ScrollView>
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
-    </SafeAreaView>
+      {footer ? (
+        <View
+          style={[
+            styles.footer,
+            {
+              paddingBottom: insets.bottom + 10,
+            },
+          ]}
+        >
+          {footer}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
-    safeArea: {
+    container: {
       flex: 1,
     },
     content: {
       gap: 10,
       paddingBottom: 16,
       paddingHorizontal: 12,
-      paddingTop: 8,
     },
     footer: {
       backgroundColor: tokens.tabBarBackground,
       borderTopColor: tokens.border,
       borderTopWidth: 1,
       paddingHorizontal: 14,
-      paddingVertical: 10,
+      paddingTop: 10,
     },
   });

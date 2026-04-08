@@ -150,7 +150,7 @@ describe('HomeScreen', () => {
     );
 
     fireEvent.press(screen.getByLabelText('Edit Ava points'));
-    expect(mockPush).toHaveBeenCalledWith('/text-input-modal');
+    expect(mockPush).not.toHaveBeenCalledWith('/text-input-modal');
     expect(useTextInputModalStore.getState().request).toMatchObject({
       confirmLabel: 'Save Total',
       description: 'Set the exact point total for Ava.',

@@ -21,6 +21,7 @@ The main examples live in:
 - `src/navigation/StartupNavigationCoordinator.tsx`
 - `src/navigation/startupNavigationStore.ts`
 - `src/features/overlays/TextInputModal.tsx`
+- `src/features/overlays/textInputModalStore.ts`
 - `src/features/parent/ParentUnlockModal.tsx`
 
 ## Route guidance
@@ -36,9 +37,10 @@ The main examples live in:
 
 ## Modal guidance
 
-- Prefer route-backed modals for full-screen or app-level overlays.
+- Prefer route-backed modals for guarded or navigation-significant overlays.
+- Prefer a local modal host for transient input, picker, or confirm overlays that do not need their own route history entry.
 - Keep modal state and modal navigation responsibilities separated.
-- Use store state for modal request data when the route is just a shell around a shared modal experience.
+- Use store state for modal request data when a shared modal experience is opened from multiple screens.
 - Close or redirect modals intentionally rather than relying on incidental back behavior.
 
 ## Guarded flow guidance

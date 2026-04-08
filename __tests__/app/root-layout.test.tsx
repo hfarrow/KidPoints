@@ -11,6 +11,20 @@ jest.mock('expo-status-bar', () => ({
   StatusBar: () => null,
 }));
 
+jest.mock('react-native-safe-area-context', () => {
+  const { View } = jest.requireActual('react-native');
+
+  return {
+    SafeAreaProvider: ({ children }: { children: ReactNode }) => (
+      <View>{children}</View>
+    ),
+    initialWindowMetrics: {
+      frame: { height: 800, width: 400, x: 0, y: 0 },
+      insets: { bottom: 0, left: 0, right: 0, top: 0 },
+    },
+  };
+});
+
 jest.mock('expo-router', () => {
   const mockReactNative = jest.requireActual('react-native');
   const { Text, View } = mockReactNative;
@@ -51,6 +65,6 @@ describe('RootLayout', () => {
     expect(screen.getByText('list-browser:default')).toBeTruthy();
     expect(screen.getByText('transactions:default')).toBeTruthy();
     expect(screen.getByText('parent-unlock:transparentModal')).toBeTruthy();
-    expect(screen.getByText('text-input-modal:transparentModal')).toBeTruthy();
+    expect(screen.queryByText('text-input-modal:transparentModal')).toBeNull();
   });
 });
