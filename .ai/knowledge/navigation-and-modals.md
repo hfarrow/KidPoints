@@ -15,6 +15,9 @@ The main examples live in:
 
 - `app/_layout.tsx`
 - `app/(tabs)/_layout.tsx`
+- `app/settings.tsx`
+- `app/list-browser.tsx`
+- `app/transactions.tsx`
 - `src/navigation/StartupNavigationCoordinator.tsx`
 - `src/navigation/startupNavigationStore.ts`
 - `src/features/overlays/TextInputModal.tsx`
@@ -22,6 +25,10 @@ The main examples live in:
 
 ## Route guidance
 
+- Keep the tab navigator limited to persistent top-level destinations such as Home, Alarm, and Shop.
+- Prefer root stack routes for detail or support screens such as Settings, archived item browsers, and transaction history when back navigation should return to the opener.
+- Do not hide support screens inside the tab navigator just to preserve the tab bar. That changes back behavior from stack history to tab history.
+- If a non-tab screen must keep the tab bar visible, use a stack nested inside the active tab or a shared-route tab-group design intentionally rather than hidden tab routes.
 - Register modal-style routes in the root stack with explicit `presentation` options.
 - Use route-level logging for major navigation events such as initial route entry, transitions, modal open, and modal close.
 - Keep pathnames and segment paths in navigation logs so user flow can be reconstructed later.
@@ -62,3 +69,4 @@ The main examples live in:
 ## Practical rule for this repo
 
 - Keep simple screen navigation in handlers, but centralize startup, guarded, and modal orchestration so routes, logs, and behavior stay consistent.
+- Treat tabs as durable app sections and stacks as the place for push/pop history.

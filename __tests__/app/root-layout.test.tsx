@@ -43,10 +43,13 @@ jest.mock('expo-router', () => {
 });
 
 describe('RootLayout', () => {
-  it('keeps only the lightweight prompt routes in the root stack', () => {
+  it('registers the tab shell, stack detail screens, and route-backed modals', () => {
     render(<RootLayout />);
 
     expect(screen.getByText('(tabs):default')).toBeTruthy();
+    expect(screen.getByText('settings:default')).toBeTruthy();
+    expect(screen.getByText('list-browser:default')).toBeTruthy();
+    expect(screen.getByText('transactions:default')).toBeTruthy();
     expect(screen.getByText('parent-unlock:transparentModal')).toBeTruthy();
     expect(screen.getByText('text-input-modal:transparentModal')).toBeTruthy();
   });

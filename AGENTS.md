@@ -17,6 +17,7 @@ When generating React or React Native code for this repo:
 - Follow the React rules summarized in `.ai/knowledge/rules-of-react.md`.
 - Follow the store guidance in `.ai/knowledge/state-and-stores.md` for Zustand state, providers, persistence, and store logging.
 - Follow the navigation guidance in `.ai/knowledge/navigation-and-modals.md` for route transitions, startup redirects, and modal flows.
+- Keep the tab navigator focused on persistent top-level destinations. Prefer stack routes for detail or support screens unless a tab-local stack/shared-route design is intentionally chosen to keep the tab bar visible.
 - Follow the theming guidance in `.ai/knowledge/theming.md` for theme-aware UI.
 - Follow the UI composition guidance in `.ai/knowledge/ui-composition.md` for screens, tiles, action rows, badges, and logged interactions.
 - Follow the logging guidance in `.ai/knowledge/logging.md` for app and module logging.

@@ -89,24 +89,6 @@ export default function TabsLayout() {
           tabBarLabel: 'Shop',
         }}
       />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="list-browser"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="transactions"
-        options={{
-          href: null,
-        }}
-      />
     </Tabs>
   );
 }

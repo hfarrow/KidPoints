@@ -14,6 +14,9 @@ function RootNavigator() {
       <StatusBar style={statusBarStyle} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="settings" />
+        <Stack.Screen name="list-browser" />
+        <Stack.Screen name="transactions" />
         <Stack.Screen
           name="parent-unlock"
           options={{ gestureEnabled: false, presentation: 'transparentModal' }}
