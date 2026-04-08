@@ -1,6 +1,7 @@
 import {
   appLogger,
   createModuleLogger,
+  createStructuredLog,
   getAppLogLevel,
   getDefaultAppLogLevel,
   setAppLogLevel,
@@ -55,5 +56,22 @@ describe('logger', () => {
     setAppLogLevel('error');
 
     expect(getAppLogLevel()).toBe('error');
+  });
+
+  it('creates a fixed-message logger that forwards details', () => {
+    const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+    const settingsLogger = createModuleLogger('settings-structured');
+    const logEvent = createStructuredLog(
+      settingsLogger,
+      'info',
+      'Settings event',
+    );
+
+    logEvent({ action: 'save' });
+
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    expect(String(infoSpy.mock.calls[0]?.[0])).toContain('settings-structured');
+    expect(String(infoSpy.mock.calls[0]?.[0])).toContain('Settings event');
+    expect(String(infoSpy.mock.calls[0]?.[0])).toContain('save');
   });
 });

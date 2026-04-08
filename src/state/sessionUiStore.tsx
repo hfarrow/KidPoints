@@ -14,10 +14,30 @@ import {
 } from 'zustand/middleware';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
-import { createModuleLogger } from '../logging/logger';
+import { createModuleLogger, createStructuredLog } from '../logging/logger';
 
 const SESSION_UI_STORAGE_KEY = 'kidpoints.session-ui.v1';
 const log = createModuleLogger('session-ui-store');
+const logSessionUiMutation = createStructuredLog(
+  log,
+  'debug',
+  'Session UI mutation committed',
+);
+const logRejectedSessionUiMutation = createStructuredLog(
+  log,
+  'error',
+  'Session UI mutation rejected',
+);
+const logSkippedInvalidSessionUiRehydrate = createStructuredLog(
+  log,
+  'debug',
+  'Session UI rehydrate skipped invalid persisted state',
+);
+const logSessionUiRehydrated = createStructuredLog(
+  log,
+  'info',
+  'Session UI rehydrated persisted state',
+);
 
 type SessionUiState = {
   attemptUnlock: (pin: string, expectedPin: string | null) => boolean;
@@ -49,13 +69,13 @@ export function createSessionUiStore({
           const didUnlock = expectedPin != null && pin === expectedPin;
 
           if (didUnlock) {
-            log.debug('Session UI mutation committed', {
+            logSessionUiMutation({
               action: 'attemptUnlock',
               isParentUnlocked: true,
             });
             set({ isParentUnlocked: true });
           } else {
-            log.error('Session UI mutation rejected', {
+            logRejectedSessionUiMutation({
               action: 'attemptUnlock',
               hasExpectedPin: Boolean(expectedPin),
             });
@@ -65,14 +85,14 @@ export function createSessionUiStore({
         },
         isParentUnlocked: initialParentUnlocked ?? false,
         lockParentMode: () => {
-          log.debug('Session UI mutation committed', {
+          logSessionUiMutation({
             action: 'lockParentMode',
             isParentUnlocked: false,
           });
           set({ isParentUnlocked: false });
         },
         unlockParentMode: () => {
-          log.debug('Session UI mutation committed', {
+          logSessionUiMutation({
             action: 'unlockParentMode',
             isParentUnlocked: true,
           });
@@ -84,11 +104,11 @@ export function createSessionUiStore({
           const nextState = persistedState as Partial<SessionUiState> | null;
 
           if (typeof nextState?.isParentUnlocked !== 'boolean') {
-            log.debug('Session UI rehydrate skipped invalid persisted state');
+            logSkippedInvalidSessionUiRehydrate();
             return currentState;
           }
 
-          log.info('Session UI rehydrated persisted state', {
+          logSessionUiRehydrated({
             isParentUnlocked: nextState.isParentUnlocked,
           });
 

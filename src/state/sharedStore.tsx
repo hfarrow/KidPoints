@@ -15,7 +15,7 @@ import {
 } from 'zustand/middleware';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
-import { createModuleLogger } from '../logging/logger';
+import { createModuleLogger, createStructuredLog } from '../logging/logger';
 import type {
   ChildSnapshot,
   HomeTimerSummary,
@@ -44,6 +44,31 @@ type SharedStore = StoreApi<SharedStoreState>;
 
 const SHARED_STORAGE_KEY = 'kidpoints.shared-document.v2';
 const log = createModuleLogger('shared-store');
+const logCommittedSharedStoreMutation = createStructuredLog(
+  log,
+  'debug',
+  'Shared store mutation committed',
+);
+const logRejectedSharedStoreMutationMessage = createStructuredLog(
+  log,
+  'error',
+  'Shared store mutation rejected',
+);
+const logSharedTransactionCommitted = createStructuredLog(
+  log,
+  'info',
+  'Shared transaction committed',
+);
+const logSkippedInvalidSharedStoreRehydrate = createStructuredLog(
+  log,
+  'debug',
+  'Shared store rehydrate skipped invalid persisted state',
+);
+const logSharedStoreRehydrated = createStructuredLog(
+  log,
+  'info',
+  'Shared store rehydrated persisted document',
+);
 
 const DEFAULT_HOME_TIMER_SUMMARY: HomeTimerSummary = {
   intervalLabel: '15 minute cadence',
@@ -62,7 +87,7 @@ function logSharedStoreMutation(
   action: string,
   details: Record<string, unknown> = {},
 ) {
-  log.debug('Shared store mutation committed', {
+  logCommittedSharedStoreMutation({
     action,
     ...details,
   });
@@ -73,7 +98,7 @@ function logRejectedSharedStoreMutation(
   error: string,
   details: Record<string, unknown> = {},
 ) {
-  log.error('Shared store mutation rejected', {
+  logRejectedSharedStoreMutationMessage({
     action,
     error,
     ...details,
@@ -84,7 +109,7 @@ function logSharedTransaction(
   transaction: TransactionRecord,
   details: Record<string, unknown> = {},
 ) {
-  log.info('Shared transaction committed', {
+  logSharedTransactionCommitted({
     affectedChildIds: transaction.affectedChildIds,
     childId: transaction.childId,
     kind: transaction.kind,
@@ -1347,11 +1372,11 @@ export function createSharedStore({
           const nextState = persistedState as Partial<SharedStoreState> | null;
 
           if (!isSharedDocument(nextState?.document)) {
-            log.debug('Shared store rehydrate skipped invalid persisted state');
+            logSkippedInvalidSharedStoreRehydrate();
             return currentState;
           }
 
-          log.info('Shared store rehydrated persisted document', {
+          logSharedStoreRehydrated({
             currentHeadTransactionId:
               nextState.document.currentHeadTransactionId,
             eventCount: nextState.document.events.length,

@@ -12,6 +12,7 @@ const appLogLevels = {
 } as const;
 
 export type AppLogLevel = keyof typeof appLogLevels;
+export type AppLogDetails = Record<string, unknown>;
 
 export type AppLogger = LoggerInstance<AppLogLevel>;
 export const APP_LOG_LEVELS = Object.keys(appLogLevels) as AppLogLevel[];
@@ -43,6 +44,16 @@ export const appLogger = rootLogger as AppLogger;
 
 export function createModuleLogger(namespace: string): AppLogger {
   return appLogger.extend(namespace) as AppLogger;
+}
+
+export function createStructuredLog(
+  loggerInstance: AppLogger,
+  level: AppLogLevel,
+  message: string,
+) {
+  return (details: AppLogDetails = {}) => {
+    loggerInstance[level](message, details);
+  };
 }
 
 export function getDefaultAppLogLevel(): AppLogLevel {

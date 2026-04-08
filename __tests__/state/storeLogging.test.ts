@@ -30,6 +30,11 @@ jest.mock('../../src/logging/logger', () => {
     __mockLogger: mockLogger,
     appLogger: mockLogger,
     createModuleLogger: jest.fn(() => mockLogger),
+    createStructuredLog: jest.fn((loggerInstance, level, message) => {
+      return (details = {}) => {
+        loggerInstance[level](message, details);
+      };
+    }),
     getDefaultAppLogLevel: jest.fn(() => 'debug'),
   };
 });

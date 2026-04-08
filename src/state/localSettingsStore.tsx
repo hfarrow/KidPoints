@@ -17,6 +17,7 @@ import type { ThemeMode } from '../features/theme/theme';
 import {
   type AppLogLevel,
   createModuleLogger,
+  createStructuredLog,
   getDefaultAppLogLevel,
 } from '../logging/logger';
 
@@ -35,6 +36,21 @@ type LocalSettingsStore = StoreApi<LocalSettingsState>;
 
 const LOCAL_SETTINGS_STORAGE_KEY = 'kidpoints.local-settings.v1';
 const log = createModuleLogger('local-settings-store');
+const logLocalSettingsMutation = createStructuredLog(
+  log,
+  'debug',
+  'Local settings mutation committed',
+);
+const logLocalSettingsRehydrateFailed = createStructuredLog(
+  log,
+  'error',
+  'Local settings rehydrate failed',
+);
+const logLocalSettingsRehydrated = createStructuredLog(
+  log,
+  'info',
+  'Local settings rehydrated persisted state',
+);
 
 const LocalSettingsStoreContext = createContext<LocalSettingsStore | null>(
   null,
@@ -68,14 +84,14 @@ export function createLocalSettingsStore({
         },
         parentPin: initialParentPin,
         setLogLevel: (logLevel) => {
-          log.debug('Local settings mutation committed', {
+          logLocalSettingsMutation({
             action: 'setLogLevel',
             logLevel,
           });
           set({ logLevel });
         },
         setParentPin: (parentPin) => {
-          log.debug('Local settings mutation committed', {
+          logLocalSettingsMutation({
             action: 'setParentPin',
             hasParentPin: true,
             pinLength: parentPin.length,
@@ -83,7 +99,7 @@ export function createLocalSettingsStore({
           set({ parentPin });
         },
         setThemeMode: (themeMode) => {
-          log.debug('Local settings mutation committed', {
+          logLocalSettingsMutation({
             action: 'setThemeMode',
             themeMode,
           });
@@ -95,11 +111,11 @@ export function createLocalSettingsStore({
         name: LOCAL_SETTINGS_STORAGE_KEY,
         onRehydrateStorage: () => (state, error) => {
           if (error) {
-            log.error('Local settings rehydrate failed', {
+            logLocalSettingsRehydrateFailed({
               error: error instanceof Error ? error.message : String(error),
             });
           } else {
-            log.info('Local settings rehydrated persisted state', {
+            logLocalSettingsRehydrated({
               hasParentPin: Boolean(state?.parentPin),
               logLevel: state?.logLevel ?? initialLogLevel,
               themeMode: state?.themeMode ?? initialThemeMode,
