@@ -4,7 +4,10 @@ import {
   requireOptionalNativeModule,
 } from 'expo-modules-core';
 import { PermissionsAndroid, Platform } from 'react-native';
-import { createModuleLogger } from '../../logging/logger';
+import {
+  createModuleLogger,
+  type ForwardedNativeAppLogLevel,
+} from '../../logging/logger';
 import {
   createDefaultNotificationRuntimeStatus,
   type NotificationDocument,
@@ -23,12 +26,31 @@ type NotificationLaunchActionEvent = {
   actionJson: string;
 };
 
+type NotificationNativeLogEvent = {
+  contextJson?: string | null;
+  level: ForwardedNativeAppLogLevel;
+  message: string;
+  sequence: number;
+  tag: string;
+  timestampMs: number;
+};
+
+export type NotificationNativeLogEntry = {
+  contextJson: string | null;
+  level: ForwardedNativeAppLogLevel;
+  message: string;
+  sequence: number;
+  tag: string;
+  timestampMs: number;
+};
+
 const log = createModuleLogger('notifications-bridge');
 
 type NotificationsNativeModule = NativeModule<{
   KidPointsNotificationsLaunchAction: (
     event: NotificationLaunchActionEvent,
   ) => void;
+  KidPointsNotificationsLog: (event: NotificationNativeLogEvent) => void;
   KidPointsNotificationsStateChanged: (
     event: NotificationStateChangedEvent,
   ) => void;
@@ -36,14 +58,17 @@ type NotificationsNativeModule = NativeModule<{
   addListener: (
     eventName:
       | 'KidPointsNotificationsLaunchAction'
+      | 'KidPointsNotificationsLog'
       | 'KidPointsNotificationsStateChanged',
     listener:
       | ((event: NotificationLaunchActionEvent) => void)
+      | ((event: NotificationNativeLogEvent) => void)
       | ((event: NotificationStateChangedEvent) => void),
   ) => EventSubscription;
   canScheduleExactAlarms: () => Promise<boolean>;
   consumePendingLaunchAction: () => Promise<string | null>;
   getDocument: () => Promise<string | null>;
+  getBufferedLogs: (afterSequence: number) => string;
   getPendingLaunchAction: () => Promise<string | null>;
   getRuntimeStatus: () => Promise<string>;
   openExactAlarmSettings: () => Promise<void>;
@@ -116,6 +141,17 @@ export async function saveNotificationDocument(document: NotificationDocument) {
     notificationsEnabled: document.head.timerConfig.notificationsEnabled,
   });
   return nativeModuleRef.saveDocument(JSON.stringify(document));
+}
+
+export function getBufferedNotificationLogs(afterSequence = -1) {
+  if (!nativeModuleRef) {
+    logModuleUnavailable('getBufferedNotificationLogs');
+    return [] as NotificationNativeLogEntry[];
+  }
+
+  return parseBufferedNotificationLogs(
+    nativeModuleRef.getBufferedLogs(afterSequence),
+  );
 }
 
 export async function syncNotificationDocument(document: NotificationDocument) {
@@ -300,6 +336,30 @@ export function addNotificationStateChangeListener(
   );
 }
 
+export function addNotificationLogListener(
+  onLogEntry: (entry: NotificationNativeLogEntry) => void,
+): EventSubscription | null {
+  if (!nativeModuleRef) {
+    return null;
+  }
+
+  return nativeModuleRef.addListener(
+    'KidPointsNotificationsLog',
+    (
+      event:
+        | NotificationLaunchActionEvent
+        | NotificationNativeLogEvent
+        | NotificationStateChangedEvent,
+    ) => {
+      const logEntry = parseNativeLogEntry(event as NotificationNativeLogEvent);
+
+      if (logEntry) {
+        onLogEntry(logEntry);
+      }
+    },
+  );
+}
+
 export function addNotificationLaunchActionListener(
   onLaunchAction: (action: PendingNotificationLaunchAction) => void,
 ): EventSubscription | null {
@@ -426,4 +486,70 @@ function parsePendingNotificationLaunchAction(
     triggeredAt: parsedValue.triggeredAt ?? null,
     type: 'check-in',
   };
+}
+
+function parseBufferedNotificationLogs(
+  logEntriesJson: string,
+): NotificationNativeLogEntry[] {
+  let parsedValue: unknown;
+
+  try {
+    parsedValue = JSON.parse(logEntriesJson);
+  } catch {
+    log.warn('Failed to parse buffered notification native logs payload');
+    return [];
+  }
+
+  if (!Array.isArray(parsedValue)) {
+    log.warn('Ignored buffered notification native logs payload', {
+      reason: 'not-an-array',
+    });
+    return [];
+  }
+
+  return parsedValue
+    .map((entry) => parseNativeLogEntry(entry))
+    .filter((entry): entry is NotificationNativeLogEntry => entry != null);
+}
+
+function parseNativeLogEntry(
+  value: unknown,
+): NotificationNativeLogEntry | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const entry = value as Partial<NotificationNativeLogEntry>;
+
+  if (
+    typeof entry.message !== 'string' ||
+    typeof entry.sequence !== 'number' ||
+    typeof entry.tag !== 'string' ||
+    typeof entry.timestampMs !== 'number'
+  ) {
+    return null;
+  }
+
+  return {
+    contextJson:
+      typeof entry.contextJson === 'string' ? entry.contextJson : null,
+    level: normalizeNotificationNativeLogLevel(entry.level),
+    message: entry.message,
+    sequence: entry.sequence,
+    tag: entry.tag,
+    timestampMs: entry.timestampMs,
+  };
+}
+
+function normalizeNotificationNativeLogLevel(
+  level: unknown,
+): ForwardedNativeAppLogLevel {
+  switch (level) {
+    case 'error':
+    case 'info':
+    case 'warn':
+      return level;
+    default:
+      return 'debug';
+  }
 }

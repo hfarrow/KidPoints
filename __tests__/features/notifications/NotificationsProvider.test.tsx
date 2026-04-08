@@ -29,7 +29,27 @@ import {
 } from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
+jest.mock('../../../src/logging/logger', () => {
+  const actualLoggerModule = jest.requireActual('../../../src/logging/logger');
+
+  return {
+    ...actualLoggerModule,
+    createModuleLogger: jest.fn((namespace: string) => ({
+      debug: jest.fn(),
+      error: jest.fn(),
+      info: jest.fn(),
+      namespace,
+      temp: jest.fn(),
+      warn: jest.fn(),
+    })),
+    logForwardedNativeEntry: jest.fn(),
+  };
+});
+
 jest.mock('../../../src/features/notifications/nativeNotifications', () => ({
+  addNotificationLogListener: jest.fn(() => ({
+    remove: jest.fn(),
+  })),
   addNotificationLaunchActionListener: jest.fn(() => ({
     remove: jest.fn(),
   })),
@@ -37,6 +57,7 @@ jest.mock('../../../src/features/notifications/nativeNotifications', () => ({
     remove: jest.fn(),
   })),
   consumePendingNotificationLaunchAction: jest.fn(),
+  getBufferedNotificationLogs: jest.fn(() => []),
   getNotificationRuntimeStatus: jest.fn(),
   isNotificationsModuleAvailable: jest.fn(() => true),
   loadPersistedNotificationDocument: jest.fn(),
@@ -61,10 +82,12 @@ jest.mock('../../../src/features/notifications/nativeNotifications', () => ({
 }));
 
 const {
+  addNotificationLogListener: mockAddNotificationLogListener,
   addNotificationLaunchActionListener: mockAddNotificationLaunchActionListener,
   addNotificationStateChangeListener: mockAddNotificationStateChangeListener,
   consumePendingNotificationLaunchAction:
     mockConsumePendingNotificationLaunchAction,
+  getBufferedNotificationLogs: mockGetBufferedNotificationLogs,
   getNotificationRuntimeStatus: mockGetNotificationRuntimeStatus,
   loadPersistedNotificationDocument: mockLoadPersistedNotificationDocument,
   requestNotificationPermission: mockRequestNotificationPermission,
@@ -73,12 +96,14 @@ const {
 } = jest.requireMock(
   '../../../src/features/notifications/nativeNotifications',
 ) as {
+  addNotificationLogListener: jest.Mock;
   addNotificationLaunchActionListener: jest.Mock;
   addNotificationStateChangeListener: jest.Mock;
   consumePendingNotificationLaunchAction: jest.Mock<
     Promise<PendingNotificationLaunchAction | null>,
     []
   >;
+  getBufferedNotificationLogs: jest.Mock;
   getNotificationRuntimeStatus: jest.Mock;
   loadPersistedNotificationDocument: jest.Mock<
     Promise<NotificationDocument | null>,
@@ -87,6 +112,14 @@ const {
   requestNotificationPermission: jest.Mock;
   startNotificationTimer: jest.Mock;
   stopExpiredAlarmPlayback: jest.Mock;
+};
+
+const {
+  createModuleLogger: mockCreateModuleLogger,
+  logForwardedNativeEntry: mockLogForwardedNativeEntry,
+} = jest.requireMock('../../../src/logging/logger') as {
+  createModuleLogger: jest.Mock;
+  logForwardedNativeEntry: jest.Mock;
 };
 
 function createSharedDocumentFixture() {
@@ -239,6 +272,10 @@ describe('NotificationsProvider', () => {
     sharedFixture = createSharedDocumentFixture();
     clearStartupNavigationRequests();
     jest.clearAllMocks();
+    mockCreateModuleLogger.mockClear();
+    mockAddNotificationLogListener.mockReturnValue({
+      remove: jest.fn(),
+    });
     mockAddNotificationLaunchActionListener.mockReturnValue({
       remove: jest.fn(),
     });
@@ -275,9 +312,169 @@ describe('NotificationsProvider', () => {
       promotedNotificationSettingsResolvable: true,
       sessionId: 'session-1',
     });
+    mockGetBufferedNotificationLogs.mockReturnValue([]);
     mockRequestNotificationPermission.mockResolvedValue(true);
     mockLoadPersistedNotificationDocument.mockResolvedValue(
       createExpiredNotificationDocument(sharedFixture.childId),
+    );
+  });
+
+  it('subscribes to native logs before notification initialization completes and replays buffered logs in sequence order', async () => {
+    let resolvePersistedDocument:
+      | ((document: NotificationDocument | null) => void)
+      | undefined;
+
+    mockLoadPersistedNotificationDocument.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePersistedDocument = resolve;
+        }),
+    );
+    mockGetBufferedNotificationLogs.mockReturnValue([
+      {
+        contextJson: JSON.stringify({ source: 'buffer-late' }),
+        level: 'warn',
+        message: 'Buffered second',
+        sequence: 2,
+        tag: 'KidPointsNotificationsIntent',
+        timestampMs: 200,
+      },
+      {
+        contextJson: JSON.stringify({ source: 'buffer-early' }),
+        level: 'debug',
+        message: 'Buffered first',
+        sequence: 1,
+        tag: 'KidPointsNotifications',
+        timestampMs: 100,
+      },
+    ]);
+
+    renderProvider({
+      initialDocument: sharedFixture.document,
+      initialParentUnlocked: true,
+    });
+
+    expect(screen.getByTestId('notifications-ready').props.children).toBe(
+      'loading',
+    );
+    expect(mockAddNotificationLogListener).toHaveBeenCalledTimes(1);
+    expect(mockGetBufferedNotificationLogs).toHaveBeenCalledWith(-1);
+    expect(mockLogForwardedNativeEntry).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ namespace: 'notifications-native' }),
+      expect.objectContaining({
+        level: 'debug',
+        message: 'Buffered first',
+        sequence: 1,
+        tag: 'KidPointsNotifications',
+        timestampMs: 100,
+      }),
+      expect.objectContaining({
+        nativeContext: { source: 'buffer-early' },
+        nativeContextJson: JSON.stringify({ source: 'buffer-early' }),
+      }),
+    );
+    expect(mockLogForwardedNativeEntry).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ namespace: 'notifications-native' }),
+      expect.objectContaining({
+        level: 'warn',
+        message: 'Buffered second',
+        sequence: 2,
+        tag: 'KidPointsNotificationsIntent',
+        timestampMs: 200,
+      }),
+      expect.objectContaining({
+        nativeContext: { source: 'buffer-late' },
+        nativeContextJson: JSON.stringify({ source: 'buffer-late' }),
+      }),
+    );
+
+    await act(async () => {
+      resolvePersistedDocument?.(
+        createExpiredNotificationDocument(sharedFixture.childId),
+      );
+    });
+  });
+
+  it('dedupes overlapping buffered and live native logs while preserving native metadata', async () => {
+    mockAddNotificationLogListener.mockImplementation((listener) => {
+      listener({
+        contextJson: JSON.stringify({ source: 'live-duplicate' }),
+        level: 'info',
+        message: 'Live duplicate',
+        sequence: 2,
+        tag: 'KidPointsNotificationsService',
+        timestampMs: 250,
+      });
+      listener({
+        contextJson: JSON.stringify({ source: 'live-new' }),
+        level: 'error',
+        message: 'Live new',
+        sequence: 3,
+        tag: 'KidPointsNotificationsService',
+        timestampMs: 300,
+      });
+
+      return { remove: jest.fn() };
+    });
+    mockGetBufferedNotificationLogs.mockReturnValue([
+      {
+        contextJson: JSON.stringify({ source: 'buffer-early' }),
+        level: 'debug',
+        message: 'Buffered first',
+        sequence: 1,
+        tag: 'KidPointsNotifications',
+        timestampMs: 100,
+      },
+      {
+        contextJson: JSON.stringify({ source: 'buffer-duplicate' }),
+        level: 'info',
+        message: 'Buffered duplicate',
+        sequence: 2,
+        tag: 'KidPointsNotificationsService',
+        timestampMs: 200,
+      },
+    ]);
+
+    renderProvider({
+      initialDocument: sharedFixture.document,
+      initialParentUnlocked: true,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('notifications-ready').props.children).toBe(
+        'ready',
+      ),
+    );
+
+    expect(mockLogForwardedNativeEntry).toHaveBeenCalledTimes(3);
+    expect(mockLogForwardedNativeEntry).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ namespace: 'notifications-native' }),
+      expect.objectContaining({ sequence: 1, timestampMs: 100 }),
+      expect.objectContaining({
+        nativeContext: { source: 'buffer-early' },
+        nativeContextJson: JSON.stringify({ source: 'buffer-early' }),
+      }),
+    );
+    expect(mockLogForwardedNativeEntry).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ namespace: 'notifications-native' }),
+      expect.objectContaining({ sequence: 2, timestampMs: 200 }),
+      expect.objectContaining({
+        nativeContext: { source: 'buffer-duplicate' },
+        nativeContextJson: JSON.stringify({ source: 'buffer-duplicate' }),
+      }),
+    );
+    expect(mockLogForwardedNativeEntry).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ namespace: 'notifications-native' }),
+      expect.objectContaining({ sequence: 3, timestampMs: 300 }),
+      expect.objectContaining({
+        nativeContext: { source: 'live-new' },
+        nativeContextJson: JSON.stringify({ source: 'live-new' }),
+      }),
     );
   });
 
