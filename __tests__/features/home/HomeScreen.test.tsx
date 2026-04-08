@@ -83,9 +83,11 @@ describe('HomeScreen', () => {
 
     expect(screen.getByText('Home')).toBeTruthy();
     expect(screen.getByText('Check-In')).toBeTruthy();
+    expect(screen.getByText('15:00')).toBeTruthy();
     expect(screen.getAllByText('Add Child')).toHaveLength(2);
     expect(screen.getByText('Add a child to get started!')).toBeTruthy();
     expect(screen.getByText('Parent')).toBeTruthy();
+    expect(screen.getByLabelText('Home start timer')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Open Settings'));
     expect(mockPush).toHaveBeenCalledWith('/settings');
@@ -115,6 +117,7 @@ describe('HomeScreen', () => {
     );
 
     expect(screen.getByText('Ava')).toBeTruthy();
+    expect(screen.getByText('Unlock To Control')).toBeTruthy();
     expect(screen.queryByText('Unlock Parent Mode')).toBeNull();
     expect(screen.queryByLabelText('Expand Ava')).toBeNull();
     expect(screen.queryByText('Add Child')).toBeNull();
@@ -165,6 +168,32 @@ describe('HomeScreen', () => {
       expect.stringContaining('removed from Home'),
       expect.any(Array),
     );
+  });
+
+  it('starts the shared timer from Home and opens the alarm tab affordance', () => {
+    render(
+      <SharedStoreProvider
+        initialDocument={createInitialSharedDocument({
+          deviceId: 'home-timer',
+        })}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <HomeScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    fireEvent.press(screen.getByLabelText('Home start timer'));
+    expect(screen.getByText('Running')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Open alarm settings'));
+    expect(mockPush).toHaveBeenCalledWith('/alarm');
   });
 
   it('keeps parent tools collapsed by default without an unlocked badge', () => {

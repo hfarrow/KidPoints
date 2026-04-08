@@ -16,13 +16,25 @@ import {
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import { createModuleLogger, createStructuredLog } from '../logging/logger';
+import {
+  areTimerConfigsEquivalent,
+  areTimerStatesEquivalent,
+  cloneTimerConfig,
+  cloneTimerState,
+  computeSharedTimerSnapshot,
+  DEFAULT_TIMER_CONFIG,
+  DEFAULT_TIMER_STATE,
+  normalizeTimerConfig,
+  normalizeTimerState,
+} from './sharedTimer';
 import type {
   ChildSnapshot,
-  HomeTimerSummary,
   SharedCommandResult,
   SharedDocument,
   SharedEvent,
   SharedHead,
+  SharedTimerConfig,
+  SharedTimerState,
   TransactionFilterChild,
   TransactionKind,
   TransactionRecord,
@@ -35,9 +47,15 @@ type SharedStoreState = {
   archiveChild: (childId: string) => SharedCommandResult;
   deleteChildPermanently: (childId: string) => SharedCommandResult;
   document: SharedDocument;
+  pauseTimer: () => SharedCommandResult;
+  resetTimer: () => SharedCommandResult;
   restoreChild: (childId: string) => SharedCommandResult;
   restoreTransaction: (transactionId: string) => SharedCommandResult;
   setPoints: (childId: string, points: number) => SharedCommandResult;
+  startTimer: () => SharedCommandResult;
+  updateTimerConfig: (
+    updates: Partial<SharedTimerConfig>,
+  ) => SharedCommandResult;
 };
 
 type SharedStore = StoreApi<SharedStoreState>;
@@ -69,12 +87,6 @@ const logSharedStoreRehydrated = createStructuredLog(
   'info',
   'Shared store rehydrated persisted document',
 );
-
-const DEFAULT_HOME_TIMER_SUMMARY: HomeTimerSummary = {
-  intervalLabel: '15 minute cadence',
-  remainingLabel: '00:30',
-  statusLabel: 'Read-only preview',
-};
 
 const SharedStoreContext = createContext<SharedStore | null>(null);
 
@@ -128,7 +140,8 @@ function createEmptyHead(): SharedHead {
     activeChildIds: [],
     archivedChildIds: [],
     childrenById: {},
-    homeTimerSummary: DEFAULT_HOME_TIMER_SUMMARY,
+    timerConfig: cloneTimerConfig(DEFAULT_TIMER_CONFIG),
+    timerState: cloneTimerState(DEFAULT_TIMER_STATE),
   };
 }
 
@@ -152,7 +165,32 @@ function cloneHead(head: SharedHead): SharedHead {
         cloneChildSnapshot(child),
       ]),
     ),
-    homeTimerSummary: { ...head.homeTimerSummary },
+    timerConfig: cloneTimerConfig(head.timerConfig),
+    timerState: cloneTimerState(head.timerState),
+  };
+}
+
+function normalizeHead(
+  head: Partial<SharedHead> | null | undefined,
+): SharedHead {
+  return {
+    activeChildIds: Array.isArray(head?.activeChildIds)
+      ? [...head.activeChildIds]
+      : [],
+    archivedChildIds: Array.isArray(head?.archivedChildIds)
+      ? [...head.archivedChildIds]
+      : [],
+    childrenById:
+      head?.childrenById && typeof head.childrenById === 'object'
+        ? Object.fromEntries(
+            Object.entries(head.childrenById).map(([id, child]) => [
+              id,
+              cloneChildSnapshot(child as ChildSnapshot),
+            ]),
+          )
+        : {},
+    timerConfig: normalizeTimerConfig(head?.timerConfig),
+    timerState: normalizeTimerState(head?.timerState),
   };
 }
 
@@ -217,7 +255,7 @@ export function createInitialSharedDocument({
     head: createEmptyHead(),
     isOrphanedRestoreWindowOpen: false,
     nextSequence: 1,
-    schemaVersion: 2,
+    schemaVersion: 3,
     transactions: [],
   };
 }
@@ -328,6 +366,14 @@ export function applySharedEvent(head: SharedHead, event: SharedEvent) {
       nextHead.archivedChildIds = removeId(nextHead.archivedChildIds, child.id);
       return nextHead;
     }
+    case 'timer.configUpdated': {
+      nextHead.timerConfig = cloneTimerConfig(event.payload.timerConfig);
+      return nextHead;
+    }
+    case 'timer.stateUpdated': {
+      nextHead.timerState = cloneTimerState(event.payload.timerState);
+      return nextHead;
+    }
   }
 }
 
@@ -363,10 +409,12 @@ function isSharedDocument(value: unknown): value is SharedDocument {
     return false;
   }
 
-  const candidate = value as Partial<SharedDocument>;
+  const candidate = value as Omit<Partial<SharedDocument>, 'schemaVersion'> & {
+    schemaVersion?: number;
+  };
 
   return (
-    candidate.schemaVersion === 2 &&
+    (candidate.schemaVersion === 2 || candidate.schemaVersion === 3) &&
     typeof candidate.deviceId === 'string' &&
     Array.isArray(candidate.events) &&
     Array.isArray(candidate.transactions)
@@ -385,7 +433,7 @@ export function cloneSharedDocument(
     ...transaction,
     affectedChildIds: [...transaction.affectedChildIds],
     eventIds: [...transaction.eventIds],
-    stateAfter: cloneHead(transaction.stateAfter),
+    stateAfter: normalizeHead(transaction.stateAfter),
   }));
   const currentHeadTransactionId = transactions.some(
     (transaction) => transaction.id === document.currentHeadTransactionId,
@@ -400,7 +448,7 @@ export function cloneSharedDocument(
     head: getHeadForCurrentTransaction(transactions, currentHeadTransactionId),
     isOrphanedRestoreWindowOpen: Boolean(document.isOrphanedRestoreWindowOpen),
     nextSequence: document.nextSequence ?? deriveNextSequence(events),
-    schemaVersion: 2,
+    schemaVersion: 3,
     transactions,
   };
 }
@@ -542,7 +590,9 @@ function areHeadsEquivalent(left: SharedHead, right: SharedHead) {
   if (
     leftIds.length !== rightIds.length ||
     left.activeChildIds.join('|') !== right.activeChildIds.join('|') ||
-    left.archivedChildIds.join('|') !== right.archivedChildIds.join('|')
+    left.archivedChildIds.join('|') !== right.archivedChildIds.join('|') ||
+    !areTimerConfigsEquivalent(left.timerConfig, right.timerConfig) ||
+    !areTimerStatesEquivalent(left.timerState, right.timerState)
   ) {
     return false;
   }
@@ -553,6 +603,42 @@ function areHeadsEquivalent(left: SharedHead, right: SharedHead) {
       right.childrenById[childId],
     ),
   );
+}
+
+function buildStartedTimerState(
+  timerConfig: SharedTimerConfig,
+  timerState: SharedTimerState,
+  now: number,
+) {
+  const snapshot = computeSharedTimerSnapshot(timerConfig, timerState, now);
+  const elapsedBeforeStart =
+    snapshot.status === 'paused' && snapshot.remainingMs > 0
+      ? snapshot.intervalMs - snapshot.remainingMs
+      : 0;
+
+  return normalizeTimerState({
+    cycleStartedAt: now - elapsedBeforeStart,
+    mode: 'running',
+    pausedRemainingMs: null,
+  });
+}
+
+function buildPausedTimerState(
+  timerConfig: SharedTimerConfig,
+  timerState: SharedTimerState,
+  now: number,
+) {
+  const snapshot = computeSharedTimerSnapshot(timerConfig, timerState, now);
+
+  return normalizeTimerState({
+    cycleStartedAt: null,
+    mode: 'paused',
+    pausedRemainingMs: snapshot.remainingMs,
+  });
+}
+
+function buildResetTimerState() {
+  return cloneTimerState(DEFAULT_TIMER_STATE);
 }
 
 function buildRestoreEvents(
@@ -632,6 +718,37 @@ function buildRestoreEvents(
     }
   }
 
+  if (
+    !areTimerConfigsEquivalent(
+      document.head.timerConfig,
+      targetHead.timerConfig,
+    )
+  ) {
+    eventsToAppend.push(
+      builder.build(
+        'timer.configUpdated',
+        {
+          timerConfig: cloneTimerConfig(targetHead.timerConfig),
+        },
+        occurredAt,
+      ),
+    );
+  }
+
+  if (
+    !areTimerStatesEquivalent(document.head.timerState, targetHead.timerState)
+  ) {
+    eventsToAppend.push(
+      builder.build(
+        'timer.stateUpdated',
+        {
+          timerState: cloneTimerState(targetHead.timerState),
+        },
+        occurredAt,
+      ),
+    );
+  }
+
   return {
     affectedChildIds: [...affectedChildIds],
     eventsToAppend,
@@ -707,6 +824,14 @@ function summarizeRestoreTarget(
         ? summarizeRestoreTarget(nestedTarget, transactionsById)
         : 'Earlier State';
     }
+    case 'timer-started':
+      return 'Started Timer';
+    case 'timer-paused':
+      return 'Paused Timer';
+    case 'timer-reset':
+      return 'Reset Timer';
+    case 'timer-config-updated':
+      return 'Updated Timer Settings';
   }
 }
 
@@ -766,6 +891,14 @@ function summarizeTransactionRow(
         transactionsById,
       )}`;
     }
+    case 'timer-started':
+      return 'Started Timer';
+    case 'timer-paused':
+      return 'Paused Timer';
+    case 'timer-reset':
+      return 'Reset Timer';
+    case 'timer-config-updated':
+      return 'Updated Timer Settings';
   }
 }
 
@@ -1108,6 +1241,156 @@ function createSharedStoreActions(
 
       return result;
     },
+    pauseTimer(): SharedCommandResult {
+      let result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const now = Date.now();
+        const snapshot = computeSharedTimerSnapshot(
+          state.document.head.timerConfig,
+          state.document.head.timerState,
+          now,
+        );
+
+        if (snapshot.status !== 'running') {
+          logRejectedSharedStoreMutation(
+            'pauseTimer',
+            'The timer is not currently running.',
+            { timerStatus: snapshot.status },
+          );
+          result = {
+            error: 'The timer is not currently running.',
+            ok: false,
+          };
+          return state;
+        }
+
+        const occurredAt = new Date(now).toISOString();
+        const builder = createEventBuilder(state.document);
+        const nextTimerState = buildPausedTimerState(
+          state.document.head.timerConfig,
+          state.document.head.timerState,
+          now,
+        );
+        const event = builder.build(
+          'timer.stateUpdated',
+          {
+            timerState: nextTimerState,
+          },
+          occurredAt,
+        );
+        const nextHead = applySharedEvent(state.document.head, event);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [],
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: [event.eventId],
+          kind: 'timer-paused',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          stateAfter: nextHead,
+        });
+
+        logSharedStoreMutation('pauseTimer', {
+          eventId: event.eventId,
+          pausedRemainingMs: nextTimerState.pausedRemainingMs,
+          timerStatus: snapshot.status,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+        });
+
+        return {
+          ...state,
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
+    resetTimer(): SharedCommandResult {
+      let result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const now = Date.now();
+        const snapshot = computeSharedTimerSnapshot(
+          state.document.head.timerConfig,
+          state.document.head.timerState,
+          now,
+        );
+
+        if (
+          snapshot.status === 'idle' &&
+          areTimerStatesEquivalent(
+            state.document.head.timerState,
+            DEFAULT_TIMER_STATE,
+          )
+        ) {
+          logRejectedSharedStoreMutation(
+            'resetTimer',
+            'The timer is already reset.',
+          );
+          result = {
+            error: 'The timer is already reset.',
+            ok: false,
+          };
+          return state;
+        }
+
+        const occurredAt = new Date(now).toISOString();
+        const builder = createEventBuilder(state.document);
+        const nextTimerState = buildResetTimerState();
+        const event = builder.build(
+          'timer.stateUpdated',
+          {
+            timerState: nextTimerState,
+          },
+          occurredAt,
+        );
+        const nextHead = applySharedEvent(state.document.head, event);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [],
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: [event.eventId],
+          kind: 'timer-reset',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          stateAfter: nextHead,
+        });
+
+        logSharedStoreMutation('resetTimer', {
+          eventId: event.eventId,
+          timerStatus: snapshot.status,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+        });
+
+        return {
+          ...state,
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
     restoreChild(childId: string): SharedCommandResult {
       let result: SharedCommandResult = { ok: true };
 
@@ -1349,6 +1632,171 @@ function createSharedStoreActions(
 
       return result;
     },
+    startTimer(): SharedCommandResult {
+      let result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const now = Date.now();
+        const snapshot = computeSharedTimerSnapshot(
+          state.document.head.timerConfig,
+          state.document.head.timerState,
+          now,
+        );
+
+        if (snapshot.status === 'running') {
+          logRejectedSharedStoreMutation(
+            'startTimer',
+            'The timer is already running.',
+          );
+          result = {
+            error: 'The timer is already running.',
+            ok: false,
+          };
+          return state;
+        }
+
+        const occurredAt = new Date(now).toISOString();
+        const builder = createEventBuilder(state.document);
+        const nextTimerState = buildStartedTimerState(
+          state.document.head.timerConfig,
+          state.document.head.timerState,
+          now,
+        );
+        const event = builder.build(
+          'timer.stateUpdated',
+          {
+            timerState: nextTimerState,
+          },
+          occurredAt,
+        );
+        const nextHead = applySharedEvent(state.document.head, event);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [],
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: [event.eventId],
+          kind: 'timer-started',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          stateAfter: nextHead,
+        });
+
+        logSharedStoreMutation('startTimer', {
+          cycleStartedAt: nextTimerState.cycleStartedAt,
+          eventId: event.eventId,
+          timerStatus: snapshot.status,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+        });
+
+        return {
+          ...state,
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
+    updateTimerConfig(
+      updates: Partial<SharedTimerConfig>,
+    ): SharedCommandResult {
+      const values = Object.values(updates).filter((value) => value != null);
+
+      if (
+        values.some(
+          (value) =>
+            typeof value !== 'number' ||
+            !Number.isFinite(value) ||
+            !Number.isInteger(value),
+        )
+      ) {
+        logRejectedSharedStoreMutation(
+          'updateTimerConfig',
+          'Timer settings must use whole-number values.',
+          updates,
+        );
+        return {
+          error: 'Timer settings must use whole-number values.',
+          ok: false,
+        };
+      }
+
+      const result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const nextTimerConfig = normalizeTimerConfig(
+          {
+            ...state.document.head.timerConfig,
+            ...updates,
+          },
+          state.document.head.timerConfig,
+        );
+
+        if (
+          areTimerConfigsEquivalent(
+            state.document.head.timerConfig,
+            nextTimerConfig,
+          )
+        ) {
+          return state;
+        }
+
+        const occurredAt = new Date().toISOString();
+        const builder = createEventBuilder(state.document);
+        const event = builder.build(
+          'timer.configUpdated',
+          {
+            timerConfig: nextTimerConfig,
+          },
+          occurredAt,
+        );
+        const nextHead = applySharedEvent(state.document.head, event);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [],
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: [event.eventId],
+          kind: 'timer-config-updated',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          stateAfter: nextHead,
+        });
+
+        logSharedStoreMutation('updateTimerConfig', {
+          alarmDurationSeconds: nextTimerConfig.alarmDurationSeconds,
+          eventId: event.eventId,
+          intervalMinutes: nextTimerConfig.intervalMinutes,
+          intervalSeconds: nextTimerConfig.intervalSeconds,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+        });
+
+        return {
+          ...state,
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
   };
 }
 
@@ -1447,8 +1895,12 @@ export function selectHasActiveChildren(state: SharedStoreState) {
   return state.document.head.activeChildIds.length > 0;
 }
 
-export function selectHomeTimerSummary(state: SharedStoreState) {
-  return state.document.head.homeTimerSummary;
+export function selectSharedTimerConfig(state: SharedStoreState) {
+  return state.document.head.timerConfig;
+}
+
+export function selectSharedTimerState(state: SharedStoreState) {
+  return state.document.head.timerState;
 }
 
 export function selectTransactionRows(state: SharedStoreState) {

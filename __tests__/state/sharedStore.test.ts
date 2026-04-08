@@ -3,6 +3,7 @@ import {
   createSharedStore,
   deriveTransactionRows,
 } from '../../src/state/sharedStore';
+import { buildSharedTimerViewModel } from '../../src/state/sharedTimer';
 import { createMemoryStorage } from '../testUtils/memoryStorage';
 
 describe('sharedStore transaction graph', () => {
@@ -133,5 +134,144 @@ describe('sharedStore transaction graph', () => {
       store.getState().document.head.childrenById[childId],
     ).toBeUndefined();
     expect(store.getState().document.head.activeChildIds).toHaveLength(0);
+  });
+});
+
+describe('sharedStore timer state', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('starts, pauses, resets, and updates shared timer settings', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-timer-a',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(
+      buildSharedTimerViewModel(
+        store.getState().document.head.timerConfig,
+        store.getState().document.head.timerState,
+        Date.now(),
+      ),
+    ).toMatchObject({
+      cadenceLabel: '15m cadence',
+      remainingLabel: '15:00',
+      statusLabel: 'Ready',
+    });
+
+    expect(store.getState().startTimer().ok).toBe(true);
+    jest.advanceTimersByTime(61_000);
+
+    expect(store.getState().pauseTimer().ok).toBe(true);
+    expect(
+      buildSharedTimerViewModel(
+        store.getState().document.head.timerConfig,
+        store.getState().document.head.timerState,
+        Date.now(),
+      ),
+    ).toMatchObject({
+      remainingLabel: '13:59',
+      statusLabel: 'Paused',
+    });
+
+    expect(
+      store.getState().updateTimerConfig({
+        alarmDurationSeconds: 0,
+        intervalMinutes: 0,
+        intervalSeconds: 0,
+      }).ok,
+    ).toBe(true);
+    expect(store.getState().document.head.timerConfig).toEqual({
+      alarmDurationSeconds: 1,
+      intervalMinutes: 0,
+      intervalSeconds: 1,
+    });
+
+    expect(store.getState().startTimer().ok).toBe(true);
+    expect(
+      buildSharedTimerViewModel(
+        store.getState().document.head.timerConfig,
+        store.getState().document.head.timerState,
+        Date.now(),
+      ),
+    ).toMatchObject({
+      cadenceLabel: '1s cadence',
+      statusLabel: 'Running',
+    });
+
+    expect(store.getState().resetTimer().ok).toBe(true);
+    expect(
+      buildSharedTimerViewModel(
+        store.getState().document.head.timerConfig,
+        store.getState().document.head.timerState,
+        Date.now(),
+      ),
+    ).toMatchObject({
+      remainingLabel: '00:01',
+      statusLabel: 'Ready',
+    });
+
+    expect(
+      deriveTransactionRows(store.getState().document).map(
+        (row) => row.summaryText,
+      ),
+    ).toEqual([
+      'Reset Timer',
+      'Started Timer',
+      'Updated Timer Settings',
+      'Paused Timer',
+      'Started Timer',
+    ]);
+  });
+
+  it('clamps at zero and catches up from persisted state after resume', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-timer-b',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().startTimer().ok).toBe(true);
+    const persistedDocument = store.getState().document;
+
+    jest.advanceTimersByTime(15 * 60_000 + 5_000);
+
+    expect(
+      buildSharedTimerViewModel(
+        persistedDocument.head.timerConfig,
+        persistedDocument.head.timerState,
+        Date.now(),
+      ),
+    ).toMatchObject({
+      isExpired: true,
+      remainingLabel: '00:00',
+      statusLabel: 'Expired',
+    });
+
+    const rehydratedStore = createSharedStore({
+      initialDocument: persistedDocument,
+      storage: createMemoryStorage(),
+    });
+
+    expect(
+      buildSharedTimerViewModel(
+        rehydratedStore.getState().document.head.timerConfig,
+        rehydratedStore.getState().document.head.timerState,
+        Date.now(),
+      ),
+    ).toMatchObject({
+      isExpired: true,
+      remainingLabel: '00:00',
+      statusLabel: 'Expired',
+    });
   });
 });

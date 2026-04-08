@@ -10,17 +10,26 @@ export type ChildSnapshot = {
   updatedAt: string;
 };
 
-export type HomeTimerSummary = {
-  intervalLabel: string;
-  remainingLabel: string;
-  statusLabel: string;
+export type SharedTimerConfig = {
+  alarmDurationSeconds: number;
+  intervalMinutes: number;
+  intervalSeconds: number;
+};
+
+export type SharedTimerMode = 'idle' | 'paused' | 'running';
+
+export type SharedTimerState = {
+  cycleStartedAt: number | null;
+  mode: SharedTimerMode;
+  pausedRemainingMs: number | null;
 };
 
 export type SharedHead = {
   activeChildIds: string[];
   archivedChildIds: string[];
   childrenById: Record<string, ChildSnapshot>;
-  homeTimerSummary: HomeTimerSummary;
+  timerConfig: SharedTimerConfig;
+  timerState: SharedTimerState;
 };
 
 export type SharedEventBase = {
@@ -74,13 +83,29 @@ export type ChildRestoredEvent = SharedEventBase & {
   type: 'child.restored';
 };
 
+export type TimerConfigUpdatedEvent = SharedEventBase & {
+  payload: {
+    timerConfig: SharedTimerConfig;
+  };
+  type: 'timer.configUpdated';
+};
+
+export type TimerStateUpdatedEvent = SharedEventBase & {
+  payload: {
+    timerState: SharedTimerState;
+  };
+  type: 'timer.stateUpdated';
+};
+
 export type SharedEvent =
   | ChildArchivedEvent
   | ChildCreatedEvent
   | ChildDeletedEvent
   | ChildPointsAdjustedEvent
   | ChildPointsSetEvent
-  | ChildRestoredEvent;
+  | ChildRestoredEvent
+  | TimerConfigUpdatedEvent
+  | TimerStateUpdatedEvent;
 
 export type TransactionKind =
   | 'child-archived'
@@ -89,7 +114,11 @@ export type TransactionKind =
   | 'child-restored'
   | 'history-restored'
   | 'points-adjusted'
-  | 'points-set';
+  | 'points-set'
+  | 'timer-config-updated'
+  | 'timer-paused'
+  | 'timer-reset'
+  | 'timer-started';
 
 export type TransactionRecord = {
   affectedChildIds: string[];
@@ -140,7 +169,7 @@ export type SharedDocument = {
   head: SharedHead;
   isOrphanedRestoreWindowOpen: boolean;
   nextSequence: number;
-  schemaVersion: 2;
+  schemaVersion: 3;
   transactions: TransactionRecord[];
 };
 

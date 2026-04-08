@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
@@ -14,13 +14,12 @@ import {
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
 import { createModuleLogger } from '../../logging/logger';
-import {
-  selectHomeTimerSummary,
-  useSharedStore,
-} from '../../state/sharedStore';
+import { useSharedStore } from '../../state/sharedStore';
 import { presentTextInputModal } from '../overlays/textInputModalStore';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { TimerControlRail } from '../timer/TimerControlRail';
+import { useSharedTimerViewModel } from '../timer/useSharedTimerViewModel';
 
 const log = createModuleLogger('home-screen');
 
@@ -30,11 +29,14 @@ export function HomeScreen() {
   const { isParentUnlocked } = useParentSession();
   const { tokens } = useAppTheme();
   const head = useSharedStore((state) => state.document.head);
-  const homeTimerSummary = useSharedStore(selectHomeTimerSummary);
   const addChild = useSharedStore((state) => state.addChild);
   const adjustPoints = useSharedStore((state) => state.adjustPoints);
   const archiveChild = useSharedStore((state) => state.archiveChild);
+  const pauseTimer = useSharedStore((state) => state.pauseTimer);
+  const resetTimer = useSharedStore((state) => state.resetTimer);
   const setPoints = useSharedStore((state) => state.setPoints);
+  const startTimer = useSharedStore((state) => state.startTimer);
+  const timerViewModel = useSharedTimerViewModel();
   const activeChildren = useMemo(
     () =>
       head.activeChildIds
@@ -86,6 +88,15 @@ export function HomeScreen() {
     router.push('/text-input-modal');
   };
 
+  const openAlarmScreen = () => {
+    if (!isParentUnlocked) {
+      router.push('/parent-unlock');
+      return;
+    }
+
+    router.push('/alarm');
+  };
+
   return (
     <ScreenScaffold>
       <ScreenHeader
@@ -98,26 +109,74 @@ export function HomeScreen() {
 
       <Tile
         accessory={
-          <StatusBadge label={homeTimerSummary.statusLabel} tone="neutral" />
+          <StatusBadge
+            label={timerViewModel.statusLabel}
+            tone={timerViewModel.statusTone}
+          />
         }
         summary={
           <View style={styles.timerSummary}>
-            <View style={styles.timerValueWrap}>
-              <Text style={styles.primaryMetric}>
-                {homeTimerSummary.remainingLabel}
-              </Text>
+            <View style={styles.timerSummaryCopy}>
+              <View style={styles.timerValueWrap}>
+                <Text style={styles.primaryMetric}>
+                  {timerViewModel.remainingLabel}
+                </Text>
+              </View>
+              <View style={styles.timerMetaRow}>
+                <Text style={styles.timerMeta}>
+                  {timerViewModel.cadenceLabel}
+                </Text>
+                <Text style={styles.timerMeta}>
+                  {timerViewModel.alarmDurationLabel}
+                </Text>
+              </View>
             </View>
-            <Text style={styles.timerMeta}>
-              {homeTimerSummary.intervalLabel}
-            </Text>
+            <LoggedPressable
+              accessibilityLabel={
+                isParentUnlocked
+                  ? 'Open alarm settings'
+                  : 'Unlock parent mode for alarm settings'
+              }
+              logContext={{ isParentUnlocked }}
+              logLabel={
+                isParentUnlocked
+                  ? 'Open alarm settings'
+                  : 'Unlock parent mode for alarm settings'
+              }
+              onPress={openAlarmScreen}
+              style={styles.summaryIconAction}
+            >
+              <Feather color={tokens.controlText} name="clock" size={16} />
+            </LoggedPressable>
           </View>
         }
         title="Check-In"
       >
-        <Text style={styles.bodyCopy}>
-          Alarm behavior will connect here next. For now, Home reads a stable
-          timer summary from the shared document.
-        </Text>
+        {isParentUnlocked ? (
+          <TimerControlRail
+            contextLabel="Home"
+            onPause={() => {
+              pauseTimer();
+            }}
+            onReset={() => {
+              resetTimer();
+            }}
+            onStart={() => {
+              startTimer();
+            }}
+            pauseDisabled={!timerViewModel.canPause}
+            resetDisabled={!timerViewModel.canReset}
+            startDisabled={!timerViewModel.canStart}
+          />
+        ) : (
+          <ActionPillRow>
+            <ActionPill
+              label="Unlock To Control"
+              onPress={() => router.push('/parent-unlock')}
+              tone="primary"
+            />
+          </ActionPillRow>
+        )}
       </Tile>
 
       {activeChildren.length === 0 ? (
@@ -301,12 +360,13 @@ const createStyles = ({
       fontWeight: '600',
       lineHeight: 18,
     },
-    bodyCopy: {
-      color: tokens.textMuted,
-      fontSize: 13,
-      lineHeight: 18,
-    },
     timerSummary: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 10,
+      minWidth: 0,
+    },
+    timerSummaryCopy: {
       flex: 1,
       gap: 4,
       minWidth: 0,
@@ -321,10 +381,24 @@ const createStyles = ({
       fontVariant: ['tabular-nums'],
       letterSpacing: -0.6,
     },
+    timerMetaRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
     timerMeta: {
       color: tokens.textMuted,
       fontSize: 12,
       fontWeight: '800',
+    },
+    summaryIconAction: {
+      alignItems: 'center',
+      backgroundColor: tokens.controlSurface,
+      borderRadius: 16,
+      flexShrink: 0,
+      height: 32,
+      justifyContent: 'center',
+      width: 32,
     },
     pointsSummary: {
       flex: 1,
