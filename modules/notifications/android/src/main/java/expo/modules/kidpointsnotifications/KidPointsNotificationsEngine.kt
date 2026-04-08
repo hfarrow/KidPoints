@@ -1,4 +1,4 @@
-package expo.modules.kidpointsalarm
+package expo.modules.kidpointsnotifications
 
 import android.Manifest
 import android.app.AlarmManager
@@ -28,14 +28,15 @@ import java.text.DateFormat
 import java.util.Date
 import kotlin.math.max
 
-private const val PREFS_NAME = "KidPointsAlarmPrefs"
-private const val STORAGE_KEY = "kidpoints.app-data.v1"
-private const val PENDING_LAUNCH_ACTION_KEY = "kidpoints.pending-launch-action.v1"
+private const val PREFS_NAME = "KidPointsNotificationsPrefs"
+private const val STORAGE_KEY = "kidpoints.notifications.document.v1"
+private const val PENDING_LAUNCH_ACTION_KEY =
+  "kidpoints.notifications.pending-launch-action.v1"
 
-const val ACTION_REFRESH = "expo.modules.kidpointsalarm.action.REFRESH"
-const val ACTION_TRIGGER = "expo.modules.kidpointsalarm.action.TRIGGER"
-const val ACTION_STOP_TIMER = "expo.modules.kidpointsalarm.action.STOP_TIMER"
-const val ACTION_PAUSE_TIMER = "expo.modules.kidpointsalarm.action.PAUSE_TIMER"
+const val ACTION_REFRESH = "expo.modules.kidpointsnotifications.action.REFRESH"
+const val ACTION_TRIGGER = "expo.modules.kidpointsnotifications.action.TRIGGER"
+const val ACTION_STOP_TIMER = "expo.modules.kidpointsnotifications.action.STOP_TIMER"
+const val ACTION_PAUSE_TIMER = "expo.modules.kidpointsnotifications.action.PAUSE_TIMER"
 
 const val EXTRA_TRIGGER_AT = "triggerAt"
 const val EXTRA_LAUNCH_ACTION_JSON = "launchActionJson"
@@ -53,12 +54,12 @@ private const val CHECK_IN_REQUEST_CODE_BASE = 7100
 private const val STOP_EXPIRED_REQUEST_CODE_BASE = 7200
 private const val LAUNCH_ACTION_CHECK_IN = "check-in"
 
-private const val LOG_TAG = "KidPointsAlarm"
-private const val LOG_NOTIFICATION_TAG = "KidPointsAlarmNotif"
-private const val LOG_INTENT_TAG = "KidPointsAlarmIntent"
-private const val LOG_SERVICE_TAG = "KidPointsAlarmService"
+private const val LOG_TAG = "KidPointsNotifications"
+private const val LOG_NOTIFICATION_TAG = "KidPointsNotificationsNotif"
+private const val LOG_INTENT_TAG = "KidPointsNotificationsIntent"
+private const val LOG_SERVICE_TAG = "KidPointsNotificationsService"
 
-data class AlarmRuntimeStatusPayload(
+data class NotificationRuntimeStatusPayload(
   val countdownNotificationChannelImportance: Int?,
   val countdownNotificationHasPromotableCharacteristics: Boolean,
   val countdownNotificationIsOngoing: Boolean,
@@ -82,7 +83,7 @@ data class AlarmRuntimeStatusPayload(
   val sessionId: String?,
 )
 
-data class PendingAlarmLaunchActionPayload(
+data class PendingNotificationLaunchActionPayload(
   val type: String,
   val intervalId: String?,
   val notificationId: Int?,
@@ -90,7 +91,7 @@ data class PendingAlarmLaunchActionPayload(
   val triggeredAt: Long?,
 )
 
-object KidPointsAlarmEngine {
+object KidPointsNotificationsEngine {
   @Volatile
   private var isAppInForeground = false
   private val alarmPlaybackHandler = Handler(Looper.getMainLooper())
@@ -354,7 +355,7 @@ object KidPointsAlarmEngine {
     }
   }
 
-  fun getRuntimeStatus(context: Context): AlarmRuntimeStatusPayload {
+  fun getRuntimeStatus(context: Context): NotificationRuntimeStatusPayload {
     val rawDocument = getStoredDocument(context)
     val document = rawDocument?.let { JSONObject(it) }
     val head = document?.let { getHead(it) }
@@ -370,7 +371,7 @@ object KidPointsAlarmEngine {
       ?.let { createExpiredNotification(context, it) }
     val expiredChannel = getExpiredChannel(context)
 
-    return AlarmRuntimeStatusPayload(
+    return NotificationRuntimeStatusPayload(
       countdownNotificationChannelImportance = countdownChannel?.importance,
       countdownNotificationHasPromotableCharacteristics =
         NotificationCompat.hasPromotableCharacteristics(countdownNotification),
@@ -548,7 +549,7 @@ object KidPointsAlarmEngine {
     logService("Starting foreground service action=$action")
     ContextCompat.startForegroundService(
       context,
-      Intent(context, AlarmForegroundService::class.java).apply {
+      Intent(context, NotificationsForegroundService::class.java).apply {
         this.action = action
       },
     )
@@ -556,12 +557,12 @@ object KidPointsAlarmEngine {
 
   fun stopForegroundService(context: Context) {
     logService("Stopping foreground service")
-    context.stopService(Intent(context, AlarmForegroundService::class.java))
+    context.stopService(Intent(context, NotificationsForegroundService::class.java))
   }
 
   fun handleActivityIntent(context: Context, intent: Intent?) {
     logIntent(
-      "Received activity intent ${describeIntent(intent)} moduleAttached=${KidPointsAlarmModule.instance != null}",
+      "Received activity intent ${describeIntent(intent)} moduleAttached=${KidPointsNotificationsModule.instance != null}",
     )
     val actionJson = intent?.getStringExtra(EXTRA_LAUNCH_ACTION_JSON)
 
@@ -572,7 +573,7 @@ object KidPointsAlarmEngine {
 
     stopExpiredAlarmPlayback()
     persistPendingLaunchAction(context, actionJson)
-    KidPointsAlarmModule.instance?.emitLaunchAction(actionJson)
+    KidPointsNotificationsModule.instance?.emitLaunchAction(actionJson)
 
     val notificationId = JSONObject(actionJson).optIntOrNull("notificationId")
     if (notificationId != null) {
@@ -583,7 +584,7 @@ object KidPointsAlarmEngine {
     }
 
     logIntent(
-      "Handled activity launch intent notificationId=$notificationId emittedEvent=${KidPointsAlarmModule.instance != null} payload=$actionJson",
+      "Handled activity launch intent notificationId=$notificationId emittedEvent=${KidPointsNotificationsModule.instance != null} payload=$actionJson",
     )
   }
 
@@ -745,7 +746,7 @@ object KidPointsAlarmEngine {
   }
 
   private fun emitState(document: JSONObject, reason: String, context: Context) {
-    KidPointsAlarmModule.instance?.emitState(document, reason, getRuntimeStatus(context))
+    KidPointsNotificationsModule.instance?.emitState(document, reason, getRuntimeStatus(context))
   }
 
   private fun persistDocument(context: Context, documentJson: String) {
@@ -837,7 +838,7 @@ object KidPointsAlarmEngine {
       PendingIntent.getBroadcast(
         context,
         TRIGGER_REQUEST_CODE,
-        Intent(context, AlarmTriggerReceiver::class.java).apply {
+        Intent(context, NotificationsTriggerReceiver::class.java).apply {
           action = ACTION_TRIGGER
           putExtra(EXTRA_TRIGGER_AT, triggerAt)
         },
@@ -860,7 +861,7 @@ object KidPointsAlarmEngine {
       PendingIntent.getBroadcast(
         context,
         TRIGGER_REQUEST_CODE,
-        Intent(context, AlarmTriggerReceiver::class.java).apply {
+        Intent(context, NotificationsTriggerReceiver::class.java).apply {
           action = ACTION_TRIGGER
         },
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
@@ -907,7 +908,7 @@ object KidPointsAlarmEngine {
     PendingIntent.getBroadcast(
       context,
       PAUSE_TIMER_REQUEST_CODE,
-      Intent(context, AlarmActionReceiver::class.java).apply {
+      Intent(context, NotificationsActionReceiver::class.java).apply {
         action = ACTION_PAUSE_TIMER
       },
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
@@ -917,7 +918,7 @@ object KidPointsAlarmEngine {
     PendingIntent.getBroadcast(
       context,
       STOP_TIMER_REQUEST_CODE,
-      Intent(context, AlarmActionReceiver::class.java).apply {
+      Intent(context, NotificationsActionReceiver::class.java).apply {
         action = ACTION_STOP_TIMER
       },
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
@@ -933,7 +934,7 @@ object KidPointsAlarmEngine {
     return PendingIntent.getBroadcast(
       context,
       requestCode,
-      Intent(context, AlarmActionReceiver::class.java).apply {
+      Intent(context, NotificationsActionReceiver::class.java).apply {
         action = ACTION_STOP_TIMER
       },
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,

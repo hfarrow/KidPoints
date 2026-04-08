@@ -1,4 +1,4 @@
-package expo.modules.kidpointsalarm
+package expo.modules.kidpointsnotifications
 
 import android.app.Activity
 import android.content.Context
@@ -6,7 +6,7 @@ import android.content.Intent
 import android.os.Bundle
 import expo.modules.core.interfaces.ReactActivityLifecycleListener
 
-class KidPointsAlarmActivityLifecycleListener(
+class KidPointsNotificationsActivityLifecycleListener(
   initialAppContext: Context? = null,
 ) : ReactActivityLifecycleListener {
   private var appContext: Context? = initialAppContext
@@ -17,29 +17,29 @@ class KidPointsAlarmActivityLifecycleListener(
     }
 
     appContext = activity.applicationContext
-    KidPointsAlarmEngine.setAppInForeground(true)
-    KidPointsAlarmEngine.handleActivityIntent(activity, activity.intent)
+    KidPointsNotificationsEngine.setAppInForeground(true)
+    KidPointsNotificationsEngine.handleActivityIntent(activity, activity.intent)
   }
 
   override fun onResume(activity: Activity?) {
     if (activity != null) {
       appContext = activity.applicationContext
     }
-    KidPointsAlarmEngine.setAppInForeground(true)
+    KidPointsNotificationsEngine.setAppInForeground(true)
   }
 
   override fun onPause(activity: Activity?) {
-    KidPointsAlarmEngine.setAppInForeground(false)
+    KidPointsNotificationsEngine.setAppInForeground(false)
   }
 
   override fun onDestroy(activity: Activity?) {
-    KidPointsAlarmEngine.setAppInForeground(false)
+    KidPointsNotificationsEngine.setAppInForeground(false)
   }
 
   override fun onNewIntent(intent: Intent?): Boolean {
-    val context = appContext ?: KidPointsAlarmModule.instance?.appContext?.reactContext
+    val context = appContext ?: KidPointsNotificationsModule.instance?.appContext?.reactContext
     if (context != null) {
-      KidPointsAlarmEngine.handleActivityIntent(context, intent)
+      KidPointsNotificationsEngine.handleActivityIntent(context, intent)
     }
 
     return false

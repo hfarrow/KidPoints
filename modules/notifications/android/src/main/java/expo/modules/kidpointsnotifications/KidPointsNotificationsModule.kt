@@ -1,73 +1,73 @@
-package expo.modules.kidpointsalarm
+package expo.modules.kidpointsnotifications
 
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONObject
 
-class KidPointsAlarmModule : Module() {
+class KidPointsNotificationsModule : Module() {
   companion object {
-    var instance: KidPointsAlarmModule? = null
+    var instance: KidPointsNotificationsModule? = null
   }
 
   override fun definition() = ModuleDefinition {
-    Name("KidPointsAlarm")
+    Name("KidPointsNotifications")
 
-    Events("KidPointsAlarmStateChanged", "KidPointsAlarmLaunchAction")
+    Events("KidPointsNotificationsStateChanged", "KidPointsNotificationsLaunchAction")
 
     OnCreate {
-      instance = this@KidPointsAlarmModule
+      instance = this@KidPointsNotificationsModule
     }
 
     OnDestroy {
-      if (instance === this@KidPointsAlarmModule) {
+      if (instance === this@KidPointsNotificationsModule) {
         instance = null
       }
     }
 
     AsyncFunction("getDocument") {
-      KidPointsAlarmEngine.getStoredDocument(appContext.reactContext ?: return@AsyncFunction null)
+      KidPointsNotificationsEngine.getStoredDocument(appContext.reactContext ?: return@AsyncFunction null)
     }
 
     AsyncFunction("getPendingLaunchAction") {
       val context = appContext.reactContext ?: return@AsyncFunction null
-      KidPointsAlarmEngine.getPendingLaunchAction(context)
+      KidPointsNotificationsEngine.getPendingLaunchAction(context)
     }
 
     AsyncFunction("consumePendingLaunchAction") {
       val context = appContext.reactContext ?: return@AsyncFunction null
-      KidPointsAlarmEngine.consumePendingLaunchAction(context)
+      KidPointsNotificationsEngine.consumePendingLaunchAction(context)
     }
 
     AsyncFunction("saveDocument") { documentJson: String ->
-      KidPointsAlarmEngine.saveDocument(
+      KidPointsNotificationsEngine.saveDocument(
         appContext.reactContext ?: return@AsyncFunction documentJson,
         documentJson,
       )
     }
 
     AsyncFunction("syncDocument") { documentJson: String ->
-      KidPointsAlarmEngine.syncDocument(
+      KidPointsNotificationsEngine.syncDocument(
         appContext.reactContext ?: return@AsyncFunction documentJson,
         documentJson,
       )
     }
 
     AsyncFunction("startTimer") { documentJson: String ->
-      KidPointsAlarmEngine.startTimer(
+      KidPointsNotificationsEngine.startTimer(
         appContext.reactContext ?: return@AsyncFunction documentJson,
         documentJson,
       )
     }
 
     AsyncFunction("pauseTimer") { documentJson: String ->
-      KidPointsAlarmEngine.pauseTimer(
+      KidPointsNotificationsEngine.pauseTimer(
         appContext.reactContext ?: return@AsyncFunction documentJson,
         documentJson,
       )
     }
 
     AsyncFunction("resetTimer") { documentJson: String ->
-      KidPointsAlarmEngine.resetTimer(
+      KidPointsNotificationsEngine.resetTimer(
         appContext.reactContext ?: return@AsyncFunction documentJson,
         documentJson,
       )
@@ -75,7 +75,7 @@ class KidPointsAlarmModule : Module() {
 
     AsyncFunction("getRuntimeStatus") {
       val context = appContext.reactContext ?: return@AsyncFunction JSONObject().toString()
-      val status = KidPointsAlarmEngine.getRuntimeStatus(context)
+      val status = KidPointsNotificationsEngine.getRuntimeStatus(context)
 
       JSONObject().apply {
         put(
@@ -145,47 +145,47 @@ class KidPointsAlarmModule : Module() {
     }
 
     AsyncFunction("canScheduleExactAlarms") {
-      KidPointsAlarmEngine.canScheduleExactAlarms(
+      KidPointsNotificationsEngine.canScheduleExactAlarms(
         appContext.reactContext ?: return@AsyncFunction false,
       )
     }
 
     AsyncFunction("openExactAlarmSettings") {
       appContext.reactContext?.let {
-        KidPointsAlarmEngine.openExactAlarmSettings(it)
+        KidPointsNotificationsEngine.openExactAlarmSettings(it)
       }
     }
 
     AsyncFunction("openNotificationSettings") {
       appContext.reactContext?.let {
-        KidPointsAlarmEngine.openNotificationSettings(it)
+        KidPointsNotificationsEngine.openNotificationSettings(it)
       }
     }
 
     AsyncFunction("openPromotedNotificationSettings") {
       appContext.reactContext?.let {
-        KidPointsAlarmEngine.openPromotedNotificationSettings(it)
+        KidPointsNotificationsEngine.openPromotedNotificationSettings(it)
       }
     }
 
     AsyncFunction("openFullScreenIntentSettings") {
       appContext.reactContext?.let {
-        KidPointsAlarmEngine.openFullScreenIntentSettings(it)
+        KidPointsNotificationsEngine.openFullScreenIntentSettings(it)
       }
     }
 
     AsyncFunction("stopExpiredAlarmPlayback") {
-      KidPointsAlarmEngine.stopExpiredAlarmPlayback()
+      KidPointsNotificationsEngine.stopExpiredAlarmPlayback()
     }
   }
 
   fun emitState(
     document: JSONObject,
     reason: String,
-    runtimeStatus: AlarmRuntimeStatusPayload,
+    runtimeStatus: NotificationRuntimeStatusPayload,
   ) {
     sendEvent(
-      "KidPointsAlarmStateChanged",
+      "KidPointsNotificationsStateChanged",
       mapOf(
         "documentJson" to document.toString(),
         "reason" to reason,
@@ -260,7 +260,7 @@ class KidPointsAlarmModule : Module() {
 
   fun emitLaunchAction(actionJson: String) {
     sendEvent(
-      "KidPointsAlarmLaunchAction",
+      "KidPointsNotificationsLaunchAction",
       mapOf("actionJson" to actionJson),
     )
   }

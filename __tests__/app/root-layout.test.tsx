@@ -65,6 +65,7 @@ describe('RootLayout', () => {
     expect(screen.getByText('list-browser:default')).toBeTruthy();
     expect(screen.getByText('transactions:default')).toBeTruthy();
     expect(screen.getByText('parent-unlock:transparentModal')).toBeTruthy();
+    expect(screen.getByText('timer-check-in:transparentModal')).toBeTruthy();
     expect(screen.queryByText('text-input-modal:transparentModal')).toBeNull();
   });
 });

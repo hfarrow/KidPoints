@@ -1,18 +1,18 @@
-package expo.modules.kidpointsalarm
+package expo.modules.kidpointsnotifications
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 
-class AlarmActionReceiver : BroadcastReceiver() {
+class NotificationsActionReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent?) {
     when (intent?.action) {
       ACTION_PAUSE_TIMER -> {
-        KidPointsAlarmEngine.pauseTimerFromNotification(context)
+        KidPointsNotificationsEngine.pauseTimerFromNotification(context)
       }
 
       ACTION_STOP_TIMER -> {
-        KidPointsAlarmEngine.stopTimerFromNotification(context)
+        KidPointsNotificationsEngine.stopTimerFromNotification(context)
       }
     }
   }

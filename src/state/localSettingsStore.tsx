@@ -26,8 +26,10 @@ type LocalSettingsState = {
   hasHydrated: boolean;
   logLevel: AppLogLevel;
   markHydrated: () => void;
+  notificationsEnabled: boolean;
   parentPin: string | null;
   setLogLevel: (logLevel: AppLogLevel) => void;
+  setNotificationsEnabled: (notificationsEnabled: boolean) => void;
   setParentPin: (parentPin: string) => void;
   setThemeMode: (themeMode: ThemeMode) => void;
   themeMode: ThemeMode;
@@ -61,6 +63,7 @@ const LocalSettingsStoreContext = createContext<LocalSettingsStore | null>(
 type LocalSettingsStoreProviderProps = PropsWithChildren<{
   allowTemporaryLogLevel?: boolean;
   initialLogLevel?: AppLogLevel;
+  initialNotificationsEnabled?: boolean;
   initialParentPin?: string | null;
   initialThemeMode?: ThemeMode;
   storage?: StateStorage;
@@ -69,12 +72,14 @@ type LocalSettingsStoreProviderProps = PropsWithChildren<{
 export function createLocalSettingsStore({
   allowTemporaryLogLevel,
   initialLogLevel = getDefaultAppLogLevel(),
+  initialNotificationsEnabled = true,
   initialParentPin = null,
   initialThemeMode = 'system',
   storage = AsyncStorage,
 }: {
   allowTemporaryLogLevel?: boolean;
   initialLogLevel?: AppLogLevel;
+  initialNotificationsEnabled?: boolean;
   initialParentPin?: string | null;
   initialThemeMode?: ThemeMode;
   storage?: StateStorage;
@@ -91,6 +96,7 @@ export function createLocalSettingsStore({
         markHydrated: () => {
           set({ hasHydrated: true });
         },
+        notificationsEnabled: initialNotificationsEnabled,
         parentPin: initialParentPin,
         setLogLevel: (logLevel) => {
           const normalizedLogLevel = normalizeAppLogLevel(logLevel, {
@@ -104,6 +110,13 @@ export function createLocalSettingsStore({
             requestedLogLevel: logLevel,
           });
           set({ logLevel: normalizedLogLevel });
+        },
+        setNotificationsEnabled: (notificationsEnabled) => {
+          logLocalSettingsMutation({
+            action: 'setNotificationsEnabled',
+            notificationsEnabled,
+          });
+          set({ notificationsEnabled });
         },
         setParentPin: (parentPin) => {
           logLocalSettingsMutation({
@@ -134,6 +147,9 @@ export function createLocalSettingsStore({
               allowTemporaryLogLevel,
               fallbackLogLevel: normalizedInitialLogLevel,
             }),
+            notificationsEnabled:
+              persistedSettings.notificationsEnabled ??
+              initialNotificationsEnabled,
           };
         },
         name: LOCAL_SETTINGS_STORAGE_KEY,
@@ -146,14 +162,22 @@ export function createLocalSettingsStore({
             logLocalSettingsRehydrated({
               hasParentPin: Boolean(state?.parentPin),
               logLevel: state?.logLevel ?? normalizedInitialLogLevel,
+              notificationsEnabled:
+                state?.notificationsEnabled ?? initialNotificationsEnabled,
               themeMode: state?.themeMode ?? initialThemeMode,
             });
           }
 
           state?.markHydrated();
         },
-        partialize: ({ logLevel, parentPin, themeMode }) => ({
+        partialize: ({
           logLevel,
+          notificationsEnabled,
+          parentPin,
+          themeMode,
+        }) => ({
+          logLevel,
+          notificationsEnabled,
           parentPin,
           themeMode,
         }),
@@ -167,6 +191,7 @@ export function LocalSettingsStoreProvider({
   allowTemporaryLogLevel,
   children,
   initialLogLevel = getDefaultAppLogLevel(),
+  initialNotificationsEnabled = true,
   initialParentPin = null,
   initialThemeMode = 'system',
   storage,
@@ -176,6 +201,7 @@ export function LocalSettingsStoreProvider({
       createLocalSettingsStore({
         allowTemporaryLogLevel,
         initialLogLevel,
+        initialNotificationsEnabled,
         initialParentPin,
         initialThemeMode,
         storage,
@@ -188,10 +214,16 @@ export function LocalSettingsStoreProvider({
   useEffect(() => {
     log.info('Local settings store provider initialized', {
       initialLogLevel,
+      initialNotificationsEnabled,
       initialParentPinConfigured: Boolean(initialParentPin),
       initialThemeMode,
     });
-  }, [initialLogLevel, initialParentPin, initialThemeMode]);
+  }, [
+    initialLogLevel,
+    initialNotificationsEnabled,
+    initialParentPin,
+    initialThemeMode,
+  ]);
 
   return (
     <LocalSettingsStoreContext.Provider value={store}>

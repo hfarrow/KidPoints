@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MainScreenActions } from '../../components/MainScreenActions';
 import { ScreenHeader } from '../../components/ScreenHeader';
@@ -17,23 +17,13 @@ import { Tile } from '../../components/Tile';
 import { createModuleLogger } from '../../logging/logger';
 import { useSharedStore } from '../../state/sharedStore';
 import { normalizeTimerConfig } from '../../state/sharedTimer';
+import { NotificationSettingsTile } from '../notifications/NotificationSettingsTile';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 import { TimerControlRail } from '../timer/TimerControlRail';
 import { useSharedTimerViewModel } from '../timer/useSharedTimerViewModel';
 
 const log = createModuleLogger('alarm-screen');
-
-function ReadinessRow({ label, value }: { label: string; value: string }) {
-  const styles = useThemedStyles(createStyles);
-
-  return (
-    <View style={styles.readinessRow}>
-      <Text style={styles.readinessLabel}>{label}</Text>
-      <Text style={styles.readinessValue}>{value}</Text>
-    </View>
-  );
-}
 
 export function AlarmScreen() {
   const router = useRouter();
@@ -98,11 +88,6 @@ export function AlarmScreen() {
       alarmDurationSeconds: normalizedTimerConfig.alarmDurationSeconds,
     });
   };
-
-  const nativeBridgeLabel =
-    Platform.OS === 'android'
-      ? 'Module present, JS bridge pending'
-      : 'Android integration pending';
 
   return (
     <ScreenScaffold>
@@ -234,23 +219,7 @@ export function AlarmScreen() {
         </Tile>
       ) : null}
 
-      <Tile
-        accessory={<StatusBadge label="Pending" tone="warning" />}
-        title="Readiness"
-      >
-        <CompactSurface>
-          <ReadinessRow label="Timer Mode" value={timerViewModel.statusLabel} />
-          <ReadinessRow label="Native Alarm Bridge" value={nativeBridgeLabel} />
-          <ReadinessRow
-            label="Notifications"
-            value="Live alarm handling still pending"
-          />
-          <ReadinessRow
-            label="Saved Alarm Duration"
-            value={timerViewModel.alarmDurationLabel}
-          />
-        </CompactSurface>
-      </Tile>
+      <NotificationSettingsTile />
     </ScreenScaffold>
   );
 }
@@ -323,20 +292,5 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       minHeight: 42,
       paddingHorizontal: 12,
       paddingVertical: 8,
-    },
-    readinessRow: {
-      gap: 3,
-    },
-    readinessLabel: {
-      color: tokens.textMuted,
-      fontSize: 11,
-      fontWeight: '800',
-      letterSpacing: 0.5,
-      textTransform: 'uppercase',
-    },
-    readinessValue: {
-      color: tokens.textPrimary,
-      fontSize: 14,
-      fontWeight: '700',
     },
   });

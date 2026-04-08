@@ -3,11 +3,11 @@ plugins {
   id 'expo-module-gradle-plugin'
 }
 
-group = 'expo.modules.kidpointsalarm'
+group = 'expo.modules.kidpointsnotifications'
 version = '1.0.0'
 
 android {
-  namespace "expo.modules.kidpointsalarm"
+  namespace "expo.modules.kidpointsnotifications"
   defaultConfig {
     versionCode 1
     versionName "1.0.0"

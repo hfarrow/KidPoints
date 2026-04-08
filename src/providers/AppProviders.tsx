@@ -5,6 +5,7 @@ import {
   initialWindowMetrics,
   SafeAreaProvider,
 } from 'react-native-safe-area-context';
+import { NotificationsProvider } from '../features/notifications/NotificationsProvider';
 import { ParentSessionProvider } from '../features/parent/parentSessionContext';
 import { AppThemeProvider } from '../features/theme/themeContext';
 import {
@@ -95,8 +96,10 @@ export function AppProviders({ children }: PropsWithChildren) {
         <SharedStoreProvider>
           <ParentSessionProvider>
             <AppThemeProvider>
-              <AppLogLevelObserver />
-              {children}
+              <NotificationsProvider>
+                <AppLogLevelObserver />
+                {children}
+              </NotificationsProvider>
             </AppThemeProvider>
           </ParentSessionProvider>
         </SharedStoreProvider>

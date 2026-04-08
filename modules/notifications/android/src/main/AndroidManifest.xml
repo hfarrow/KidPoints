@@ -10,7 +10,7 @@
 
   <application>
     <service
-      android:name="expo.modules.kidpointsalarm.AlarmForegroundService"
+      android:name="expo.modules.kidpointsnotifications.NotificationsForegroundService"
       android:enabled="true"
       android:exported="false"
       android:foregroundServiceType="specialUse">
@@ -20,17 +20,17 @@
     </service>
 
     <receiver
-      android:name="expo.modules.kidpointsalarm.AlarmTriggerReceiver"
+      android:name="expo.modules.kidpointsnotifications.NotificationsTriggerReceiver"
       android:enabled="true"
       android:exported="false" />
 
     <receiver
-      android:name="expo.modules.kidpointsalarm.AlarmActionReceiver"
+      android:name="expo.modules.kidpointsnotifications.NotificationsActionReceiver"
       android:enabled="true"
       android:exported="false" />
 
     <receiver
-      android:name="expo.modules.kidpointsalarm.AlarmBootReceiver"
+      android:name="expo.modules.kidpointsnotifications.NotificationsBootReceiver"
       android:enabled="true"
       android:exported="true">
       <intent-filter>

@@ -50,6 +50,29 @@ describe('localSettingsStore', () => {
     expect(secondStore.getState().themeMode).toBe('dark');
   });
 
+  it('rehydrates the persisted notifications enabled state', async () => {
+    const storage = createMemoryStorage();
+    const firstStore = createLocalSettingsStore({
+      initialNotificationsEnabled: true,
+      storage,
+    });
+
+    firstStore.getState().setNotificationsEnabled(false);
+
+    const secondStore = createLocalSettingsStore({
+      initialNotificationsEnabled: true,
+      storage,
+    });
+
+    await (
+      secondStore as typeof secondStore & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(secondStore.getState().notificationsEnabled).toBe(false);
+  });
+
   it('rehydrates the persisted log level', async () => {
     const storage = createMemoryStorage();
     const firstStore = createLocalSettingsStore({

@@ -2120,6 +2120,18 @@ export function useSharedStore<T>(selector: (state: SharedStoreState) => T) {
   return useStore(store, selector);
 }
 
+export function useSharedStoreApi() {
+  const store = useContext(SharedStoreContext);
+
+  if (!store) {
+    throw new Error(
+      'useSharedStoreApi must be used within SharedStoreProvider',
+    );
+  }
+
+  return store;
+}
+
 export function selectActiveChildren(state: SharedStoreState) {
   return state.document.head.activeChildIds
     .map((childId) => state.document.head.childrenById[childId])

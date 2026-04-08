@@ -10,6 +10,7 @@ import {
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockPush = jest.fn();
+const mockUseNotifications = jest.fn();
 
 jest.mock('@expo/vector-icons', () => {
   const mockReactNative = jest.requireActual('react-native');
@@ -31,9 +32,51 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
+jest.mock('../../../src/features/notifications/NotificationsProvider', () => ({
+  useNotifications: () => mockUseNotifications(),
+}));
+
 describe('AlarmScreen', () => {
   beforeEach(() => {
     jest.useRealTimers();
+    mockPush.mockReset();
+    mockUseNotifications.mockReturnValue({
+      activeExpiredTimerSession: null,
+      dismissCheckInFlow: jest.fn(),
+      engineAvailable: true,
+      isReady: true,
+      notificationsEnabled: true,
+      openExactAlarmSettings: jest.fn(),
+      openFullScreenIntentSettings: jest.fn(),
+      openNotificationSettings: jest.fn(),
+      openPromotedNotificationSettings: jest.fn(),
+      refreshRuntimeStatus: jest.fn(),
+      resolveExpiredTimerChild: jest.fn(),
+      runtimeStatus: {
+        countdownNotificationChannelImportance: 2,
+        countdownNotificationHasPromotableCharacteristics: true,
+        countdownNotificationIsOngoing: false,
+        countdownNotificationRequestedPromoted: true,
+        countdownNotificationUsesChronometer: true,
+        countdownNotificationWhen: null,
+        exactAlarmPermissionGranted: true,
+        expiredNotificationCategory: 'alarm',
+        expiredNotificationChannelImportance: 4,
+        expiredNotificationHasCustomHeadsUp: true,
+        expiredNotificationHasFullScreenIntent: true,
+        fullScreenIntentPermissionGranted: true,
+        fullScreenIntentSettingsResolvable: true,
+        isAppInForeground: true,
+        isRunning: false,
+        lastTriggeredAt: null,
+        nextTriggerAt: null,
+        notificationPermissionGranted: true,
+        promotedNotificationPermissionGranted: true,
+        promotedNotificationSettingsResolvable: true,
+        sessionId: null,
+      },
+      setNotificationsEnabled: jest.fn(),
+    });
   });
 
   it('renders the locked parent-gated state and opens the unlock flow', () => {
@@ -58,13 +101,14 @@ describe('AlarmScreen', () => {
     expect(screen.getByText('Alarm')).toBeTruthy();
     expect(screen.getByText('Unlock Required')).toBeTruthy();
     expect(screen.getByText('Timer')).toBeTruthy();
-    expect(screen.getByText('Readiness')).toBeTruthy();
+    expect(screen.getByText('Device Notifications')).toBeTruthy();
+    expect(screen.queryByText('Readiness')).toBeNull();
 
     fireEvent.press(screen.getByText('Unlock with PIN'));
     expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
   });
 
-  it('renders live timer controls and normalizes settings input when unlocked', () => {
+  it('renders live timer controls and expands notifications diagnostics on demand', () => {
     render(
       <SharedStoreProvider
         initialDocument={createInitialSharedDocument({
@@ -85,9 +129,15 @@ describe('AlarmScreen', () => {
 
     expect(screen.getByText('Settings')).toBeTruthy();
     expect(screen.getByLabelText('Alarm start timer')).toBeTruthy();
-    expect(
-      screen.getByText(/(JS bridge pending|integration pending)/),
-    ).toBeTruthy();
+    expect(screen.getByText('Device Notifications')).toBeTruthy();
+    expect(screen.queryByText('Runtime')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Expand Notifications'));
+
+    expect(screen.getByText('Readiness')).toBeTruthy();
+    expect(screen.getByText('Runtime')).toBeTruthy();
+    expect(screen.getByText('Connected')).toBeTruthy();
+    expect(screen.getAllByText('Allowed').length).toBeGreaterThan(0);
 
     fireEvent.press(screen.getByLabelText('Alarm start timer'));
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
