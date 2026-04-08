@@ -27,7 +27,8 @@ When generating React or React Native code for this repo:
 
 Workflow rules for this repo:
 
-- Always run `yarn check` after code changes.
+- Always run `yarn check` after code changes for frequent incremental validation.
+- If `yarn check` fails with fixable Biome or ESLint issues, run `yarn check-fix` and then re-read any files that were modified by those fixes before continuing.
 - Always run `yarn test` after completing testable features.
 - Always add tests for new functionality.
 - Before a commit, prefer running `yarn clean:cache` and then `yarn verify`.
