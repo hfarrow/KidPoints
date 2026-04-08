@@ -68,6 +68,7 @@ describe('logger', () => {
     expect(String(logSpy.mock.calls[0]?.[0])).toContain('TEMP');
     expect(String(logSpy.mock.calls[0]?.[0])).toContain('Temporary log');
     expect(String(logSpy.mock.calls[0]?.[0])).toContain('\u001b[');
+    expect(String(logSpy.mock.calls[0]?.[0]).startsWith(' ')).toBe(true);
   });
 
   it('updates the active root logger severity at runtime', () => {

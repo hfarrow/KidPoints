@@ -42,7 +42,7 @@ const appLogConsoleMethods = {
 const appLogColorCodes = {
   debug: '\x1b[38;5;246m',
   error: '\x1b[38;5;248m',
-  info: '\x1b[38;5;254m',
+  info: '\x1b[38;5;255m',
   temp: '\x1b[38;5;67m',
   warn: '\x1b[38;5;250m',
 } as const;
@@ -66,10 +66,12 @@ const appConsoleTransport: transportFunctionType<AppConsoleTransportOptions> = (
   const shouldColorize = props.options?.colorsEnabled;
   const colorCode =
     props.options?.levelColors?.[props.level.text as AppLogLevel];
-  const message =
+  const formattedMessage =
     shouldColorize && colorCode
       ? `${colorCode}${props.msg}${resetTerminalColor}`
       : props.msg;
+  const message =
+    logMethod === 'log' ? ` ${formattedMessage}` : formattedMessage;
   const consoleMethods = console as unknown as Record<
     string,
     ((message: string) => void) | undefined
@@ -128,9 +130,47 @@ export function normalizeAppLogLevel(
   return logLevel;
 }
 
+function formatAppLogMessage(
+  level: string,
+  extension: string | null,
+  messages: unknown[],
+) {
+  const timestamp = new Date().toLocaleTimeString();
+  const segments = [`[${level.toUpperCase()}]`, `[${timestamp}]`];
+
+  if (extension) {
+    segments.push(`[${extension}]`);
+  }
+
+  const messageText = messages
+    .map((message) => {
+      if (typeof message === 'string') {
+        return message;
+      }
+
+      if (typeof message === 'function') {
+        return `[function ${message.name || 'anonymous'}()]`;
+      }
+
+      if (message instanceof Error) {
+        return message.message;
+      }
+
+      try {
+        return JSON.stringify(message, null, 2);
+      } catch {
+        return '[[Unserializable Value]]';
+      }
+    })
+    .join(' ');
+
+  return `${segments.join(' ')}: ${messageText}`;
+}
+
 const rootLogger = logger.createLogger({
   levels: appLogLevels,
   severity: defaultAppLogLevel,
+  formatFunc: formatAppLogMessage,
   transport: appConsoleTransport,
   transportOptions: {
     colorsEnabled: isDevelopment,
@@ -138,8 +178,8 @@ const rootLogger = logger.createLogger({
     mapLevels: appLogConsoleMethods,
   },
   enabled: true,
-  printDate: true,
-  printLevel: true,
+  printDate: false,
+  printLevel: false,
 });
 
 export const appLogger = rootLogger as AppLogger;

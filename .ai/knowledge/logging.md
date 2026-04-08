@@ -15,10 +15,11 @@ This note documents the preferred logging approach for KidPoints.
 - Import `appLogger` for app-wide logs without a module namespace.
 - Import `createModuleLogger(namespace)` to create a namespaced logger for a feature, screen, or module.
 - Import `createStructuredLog(logger, level, message)` when a module repeats the same log level and message with different detail objects.
-- `APP_LOG_LEVELS`, `getAppLogLevel()`, `setAppLogLevel(...)`, and `getDefaultAppLogLevel()` expose the supported runtime log-level controls.
-- The logger is configured with `react-native-logs` and `mapConsoleTransport`.
+- `SUPPORTED_APP_LOG_LEVELS`, `getAppLogLevel()`, `setAppLogLevel(...)`, `getDefaultAppLogLevel()`, and related helpers expose the supported runtime log-level controls.
+- The logger is configured with `react-native-logs` and a custom console transport for formatted, colorized development-terminal output.
 - Default severity is `debug` in development and `info` in production.
 - The active log level is persisted in local settings and can be changed from the Settings screen, including in release builds.
+- The supported levels are `temp`, `debug`, `info`, `warn`, and `error`.
 
 ## Preferred usage
 
@@ -60,6 +61,15 @@ logLocalSettingsMutation({
 
 Prefer this pattern for store mutations, rehydrate outcomes, and other structured events that share a fixed message.
 
+## Level guidance
+
+- Use `temp` for temporary debug logging while actively investigating an issue or validating a change.
+- Treat `temp` logs as short-lived instrumentation. Remove them or downgrade them to `debug` before shipping unless they still provide clear ongoing value.
+- Use `debug` for development detail that may remain in the codebase after the immediate investigation is over.
+- Use `info` for durable lifecycle, state, or recovery signals that are useful in development and production.
+- Use `warn` for degraded-but-recoverable situations.
+- Use `error` for failures, rejected mutations, or broken flows that need attention.
+
 ## Namespace guidance
 
 - Use short, stable namespaces such as `settings`, `theme`, `store`, or `parent-unlock`.
@@ -71,6 +81,7 @@ Prefer this pattern for store mutations, rehydrate outcomes, and other structure
 
 - Assume `info`, `warn`, and `error` logs may be visible in production.
 - Reserve `info` for important lifecycle, state, or recovery signals that are worth retrieving later.
+- Do not rely on `temp` for lasting diagnostics. It is intended for temporary debugging and may be unavailable outside development flows.
 - Use `debug` for local development detail that is safe to omit in production.
 - Prefer storing useful context in the detail object instead of encoding it into the message string.
 - Never log secrets, tokens, passwords, or sensitive personal data.
@@ -100,6 +111,7 @@ Prefer this pattern for store mutations, rehydrate outcomes, and other structure
 ## Practical rule for this repo
 
 - Default to `createModuleLogger(...)` at module scope for new app code that needs logging.
+- Reach for `temp` first when you need short-term investigation logs, and clean those up once the issue is resolved.
 - Use `createStructuredLog(...)` when a module repeats the same message/level combination.
 - Use `appLogger` sparingly for truly global logging.
 - If a log would be noisy, sensitive, or only useful during local debugging, prefer `debug` or remove it before shipping.

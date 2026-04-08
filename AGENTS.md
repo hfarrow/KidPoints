@@ -23,6 +23,7 @@ When generating React or React Native code for this repo:
 - Follow the UI composition guidance in `.ai/knowledge/ui-composition.md` for screens, tiles, action rows, badges, and logged interactions.
 - Follow the logging guidance in `.ai/knowledge/logging.md` for app and module logging.
 - Prefer the shared logging helpers in `src/logging/logger.ts` over repeating fixed log messages and levels inline.
+- Use `temp` only for temporary debug logging that helps while actively investigating an issue, and remove or downgrade those logs before shipping unless there is a clear reason to keep them.
 - Prefer idiomatic React patterns over clever shortcuts.
 - Keep components and Hooks pure, and keep side effects out of render.
 - Follow the Rules of Hooks consistently.
