@@ -5,8 +5,6 @@ import {
   useResizeMode,
 } from 'react-native-keyboard-controller';
 
-import { createModuleLogger } from '../logging/logger';
-
 type KeyboardModalFrameProps = PropsWithChildren<{
   contentTestID?: string;
   hideUntilKeyboardPositioned?: boolean;
@@ -17,7 +15,6 @@ type KeyboardModalFrameProps = PropsWithChildren<{
 
 const CLOSED_MODAL_PADDING = 18;
 const OPEN_MODAL_GAP = 10;
-const log = createModuleLogger('keyboard-modal-frame');
 
 export function getKeyboardModalFrameStyle(
   keyboardHeight: number,
@@ -51,10 +48,6 @@ export function KeyboardModalFrame({
     const willShowSubscription = KeyboardEvents.addListener(
       'keyboardWillShow',
       (event) => {
-        log.debug('Keyboard modal frame received keyboardWillShow', {
-          eventHeight: event.height,
-          testID,
-        });
         setKeyboardHeight(event.height);
         setHasPositionedForKeyboard(true);
       },
@@ -62,9 +55,6 @@ export function KeyboardModalFrame({
     const didHideSubscription = KeyboardEvents.addListener(
       'keyboardDidHide',
       () => {
-        log.debug('Keyboard modal frame received keyboardDidHide', {
-          testID,
-        });
         // Preserve the final keyboard-aligned position for the life of the modal
         // so it doesn't jump back to center while closing or after manual dismiss.
       },
@@ -74,7 +64,7 @@ export function KeyboardModalFrame({
       willShowSubscription.remove();
       didHideSubscription.remove();
     };
-  }, [testID]);
+  }, []);
 
   const shouldUseBottomPlacement =
     initialVerticalPosition === 'bottom' || hasPositionedForKeyboard;
