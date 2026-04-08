@@ -1,9 +1,7 @@
-import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useEffect, useMemo } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
-import { LoggedPressable } from '../../components/LoggedPressable';
+import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
 import {
@@ -14,14 +12,12 @@ import {
 import { Tile } from '../../components/Tile';
 import { createModuleLogger } from '../../logging/logger';
 import { useSharedStore } from '../../state/sharedStore';
-import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
 
 const log = createModuleLogger('list-browser-screen');
 
 export function ListBrowserScreen() {
-  const router = useRouter();
   const styles = useThemedStyles(createStyles);
-  const { tokens } = useAppTheme();
   const head = useSharedStore((state) => state.document.head);
   const deleteChildPermanently = useSharedStore(
     (state) => state.deleteChildPermanently,
@@ -40,20 +36,8 @@ export function ListBrowserScreen() {
   }, []);
 
   return (
-    <ScreenScaffold>
-      <ScreenHeader
-        leadingAction={
-          <LoggedPressable
-            accessibilityLabel="Go Back"
-            logLabel="Go Back"
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Feather color={tokens.controlText} name="arrow-left" size={18} />
-          </LoggedPressable>
-        }
-        title="Archived Children"
-      />
+    <ScreenScaffold footer={<ScreenBackFooter />}>
+      <ScreenHeader title="Archived Children" />
 
       {archivedChildren.length === 0 ? (
         <Tile title="Nothing Archived">
@@ -118,14 +102,6 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 8,
-    },
-    backButton: {
-      alignItems: 'center',
-      backgroundColor: tokens.controlSurface,
-      borderRadius: 18,
-      height: 36,
-      justifyContent: 'center',
-      width: 36,
     },
     column: {
       gap: 8,

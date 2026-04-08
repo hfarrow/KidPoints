@@ -29,6 +29,7 @@ The main examples live in:
 - Prefer root stack routes for detail or support screens such as Settings, archived item browsers, and transaction history when back navigation should return to the opener.
 - Do not hide support screens inside the tab navigator just to preserve the tab bar. That changes back behavior from stack history to tab history.
 - If a non-tab screen must keep the tab bar visible, use a stack nested inside the active tab or a shared-route tab-group design intentionally rather than hidden tab routes.
+- When a root stack screen replaces the tab bar, it is acceptable to add an explicit in-screen back affordance, including a footer action that fills the vacated bottom-bar space.
 - Register modal-style routes in the root stack with explicit `presentation` options.
 - Use route-level logging for major navigation events such as initial route entry, transitions, modal open, and modal close.
 - Keep pathnames and segment paths in navigation logs so user flow can be reconstructed later.

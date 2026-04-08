@@ -1,9 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
+import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
 import {
@@ -157,7 +157,6 @@ const stylesForBadges = StyleSheet.create({
 });
 
 export function TransactionsScreen() {
-  const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { tokens } = useAppTheme();
   const scrollViewRef = useRef<ScrollView | null>(null);
@@ -304,20 +303,8 @@ export function TransactionsScreen() {
   };
 
   return (
-    <ScreenScaffold scrollViewRef={scrollViewRef}>
-      <ScreenHeader
-        leadingAction={
-          <LoggedPressable
-            accessibilityLabel="Go Back"
-            logLabel="Go Back"
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Feather color={tokens.controlText} name="arrow-left" size={18} />
-          </LoggedPressable>
-        }
-        title="Transactions"
-      />
+    <ScreenScaffold footer={<ScreenBackFooter />} scrollViewRef={scrollViewRef}>
+      <ScreenHeader title="Transactions" />
 
       <Tile density="extraCompact" title="Filters">
         <View style={styles.filterRow}>
@@ -672,14 +659,6 @@ function deriveTransactionFilterChildren(document: SharedDocument) {
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
-    backButton: {
-      alignItems: 'center',
-      backgroundColor: tokens.controlSurface,
-      borderRadius: 18,
-      height: 36,
-      justifyContent: 'center',
-      width: 36,
-    },
     badgeRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',

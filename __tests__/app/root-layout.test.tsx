@@ -43,7 +43,7 @@ jest.mock('expo-router', () => {
 });
 
 describe('RootLayout', () => {
-  it('registers the tab shell, stack detail screens, and route-backed modals', () => {
+  it('registers the tab shell and route-backed modals at the root level', () => {
     render(<RootLayout />);
 
     expect(screen.getByText('(tabs):default')).toBeTruthy();

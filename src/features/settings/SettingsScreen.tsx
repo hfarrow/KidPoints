@@ -1,9 +1,9 @@
-import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
+import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
 import {
@@ -35,20 +35,8 @@ export function SettingsScreen() {
   }, []);
 
   return (
-    <ScreenScaffold>
-      <ScreenHeader
-        leadingAction={
-          <LoggedPressable
-            accessibilityLabel="Go Back"
-            logLabel="Go Back"
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Feather color={tokens.controlText} name="arrow-left" size={18} />
-          </LoggedPressable>
-        }
-        title="Settings"
-      />
+    <ScreenScaffold footer={<ScreenBackFooter />}>
+      <ScreenHeader title="Settings" />
 
       <Tile accessory={<StatusBadge label={resolvedTheme} />} title="Theme">
         <View style={styles.optionRow}>
@@ -170,14 +158,6 @@ export function SettingsScreen() {
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
-    backButton: {
-      alignItems: 'center',
-      backgroundColor: tokens.controlSurface,
-      borderRadius: 18,
-      height: 36,
-      justifyContent: 'center',
-      width: 36,
-    },
     body: {
       color: tokens.textMuted,
       fontSize: 14,
