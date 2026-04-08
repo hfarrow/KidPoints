@@ -1,3 +1,4 @@
+import { computeSharedTimerSnapshot } from '../../state/sharedTimer';
 import type {
   SharedDocument,
   SharedTimerConfig,
@@ -296,12 +297,19 @@ function parseNotificationTimerState(
 }
 
 function buildNotificationTimerState(
+  timerConfig: SharedTimerConfig,
   timerState: SharedTimerState,
 ): NotificationTimerState {
-  switch (timerState.mode) {
+  const snapshot = computeSharedTimerSnapshot(
+    timerConfig,
+    timerState,
+    Date.now(),
+  );
+
+  switch (snapshot.status) {
     case 'running':
       return {
-        cycleStartedAt: timerState.cycleStartedAt,
+        cycleStartedAt: snapshot.currentCycleStartedAt,
         isRunning: true,
         pausedRemainingMs: null,
       };
@@ -309,7 +317,7 @@ function buildNotificationTimerState(
       return {
         cycleStartedAt: null,
         isRunning: false,
-        pausedRemainingMs: timerState.pausedRemainingMs,
+        pausedRemainingMs: snapshot.remainingMs,
       };
     default:
       return {
@@ -345,7 +353,10 @@ export function deriveNotificationDocument(
     ? currentDocument.head.timerRuntimeState
     : createEmptyNotificationTimerRuntimeState();
   const timerState = notificationsEnabled
-    ? buildNotificationTimerState(sharedDocument.head.timerState)
+    ? buildNotificationTimerState(
+        sharedDocument.head.timerConfig,
+        sharedDocument.head.timerState,
+      )
     : createEmptyNotificationDocument().head.timerState;
   const expiredIntervals = notificationsEnabled
     ? currentDocument.head.expiredIntervals

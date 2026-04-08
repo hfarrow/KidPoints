@@ -177,6 +177,23 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     return nextRuntimeStatus;
   }, []);
 
+  const applyNativeDocumentJson = useCallback(
+    (
+      documentJson: string,
+      fallbackDocument: NotificationDocument,
+    ): NotificationDocument => {
+      const nextDocument =
+        parseNotificationDocument(documentJson) ?? fallbackDocument;
+
+      setNotificationDocument(nextDocument);
+      notificationDocumentRef.current = nextDocument;
+      lastSyncedDocumentRef.current = nextDocument;
+
+      return nextDocument;
+    },
+    [],
+  );
+
   const maybeRequestStartupNotificationPermission = useCallback(
     async (runtimeStatus: NotificationRuntimeStatus, source: 'startup') => {
       if (didEvaluateStartupNotificationPermissionRef.current) {
@@ -225,15 +242,10 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       }
 
       const syncedDocument = await syncNotificationDocument(nextDocument);
-      const parsedDocument =
-        parseNotificationDocument(syncedDocument) ?? nextDocument;
-
-      setNotificationDocument(parsedDocument);
-      notificationDocumentRef.current = parsedDocument;
-      lastSyncedDocumentRef.current = parsedDocument;
+      applyNativeDocumentJson(syncedDocument, nextDocument);
       await refreshRuntimeStatus();
     },
-    [engineAvailable, refreshRuntimeStatus],
+    [applyNativeDocumentJson, engineAvailable, refreshRuntimeStatus],
   );
 
   const dismissCheckInFlow = useCallback(() => {
@@ -378,28 +390,35 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     }
 
     void (async () => {
+      let bridgeDocumentJson: string | null = null;
+
       if (!notificationsEnabled) {
-        await resetNotificationTimer(nextDocument);
+        bridgeDocumentJson = await resetNotificationTimer(nextDocument);
       } else if (!previousDocument) {
-        await syncNotificationDocument(nextDocument);
+        bridgeDocumentJson = await syncNotificationDocument(nextDocument);
       } else if (
         previousDocument.head.timerState.isRunning !==
         nextDocument.head.timerState.isRunning
       ) {
         if (nextDocument.head.timerState.isRunning) {
-          await startNotificationTimer(nextDocument);
+          bridgeDocumentJson = await startNotificationTimer(nextDocument);
         } else if (nextDocument.head.timerState.pausedRemainingMs != null) {
-          await pauseNotificationTimer(nextDocument);
+          bridgeDocumentJson = await pauseNotificationTimer(nextDocument);
         } else {
-          await resetNotificationTimer(nextDocument);
+          bridgeDocumentJson = await resetNotificationTimer(nextDocument);
         }
       } else {
-        await syncNotificationDocument(nextDocument);
+        bridgeDocumentJson = await syncNotificationDocument(nextDocument);
+      }
+
+      if (bridgeDocumentJson) {
+        applyNativeDocumentJson(bridgeDocumentJson, nextDocument);
       }
 
       await refreshRuntimeStatus();
     })();
   }, [
+    applyNativeDocumentJson,
     document,
     engineAvailable,
     hasInitialized,

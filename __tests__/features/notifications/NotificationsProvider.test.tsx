@@ -145,6 +145,32 @@ function createExpiredNotificationDocument(
   };
 }
 
+function createExpiredRunningSharedDocumentFixture() {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-04-08T12:00:00.000Z'));
+
+  const store = createSharedStore({
+    initialDocument: createInitialSharedDocument({
+      deviceId: 'notifications-provider-running',
+    }),
+    storage: createMemoryStorage(),
+  });
+
+  store.getState().addChild('Avery');
+  store.getState().startTimer();
+
+  jest.setSystemTime(new Date('2026-04-08T12:20:00.000Z'));
+
+  const document = store.getState().document;
+  const childId = document.head.activeChildIds[0] ?? null;
+
+  if (!childId) {
+    throw new Error('Expected running shared store fixture to create a child');
+  }
+
+  return { childId, document };
+}
+
 function NotificationsProbe() {
   const { activeExpiredTimerSession, isReady, resolveExpiredTimerChild } =
     useNotifications();
@@ -330,6 +356,36 @@ describe('NotificationsProvider', () => {
     );
     expect(mockStopExpiredAlarmPlayback).toHaveBeenCalled();
     expect(mockStartNotificationTimer).toHaveBeenCalled();
+  });
+
+  it('restarts native scheduling when startup hydrates an expired session over a stale running shared timer', async () => {
+    try {
+      const runningFixture = createExpiredRunningSharedDocumentFixture();
+      mockLoadPersistedNotificationDocument.mockResolvedValue(
+        createExpiredNotificationDocument(runningFixture.childId),
+      );
+
+      renderProvider({
+        initialDocument: runningFixture.document,
+        initialParentUnlocked: true,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'interval-1',
+        ),
+      );
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Award child'));
+      });
+
+      await waitFor(() =>
+        expect(mockStartNotificationTimer).toHaveBeenCalledTimes(1),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('requests notification permission at startup when enabled and currently denied', async () => {
