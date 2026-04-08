@@ -104,7 +104,11 @@ object KidPointsNotificationsEngine {
   fun getPendingLaunchAction(context: Context): String? =
     prefs(context).getString(PENDING_LAUNCH_ACTION_KEY, null).also { pendingLaunchAction ->
       logIntent(
-        "Read pending launch action hasValue=${pendingLaunchAction != null} payload=$pendingLaunchAction",
+        "Read pending launch action",
+        createLogContext(
+          "hasValue" to (pendingLaunchAction != null),
+          "payload" to parseJsonObjectOrRaw(pendingLaunchAction),
+        ),
       )
     }
 
@@ -116,7 +120,10 @@ object KidPointsNotificationsEngine {
         .edit()
         .remove(PENDING_LAUNCH_ACTION_KEY)
         .apply()
-      logIntent("Consumed pending launch action payload=$pendingLaunchAction")
+      logIntent(
+        "Consumed pending launch action",
+        createLogContext("payload" to parseJsonObjectOrRaw(pendingLaunchAction)),
+      )
     }
 
     return pendingLaunchAction
@@ -143,7 +150,7 @@ object KidPointsNotificationsEngine {
 
     timerRuntimeState.put(
       "sessionId",
-      timerRuntimeState.optString("sessionId").takeIf { it.isNotBlank() }
+      timerRuntimeState.optStringOrNull("sessionId")?.takeIf { it.isNotBlank() }
         ?: "session-${System.currentTimeMillis()}",
     )
     timerRuntimeState.put("nextTriggerAt", nextTriggerAt)
@@ -156,7 +163,11 @@ object KidPointsNotificationsEngine {
     scheduleExactTrigger(context, nextTriggerAt)
     startForegroundService(context, ACTION_REFRESH)
     logDebug(
-      "Started timer sessionId=${timerRuntimeState.optString("sessionId")} nextTriggerAt=$nextTriggerAt",
+      "Started timer",
+      createLogContext(
+        "nextTriggerAt" to nextTriggerAt,
+        "sessionId" to timerRuntimeState.optStringOrNull("sessionId"),
+      ),
     )
     emitState(document, "timer-started", context)
 
@@ -173,7 +184,10 @@ object KidPointsNotificationsEngine {
     cancelExactTrigger(context)
     NotificationManagerCompat.from(context).cancel(COUNTDOWN_NOTIFICATION_ID)
     stopForegroundService(context)
-    logDebug("Paused timer from JS sessionId=${runtime.optString("sessionId")}")
+    logDebug(
+      "Paused timer from JS",
+      createLogContext("sessionId" to runtime.optStringOrNull("sessionId")),
+    )
     emitState(document, "timer-paused", context)
 
     return document.toString()
@@ -222,7 +236,11 @@ object KidPointsNotificationsEngine {
     NotificationManagerCompat.from(context).cancel(COUNTDOWN_NOTIFICATION_ID)
     stopForegroundService(context)
     logDebug(
-      "Paused timer from notification sessionId=${runtime.optString("sessionId")} pausedRemainingMs=$pausedRemainingMs",
+      "Paused timer from notification",
+      createLogContext(
+        "pausedRemainingMs" to pausedRemainingMs,
+        "sessionId" to runtime.optStringOrNull("sessionId"),
+      ),
     )
     emitState(document, "timer-paused-notification", context)
   }
@@ -263,7 +281,10 @@ object KidPointsNotificationsEngine {
     val runtime = getOrCreateObject(head, "timerRuntimeState")
 
     if (!timerState.optBoolean("isRunning", false)) {
-      logDebug("Ignored trigger because timer is not running triggerAt=$triggerAt")
+      logDebug(
+        "Ignored trigger because timer is not running",
+        createLogContext("triggerAt" to triggerAt),
+      )
       return
     }
 
@@ -286,9 +307,14 @@ object KidPointsNotificationsEngine {
     val alarmDurationSeconds = max(timerConfig.optInt("alarmDurationSeconds", 20), 1)
 
     logDebug(
-      "Handled interval trigger sessionId=${runtime.optString("sessionId")} " +
-        "intervalId=${expiredInterval?.optString("intervalId")} " +
-        "notificationId=$notificationId appInForeground=$isAppInForeground triggerAt=$triggerAt",
+      "Handled interval trigger",
+      createLogContext(
+        "appInForeground" to isAppInForeground,
+        "intervalId" to expiredInterval?.optString("intervalId"),
+        "notificationId" to notificationId,
+        "sessionId" to runtime.optStringOrNull("sessionId"),
+        "triggerAt" to triggerAt,
+      ),
     )
 
     if (shouldPlayAlarm) {
@@ -310,7 +336,12 @@ object KidPointsNotificationsEngine {
         createExpiredNotification(context, expiredInterval),
       )
       logNotification(
-        "Posted expired notification notificationId=$notificationId intervalId=${expiredInterval.optString("intervalId")} appInForeground=$isAppInForeground",
+        "Posted expired notification",
+        createLogContext(
+          "appInForeground" to isAppInForeground,
+          "intervalId" to expiredInterval.optString("intervalId"),
+          "notificationId" to notificationId,
+        ),
       )
     }
 
@@ -351,7 +382,10 @@ object KidPointsNotificationsEngine {
     if (nextTriggerAt != null) {
       scheduleExactTrigger(context, nextTriggerAt)
       startForegroundService(context, ACTION_REFRESH)
-      logService("Restored after boot nextTriggerAt=$nextTriggerAt")
+      logService(
+        "Restored after boot",
+        createLogContext("nextTriggerAt" to nextTriggerAt),
+      )
     }
   }
 
@@ -396,7 +430,7 @@ object KidPointsNotificationsEngine {
       notificationPermissionGranted = isNotificationPermissionGranted(context),
       promotedNotificationSettingsResolvable = canOpenPromotedNotificationSettings(context),
       promotedNotificationPermissionGranted = canPostPromotedNotifications(context),
-      sessionId = runtime?.optString("sessionId")?.takeIf { it.isNotBlank() },
+      sessionId = runtime?.optStringOrNull("sessionId")?.takeIf { it.isNotBlank() },
     )
   }
 
@@ -411,15 +445,21 @@ object KidPointsNotificationsEngine {
     val countdownChannel = getCountdownChannel(context)
 
     logNotification(
-      "Built countdown notification sessionId=${runtime.optString("sessionId")} nextTriggerAt=$nextTriggerAt " +
-        "channelImportance=${countdownChannel?.importance} " +
-        "canPostPromoted=${canPostPromotedNotifications(context)} " +
-        "settingsResolvable=${canOpenPromotedNotificationSettings(context)} " +
-        "requestedPromoted=${NotificationCompat.isRequestPromotedOngoing(notification)} " +
-        "hasPromotableCharacteristics=${NotificationCompat.hasPromotableCharacteristics(notification)} " +
-        "isOngoing=${(notification.flags and Notification.FLAG_ONGOING_EVENT) != 0} " +
-        "usesChronometer=${notification.extras?.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false) == true} " +
-        "when=${notification.`when`}",
+      "Built countdown notification",
+      createLogContext(
+        "canPostPromoted" to canPostPromotedNotifications(context),
+        "channelImportance" to countdownChannel?.importance,
+        "hasPromotableCharacteristics" to
+          NotificationCompat.hasPromotableCharacteristics(notification),
+        "isOngoing" to ((notification.flags and Notification.FLAG_ONGOING_EVENT) != 0),
+        "nextTriggerAt" to nextTriggerAt,
+        "requestedPromoted" to NotificationCompat.isRequestPromotedOngoing(notification),
+        "sessionId" to runtime.optStringOrNull("sessionId"),
+        "settingsResolvable" to canOpenPromotedNotificationSettings(context),
+        "usesChronometer" to
+          (notification.extras?.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false) == true),
+        "when" to notification.`when`,
+      ),
     )
 
     return notification
@@ -525,7 +565,10 @@ object KidPointsNotificationsEngine {
       return
     }
 
-    logNotification("Opening promoted notification settings action=${intent.action}")
+    logNotification(
+      "Opening promoted notification settings",
+      createLogContext("action" to intent.action),
+    )
     context.startActivity(intent)
   }
 
@@ -541,12 +584,18 @@ object KidPointsNotificationsEngine {
       return
     }
 
-    logNotification("Opening full-screen intent settings action=${intent.action}")
+    logNotification(
+      "Opening full-screen intent settings",
+      createLogContext("action" to intent.action),
+    )
     context.startActivity(intent)
   }
 
   fun startForegroundService(context: Context, action: String) {
-    logService("Starting foreground service action=$action")
+    logService(
+      "Starting foreground service",
+      createLogContext("action" to action),
+    )
     ContextCompat.startForegroundService(
       context,
       Intent(context, NotificationsForegroundService::class.java).apply {
@@ -562,7 +611,11 @@ object KidPointsNotificationsEngine {
 
   fun handleActivityIntent(context: Context, intent: Intent?) {
     logIntent(
-      "Received activity intent ${describeIntent(intent)} moduleAttached=${KidPointsNotificationsModule.instance != null}",
+      "Received activity intent",
+      createLogContext(
+        "intent" to describeIntent(intent),
+        "moduleAttached" to (KidPointsNotificationsModule.instance != null),
+      ),
     )
     val actionJson = intent?.getStringExtra(EXTRA_LAUNCH_ACTION_JSON)
 
@@ -579,12 +632,18 @@ object KidPointsNotificationsEngine {
     if (notificationId != null) {
       NotificationManagerCompat.from(context).cancel(notificationId)
       logNotification(
-        "Cancelled notification from activity intent notificationId=$notificationId",
+        "Cancelled notification from activity intent",
+        createLogContext("notificationId" to notificationId),
       )
     }
 
     logIntent(
-      "Handled activity launch intent notificationId=$notificationId emittedEvent=${KidPointsNotificationsModule.instance != null} payload=$actionJson",
+      "Handled activity launch intent",
+      createLogContext(
+        "emittedEvent" to (KidPointsNotificationsModule.instance != null),
+        "notificationId" to notificationId,
+        "payload" to parseJsonObjectOrRaw(actionJson),
+      ),
     )
   }
 
@@ -603,7 +662,10 @@ object KidPointsNotificationsEngine {
     }
 
     NotificationManagerCompat.from(context).cancel(notificationId)
-    logNotification("Cancelled expired notification notificationId=$notificationId")
+    logNotification(
+      "Cancelled expired notification",
+      createLogContext("notificationId" to notificationId),
+    )
   }
 
   fun createMainAppCheckInIntent(context: Context, actionJson: String): Intent =
@@ -615,8 +677,8 @@ object KidPointsNotificationsEngine {
     isAppInForeground = isForeground
   }
 
-  fun logService(message: String) {
-    log(LOG_SERVICE_TAG, message)
+  fun logService(message: String, context: JSONObject? = null) {
+    log(LOG_SERVICE_TAG, message, context)
   }
 
   private fun createExpiredNotification(
@@ -664,13 +726,19 @@ object KidPointsNotificationsEngine {
       .build().also {
         val expiredChannel = getExpiredChannel(context)
         logNotification(
-          "Built expired notification notificationId=$notificationId intervalId=$intervalId triggeredAt=$triggeredAt " +
-            "channelImportance=${expiredChannel?.importance} category=${it.category} " +
-            "hasCustomHeadsUp=${it.headsUpContentView != null} " +
-            "hasFullScreenIntent=${it.fullScreenIntent != null} " +
-            "canUseFullScreenIntent=${canUseFullScreenIntent(context)} " +
-            "settingsResolvable=${canOpenFullScreenIntentSettings(context)} " +
-            "appInForeground=$isAppInForeground",
+          "Built expired notification",
+          createLogContext(
+            "appInForeground" to isAppInForeground,
+            "canUseFullScreenIntent" to canUseFullScreenIntent(context),
+            "category" to it.category,
+            "channelImportance" to expiredChannel?.importance,
+            "hasCustomHeadsUp" to (it.headsUpContentView != null),
+            "hasFullScreenIntent" to (it.fullScreenIntent != null),
+            "intervalId" to intervalId,
+            "notificationId" to notificationId,
+            "settingsResolvable" to canOpenFullScreenIntentSettings(context),
+            "triggeredAt" to triggeredAt,
+          ),
         )
       }
   }
@@ -759,7 +827,10 @@ object KidPointsNotificationsEngine {
       .filterNot { nextNotificationIds.contains(it) }
       .forEach { notificationId ->
         NotificationManagerCompat.from(context).cancel(notificationId)
-        logNotification("Cancelled stale notification notificationId=$notificationId")
+        logNotification(
+          "Cancelled stale notification",
+          createLogContext("notificationId" to notificationId),
+        )
       }
 
     prefs(context)
@@ -786,7 +857,10 @@ object KidPointsNotificationsEngine {
         .edit()
         .remove(PENDING_LAUNCH_ACTION_KEY)
         .apply()
-      logIntent("Pruned resolved pending launch action intervalId=$intervalId")
+      logIntent(
+        "Pruned resolved pending launch action",
+        createLogContext("intervalId" to intervalId),
+      )
     }
   }
 
@@ -795,7 +869,10 @@ object KidPointsNotificationsEngine {
       .edit()
       .putString(PENDING_LAUNCH_ACTION_KEY, actionJson)
       .apply()
-    logIntent("Persisted pending launch action payload=$actionJson")
+    logIntent(
+      "Persisted pending launch action",
+      createLogContext("payload" to parseJsonObjectOrRaw(actionJson)),
+    )
   }
 
   private fun describeIntent(intent: Intent?): String {
@@ -847,12 +924,15 @@ object KidPointsNotificationsEngine {
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
       alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-      logDebug("Scheduled inexact while-idle triggerAt=$triggerAt")
+      logDebug(
+        "Scheduled inexact while-idle",
+        createLogContext("triggerAt" to triggerAt),
+      )
       return
     }
 
     alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-    logDebug("Scheduled exact triggerAt=$triggerAt")
+    logDebug("Scheduled exact", createLogContext("triggerAt" to triggerAt))
   }
 
   private fun cancelExactTrigger(context: Context) {
@@ -890,7 +970,13 @@ object KidPointsNotificationsEngine {
     val actionJson = createCheckInLaunchAction(expiredInterval)
 
     logIntent(
-      "Creating check-in pending intent requestCode=$requestCode notificationId=$notificationId intervalId=${expiredInterval.optString("intervalId")} payload=$actionJson",
+      "Creating check-in pending intent",
+      createLogContext(
+        "intervalId" to expiredInterval.optString("intervalId"),
+        "notificationId" to notificationId,
+        "payload" to parseJsonObjectOrRaw(actionJson),
+        "requestCode" to requestCode,
+      ),
     )
 
     return PendingIntent.getActivity(
@@ -1031,7 +1117,7 @@ object KidPointsNotificationsEngine {
 
     val notificationId = ((triggerAt / 1000L) % 1_000_000_000L).toInt() + 5_000
     val intervalId =
-      "interval-${runtime.optString("sessionId").ifBlank { "session" }}-$triggerAt"
+      "interval-${runtime.optStringOrNull("sessionId").orEmpty().ifBlank { "session" }}-$triggerAt"
     val childActions = JSONArray()
 
     activeChildren.forEach { child ->
@@ -1048,7 +1134,7 @@ object KidPointsNotificationsEngine {
       put("childActions", childActions)
       put("intervalId", intervalId)
       put("notificationId", notificationId)
-      put("sessionId", runtime.optString("sessionId"))
+      put("sessionId", runtime.optStringOrNull("sessionId") ?: JSONObject.NULL)
       put("triggeredAt", triggerAt)
     }
     val expiredIntervals = getOrCreateArray(head, "expiredIntervals")
@@ -1062,7 +1148,7 @@ object KidPointsNotificationsEngine {
       put("type", LAUNCH_ACTION_CHECK_IN)
       put("intervalId", expiredInterval.optString("intervalId"))
       put("notificationId", expiredInterval.optInt("notificationId"))
-      put("sessionId", expiredInterval.optString("sessionId"))
+      put("sessionId", expiredInterval.optStringOrNull("sessionId") ?: JSONObject.NULL)
       put("triggeredAt", expiredInterval.optLongOrNull("triggeredAt") ?: JSONObject.NULL)
     }.toString()
 
@@ -1088,24 +1174,34 @@ object KidPointsNotificationsEngine {
   private fun formatTime(timestamp: Long): String =
     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(timestamp))
 
-  private fun logDebug(message: String) {
-    log(LOG_TAG, message)
+  private fun logDebug(message: String, context: JSONObject? = null) {
+    log(LOG_TAG, message, context)
   }
 
-  private fun logNotification(message: String) {
-    log(LOG_NOTIFICATION_TAG, message)
+  private fun logNotification(message: String, context: JSONObject? = null) {
+    log(LOG_NOTIFICATION_TAG, message, context)
   }
 
-  fun logIntent(message: String) {
-    log(LOG_INTENT_TAG, message)
+  fun logIntent(message: String, context: JSONObject? = null) {
+    log(LOG_INTENT_TAG, message, context)
   }
 
-  private fun log(tag: String, message: String) {
-    if (BuildConfig.DEBUG) {
-      Log.d(tag, message)
-    }
+  private fun log(tag: String, message: String, context: JSONObject? = null) {
+    NotificationNativeLogRelay.debug(tag, message, context?.toString())
   }
 }
+
+private fun createLogContext(vararg entries: Pair<String, Any?>): JSONObject =
+  JSONObject().apply {
+    entries.forEach { (key, value) ->
+      put(key, value ?: JSONObject.NULL)
+    }
+  }
+
+private fun parseJsonObjectOrRaw(json: String?): Any? =
+  json?.let { rawJson ->
+    runCatching { JSONObject(rawJson) }.getOrElse { rawJson }
+  }
 
 private fun JSONObject.optLongOrNull(key: String): Long? {
   if (isNull(key) || !has(key)) {
@@ -1121,6 +1217,14 @@ private fun JSONObject.optIntOrNull(key: String): Int? {
   }
 
   return optInt(key)
+}
+
+private fun JSONObject.optStringOrNull(key: String): String? {
+  if (isNull(key) || !has(key)) {
+    return null
+  }
+
+  return optString(key)
 }
 
 private fun JSONArray.toJsonObjects(): List<JSONObject> =

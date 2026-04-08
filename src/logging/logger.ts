@@ -14,6 +14,14 @@ const appLogLevels = {
 
 export type AppLogLevel = keyof typeof appLogLevels;
 export type AppLogDetails = Record<string, unknown>;
+export type ForwardedNativeAppLogLevel = Exclude<AppLogLevel, 'temp'>;
+export type ForwardedNativeLogEntry = {
+  level: ForwardedNativeAppLogLevel;
+  message: string;
+  sequence: number;
+  tag: string;
+  timestampMs: number;
+};
 
 export type AppLogger = LoggerInstance<AppLogLevel>;
 export const SUPPORTED_APP_LOG_LEVELS = Object.keys(
@@ -49,13 +57,29 @@ const appLogColorCodes = {
   temp: '\x1b[38;5;67m',
   warn: '\x1b[38;5;250m',
 } as const;
+const nativeAppLogColorCodes = {
+  debug: '\x1b[38;5;98m',
+  error: '\x1b[38;5;170m',
+  info: '\x1b[38;5;141m',
+  temp: appLogColorCodes.temp,
+  warn: '\x1b[38;5;134m',
+} as const;
 const resetTerminalColor = '\x1b[0m';
+const forwardedNativeLogMarker = Symbol('forwarded-native-log');
+const forwardedNativeOccurredAtMsMarker = Symbol(
+  'forwarded-native-occurred-at-ms',
+);
+let latestObservedLogTimestampMs = 0;
 
 type ConsoleMethod = 'log' | 'info' | 'warn' | 'error';
 type AppConsoleTransportOptions = {
   colorsEnabled?: boolean;
-  levelColors?: Partial<Record<AppLogLevel, string>>;
   mapLevels?: Record<string, ConsoleMethod>;
+};
+
+type ForwardedNativeLogMarkerCarrier = {
+  [forwardedNativeLogMarker]?: true;
+  [forwardedNativeOccurredAtMsMarker]?: number;
 };
 
 const appConsoleTransport: transportFunctionType<AppConsoleTransportOptions> = (
@@ -67,8 +91,7 @@ const appConsoleTransport: transportFunctionType<AppConsoleTransportOptions> = (
 
   const logMethod = props.options?.mapLevels?.[props.level.text] ?? 'log';
   const shouldColorize = props.options?.colorsEnabled;
-  const colorCode =
-    props.options?.levelColors?.[props.level.text as AppLogLevel];
+  const colorCode = resolveAppLogColorCode(props);
   const formattedMessage =
     shouldColorize && colorCode
       ? `${colorCode}${props.msg}${resetTerminalColor}`
@@ -88,6 +111,38 @@ const appConsoleTransport: transportFunctionType<AppConsoleTransportOptions> = (
 
   return true;
 };
+
+function resolveAppLogColorCode(
+  props: Parameters<typeof appConsoleTransport>[0],
+): string | undefined {
+  const logLevel = props?.level.text as AppLogLevel | undefined;
+
+  if (!logLevel) {
+    return undefined;
+  }
+
+  if (logLevel === 'temp') {
+    return appLogColorCodes.temp;
+  }
+
+  return hasForwardedNativeLogMarker(props.rawMsg)
+    ? nativeAppLogColorCodes[logLevel]
+    : appLogColorCodes[logLevel];
+}
+
+function hasForwardedNativeLogMarker(rawMsg: unknown): boolean {
+  if (!Array.isArray(rawMsg)) {
+    return false;
+  }
+
+  return rawMsg.some((messagePart) =>
+    Boolean(
+      (messagePart as ForwardedNativeLogMarkerCarrier | null)?.[
+        forwardedNativeLogMarker
+      ],
+    ),
+  );
+}
 
 export function isAppLogLevel(value: unknown): value is AppLogLevel {
   return (
@@ -147,9 +202,12 @@ function formatAppLogMessage(
   extension: string | null,
   messages: unknown[],
 ) {
-  const timestamp = formatAppLogTimestamp(new Date());
+  const timestampMetadata = getLogTimestampMetadata(messages);
   const paddedLevelLabel = level.toUpperCase().padEnd(appLogLevelLabelWidth);
-  const segments = [`[${paddedLevelLabel}]`, `[${timestamp}]`];
+  const segments = [
+    `[${paddedLevelLabel}]`,
+    `[${timestampMetadata.isOutOfOrder ? '*' : ''}${timestampMetadata.label}]`,
+  ];
 
   if (extension) {
     segments.push(`[${extension}]`);
@@ -177,7 +235,39 @@ function formatAppLogMessage(
     })
     .join(' ');
 
+  latestObservedLogTimestampMs = Math.max(
+    latestObservedLogTimestampMs,
+    timestampMetadata.occurredAtMs,
+  );
+
   return `${segments.join(' ')}: ${messageText}`;
+}
+
+function getLogTimestampMetadata(messages: unknown[]) {
+  const nativeOccurredAtMs = getForwardedNativeOccurredAtMs(messages);
+  const occurredAtMs = nativeOccurredAtMs ?? Date.now();
+
+  return {
+    occurredAtMs,
+    isOutOfOrder:
+      nativeOccurredAtMs != null &&
+      latestObservedLogTimestampMs > 0 &&
+      nativeOccurredAtMs < latestObservedLogTimestampMs,
+    label: formatAppLogTimestamp(new Date()),
+  };
+}
+
+function getForwardedNativeOccurredAtMs(messages: unknown[]): number | null {
+  const carrier = messages.find(
+    (messagePart): messagePart is ForwardedNativeLogMarkerCarrier =>
+      Boolean(
+        (messagePart as ForwardedNativeLogMarkerCarrier | null)?.[
+          forwardedNativeLogMarker
+        ],
+      ),
+  );
+
+  return carrier?.[forwardedNativeOccurredAtMsMarker] ?? null;
 }
 
 const rootLogger = logger.createLogger({
@@ -187,7 +277,6 @@ const rootLogger = logger.createLogger({
   transport: appConsoleTransport,
   transportOptions: {
     colorsEnabled: isDevelopment,
-    levelColors: appLogColorCodes,
     mapLevels: appLogConsoleMethods,
   },
   enabled: true,
@@ -213,6 +302,32 @@ export function createStructuredLog(
 
 export function getDefaultAppLogLevel(): AppLogLevel {
   return defaultAppLogLevel;
+}
+
+export function logForwardedNativeEntry(
+  loggerInstance: AppLogger,
+  entry: ForwardedNativeLogEntry,
+  details: AppLogDetails = {},
+) {
+  const forwardedDetails = {
+    ...details,
+    nativeTimestamp: formatAppLogTimestamp(new Date(entry.timestampMs)),
+  };
+
+  Object.defineProperty(forwardedDetails, forwardedNativeLogMarker, {
+    configurable: false,
+    enumerable: false,
+    value: true,
+    writable: false,
+  });
+  Object.defineProperty(forwardedDetails, forwardedNativeOccurredAtMsMarker, {
+    configurable: false,
+    enumerable: false,
+    value: entry.timestampMs,
+    writable: false,
+  });
+
+  loggerInstance[entry.level](entry.message, forwardedDetails);
 }
 
 export function setAppLogLevel(logLevel: AppLogLevel): AppLogLevel {

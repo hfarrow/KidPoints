@@ -12,16 +12,33 @@ class KidPointsNotificationsModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("KidPointsNotifications")
 
-    Events("KidPointsNotificationsStateChanged", "KidPointsNotificationsLaunchAction")
+    Events(
+      "KidPointsNotificationsStateChanged",
+      "KidPointsNotificationsLaunchAction",
+      "KidPointsNotificationsLog",
+    )
 
     OnCreate {
       instance = this@KidPointsNotificationsModule
+    }
+
+    OnStartObserving {
+      NotificationNativeLogRelay.setJsObservationEnabled(true)
+    }
+
+    OnStopObserving {
+      NotificationNativeLogRelay.setJsObservationEnabled(false)
     }
 
     OnDestroy {
       if (instance === this@KidPointsNotificationsModule) {
         instance = null
       }
+      NotificationNativeLogRelay.setJsObservationEnabled(false)
+    }
+
+    Function("getBufferedLogs") { afterSequence: Double ->
+      NotificationNativeLogRelay.getBufferedLogs(afterSequence.toLong())
     }
 
     AsyncFunction("getDocument") {
@@ -263,5 +280,9 @@ class KidPointsNotificationsModule : Module() {
       "KidPointsNotificationsLaunchAction",
       mapOf("actionJson" to actionJson),
     )
+  }
+
+  fun emitLog(entry: NotificationNativeLogEntryPayload) {
+    sendEvent("KidPointsNotificationsLog", entry.toEventPayload())
   }
 }

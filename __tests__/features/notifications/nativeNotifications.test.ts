@@ -53,11 +53,15 @@ describe('nativeNotifications', () => {
       nativeNotifications.addNotificationStateChangeListener(jest.fn()),
     ).toBeNull();
     expect(
+      nativeNotifications.addNotificationLogListener(jest.fn()),
+    ).toBeNull();
+    expect(
       nativeNotifications.addNotificationLaunchActionListener(jest.fn()),
     ).toBeNull();
+    expect(nativeNotifications.getBufferedNotificationLogs()).toEqual([]);
   });
 
-  it('parses native state and launch-action events', async () => {
+  it('parses native state, native-log, and launch-action events', async () => {
     const subscriptions: ((event: unknown) => void)[] = [];
     const remove = jest.fn();
     const nativeModule = {
@@ -96,6 +100,18 @@ describe('nativeNotifications', () => {
           schemaVersion: 1,
         }),
       ),
+      getBufferedLogs: jest.fn(() =>
+        JSON.stringify([
+          {
+            contextJson: JSON.stringify({ source: 'buffer' }),
+            level: 'debug',
+            message: 'Buffered native log',
+            sequence: 1,
+            tag: 'KidPointsNotifications',
+            timestampMs: 123,
+          },
+        ]),
+      ),
       getPendingLaunchAction: jest.fn(async () =>
         JSON.stringify({
           intervalId: 'interval-1',
@@ -129,10 +145,13 @@ describe('nativeNotifications', () => {
       );
     });
     const onStateChanged = jest.fn();
+    const onLogEntry = jest.fn();
     const onLaunchAction = jest.fn();
 
     const stateSubscription =
       nativeNotifications.addNotificationStateChangeListener(onStateChanged);
+    const logSubscription =
+      nativeNotifications.addNotificationLogListener(onLogEntry);
     const launchSubscription =
       nativeNotifications.addNotificationLaunchActionListener(onLaunchAction);
 
@@ -172,6 +191,14 @@ describe('nativeNotifications', () => {
       }),
     });
     subscriptions[1]?.({
+      contextJson: JSON.stringify({ source: 'event' }),
+      level: 'warn',
+      message: 'Native event log',
+      sequence: 2,
+      tag: 'KidPointsNotificationsIntent',
+      timestampMs: 456,
+    });
+    subscriptions[2]?.({
       actionJson: JSON.stringify({
         intervalId: 'interval-1',
         notificationId: 5001,
@@ -208,6 +235,16 @@ describe('nativeNotifications', () => {
       isRunning: false,
       nextTriggerAt: null,
     });
+    expect(nativeNotifications.getBufferedNotificationLogs()).toEqual([
+      {
+        contextJson: JSON.stringify({ source: 'buffer' }),
+        level: 'debug',
+        message: 'Buffered native log',
+        sequence: 1,
+        tag: 'KidPointsNotifications',
+        timestampMs: 123,
+      },
+    ]);
     expect(onStateChanged).toHaveBeenCalledWith(
       expect.objectContaining({
         document: expect.objectContaining({
@@ -223,6 +260,14 @@ describe('nativeNotifications', () => {
         }),
       }),
     );
+    expect(onLogEntry).toHaveBeenCalledWith({
+      contextJson: JSON.stringify({ source: 'event' }),
+      level: 'warn',
+      message: 'Native event log',
+      sequence: 2,
+      tag: 'KidPointsNotificationsIntent',
+      timestampMs: 456,
+    });
     expect(onLaunchAction).toHaveBeenCalledWith({
       intervalId: 'interval-1',
       notificationId: 5001,
@@ -232,7 +277,8 @@ describe('nativeNotifications', () => {
     });
 
     stateSubscription?.remove();
+    logSubscription?.remove();
     launchSubscription?.remove();
-    expect(remove).toHaveBeenCalledTimes(2);
+    expect(remove).toHaveBeenCalledTimes(3);
   });
 });

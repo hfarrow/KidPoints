@@ -9,18 +9,25 @@ import {
   useState,
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import { createModuleLogger } from '../../logging/logger';
+import {
+  type AppLogDetails,
+  createModuleLogger,
+  logForwardedNativeEntry,
+} from '../../logging/logger';
 import { useStartupNavigationStore } from '../../navigation/startupNavigationStore';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useSharedStore, useSharedStoreApi } from '../../state/sharedStore';
 import { useParentSession } from '../parent/parentSessionContext';
 import {
   addNotificationLaunchActionListener,
+  addNotificationLogListener,
   addNotificationStateChangeListener,
   consumePendingNotificationLaunchAction,
+  getBufferedNotificationLogs,
   getNotificationRuntimeStatus,
   isNotificationsModuleAvailable,
   loadPersistedNotificationDocument,
+  type NotificationNativeLogEntry,
   openExactAlarmSettings,
   openFullScreenIntentSettings,
   openNotificationSettings,
@@ -50,6 +57,7 @@ const CHECK_IN_ROUTE = '/timer-check-in';
 const CHECK_IN_REQUEST_ID = 'notifications-check-in';
 const PARENT_UNLOCK_REQUEST_ID = 'notifications-parent-unlock';
 const log = createModuleLogger('notifications-provider');
+const nativeLog = createModuleLogger('notifications-native');
 
 type SharedStoreWithPersist = ReturnType<typeof useSharedStoreApi> & {
   persist?: {
@@ -128,6 +136,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   const sharedDocumentRef = useRef(document);
   const skipNextResumeConsumeRef = useRef(false);
   const lastSyncedDocumentRef = useRef<NotificationDocument | null>(null);
+  const lastSeenNativeLogSequenceRef = useRef(-1);
   const notificationsEnabledRef = useRef(notificationsEnabled);
   const didEvaluateStartupNotificationPermissionRef = useRef(false);
   const isReady = hasLocalSettingsHydrated && hasSharedStoreHydrated;
@@ -147,6 +156,66 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     notificationsEnabledRef.current = notificationsEnabled;
   }, [notificationsEnabled]);
+
+  const forwardNotificationNativeLog = useCallback(
+    (entry: NotificationNativeLogEntry) => {
+      if (entry.sequence <= lastSeenNativeLogSequenceRef.current) {
+        return;
+      }
+
+      lastSeenNativeLogSequenceRef.current = entry.sequence;
+      logForwardedNativeEntry(
+        nativeLog,
+        entry,
+        parseNotificationNativeLogContext(entry.contextJson),
+      );
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!engineAvailable) {
+      return;
+    }
+
+    let isCancelled = false;
+    let hasReplayedBufferedLogs = false;
+    const queuedLiveEntries: NotificationNativeLogEntry[] = [];
+    const handleLogEntry = (entry: NotificationNativeLogEntry) => {
+      if (isCancelled) {
+        return;
+      }
+
+      if (!hasReplayedBufferedLogs) {
+        queuedLiveEntries.push(entry);
+        return;
+      }
+
+      forwardNotificationNativeLog(entry);
+    };
+
+    const logSubscription = addNotificationLogListener(handleLogEntry);
+    const bufferedLogEntries = getBufferedNotificationLogs(
+      lastSeenNativeLogSequenceRef.current,
+    );
+
+    bufferedLogEntries
+      .sort(
+        (firstEntry, secondEntry) => firstEntry.sequence - secondEntry.sequence,
+      )
+      .forEach(forwardNotificationNativeLog);
+    hasReplayedBufferedLogs = true;
+    queuedLiveEntries
+      .sort(
+        (firstEntry, secondEntry) => firstEntry.sequence - secondEntry.sequence,
+      )
+      .forEach(forwardNotificationNativeLog);
+
+    return () => {
+      isCancelled = true;
+      logSubscription?.remove();
+    };
+  }, [engineAvailable, forwardNotificationNativeLog]);
 
   useEffect(() => {
     const persistApi = sharedStoreApi.persist;
@@ -675,4 +744,28 @@ export function useNotifications() {
   }
 
   return context;
+}
+
+function parseNotificationNativeLogContext(
+  contextJson: string | null,
+): AppLogDetails {
+  if (!contextJson) {
+    return {};
+  }
+
+  try {
+    const parsedContext = JSON.parse(contextJson) as unknown;
+
+    if (
+      parsedContext &&
+      typeof parsedContext === 'object' &&
+      !Array.isArray(parsedContext)
+    ) {
+      return parsedContext as AppLogDetails;
+    }
+
+    return { nativeDetails: parsedContext };
+  } catch {
+    return { nativeDetails: contextJson };
+  }
 }

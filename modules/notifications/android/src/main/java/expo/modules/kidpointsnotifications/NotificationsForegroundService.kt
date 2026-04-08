@@ -3,12 +3,19 @@ package expo.modules.kidpointsnotifications
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import org.json.JSONObject
 
 class NotificationsForegroundService : Service() {
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    KidPointsNotificationsEngine.logService("onStartCommand action=${intent?.action} startId=$startId")
+    KidPointsNotificationsEngine.logService(
+      "onStartCommand",
+      JSONObject().apply {
+        put("action", intent?.action ?: JSONObject.NULL)
+        put("startId", startId)
+      },
+    )
 
     if (intent?.action == ACTION_TRIGGER) {
       KidPointsNotificationsEngine.handleTrigger(
@@ -21,7 +28,9 @@ class NotificationsForegroundService : Service() {
     if (!runtimeStatus.isRunning) {
       stopForeground(STOP_FOREGROUND_REMOVE)
       stopSelf()
-      KidPointsNotificationsEngine.logService("Stopping self because runtime is not running")
+      KidPointsNotificationsEngine.logService(
+        "Stopping self because runtime is not running",
+      )
       return START_NOT_STICKY
     }
 
@@ -29,7 +38,12 @@ class NotificationsForegroundService : Service() {
       COUNTDOWN_NOTIFICATION_ID,
       KidPointsNotificationsEngine.createCountdownNotification(this),
     )
-    KidPointsNotificationsEngine.logService("Foreground notification posted")
+    KidPointsNotificationsEngine.logService(
+      "Foreground notification posted",
+      JSONObject().apply {
+        put("notificationId", COUNTDOWN_NOTIFICATION_ID)
+      },
+    )
 
     return START_STICKY
   }
