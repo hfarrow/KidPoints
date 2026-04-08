@@ -29,10 +29,34 @@ jest.mock('react-native-safe-area-context', () => {
 jest.mock('react-native-keyboard-controller', () => {
   const React = require('react');
   const { View } = require('react-native');
+  let keyboardListeners = {
+    keyboardDidHide: new Set(),
+    keyboardWillShow: new Set(),
+  };
 
   return {
-    KeyboardAvoidingView: ({ children, ...props }) =>
-      React.createElement(View, props, children),
+    __emitKeyboardEvent: (name, event = {}) => {
+      keyboardListeners[name]?.forEach((listener) => {
+        listener(event);
+      });
+    },
+    __resetKeyboardEvents: () => {
+      keyboardListeners = {
+        keyboardDidHide: new Set(),
+        keyboardWillShow: new Set(),
+      };
+    },
+    KeyboardEvents: {
+      addListener: (name, listener) => {
+        keyboardListeners[name]?.add(listener);
+
+        return {
+          remove: () => {
+            keyboardListeners[name]?.delete(listener);
+          },
+        };
+      },
+    },
     KeyboardProvider: ({ children, ...props }) =>
       React.createElement(
         View,

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { TextInputModal } from '../../../src/features/overlays/TextInputModal';
 import {
   clearTextInputModal,
@@ -9,6 +10,15 @@ import { ParentSessionProvider } from '../../../src/features/parent/parentSessio
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
+const keyboardControllerModule = jest.requireMock(
+  'react-native-keyboard-controller',
+) as {
+  __emitKeyboardEvent: (
+    name: 'keyboardDidHide' | 'keyboardWillShow',
+    event?: { height?: number },
+  ) => void;
+  __resetKeyboardEvents: () => void;
+};
 const mockPush = jest.fn();
 let mockPathname = '/';
 
@@ -22,6 +32,7 @@ jest.mock('expo-router', () => ({
 describe('TextInputModal', () => {
   beforeEach(() => {
     clearTextInputModal();
+    keyboardControllerModule.__resetKeyboardEvents();
     mockPush.mockReset();
     mockPathname = '/';
   });
@@ -54,9 +65,43 @@ describe('TextInputModal', () => {
     expect(screen.getAllByText('Edit Point Total')).toHaveLength(1);
     expect(screen.getByText('Set the exact point total for Ava.')).toBeTruthy();
     expect(screen.getByText('Cancel')).toBeTruthy();
-    expect(screen.getByTestId('text-input-keyboard-frame').props.behavior).toBe(
-      'height',
+    const closedStyle = StyleSheet.flatten(
+      screen.getByTestId('text-input-keyboard-frame').props.style,
     );
+    expect(closedStyle.justifyContent).toBe('flex-end');
+    expect(closedStyle.paddingBottom).toBe(18);
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('text-input-keyboard-content').props.style,
+      ).opacity,
+    ).toBe(1);
+
+    act(() => {
+      keyboardControllerModule.__emitKeyboardEvent('keyboardWillShow', {
+        height: 240,
+      });
+    });
+
+    const openStyle = StyleSheet.flatten(
+      screen.getByTestId('text-input-keyboard-frame').props.style,
+    );
+    expect(openStyle.justifyContent).toBe('flex-end');
+    expect(openStyle.paddingBottom).toBe(250);
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('text-input-keyboard-content').props.style,
+      ).opacity,
+    ).toBe(1);
+
+    act(() => {
+      keyboardControllerModule.__emitKeyboardEvent('keyboardDidHide');
+    });
+
+    const hiddenAgainStyle = StyleSheet.flatten(
+      screen.getByTestId('text-input-keyboard-frame').props.style,
+    );
+    expect(hiddenAgainStyle.justifyContent).toBe('flex-end');
+    expect(hiddenAgainStyle.paddingBottom).toBe(250);
 
     fireEvent.changeText(screen.getByLabelText('Exact Point Total'), '12');
     fireEvent.press(screen.getByText('Save Total'));

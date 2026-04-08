@@ -1,8 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
+import { KeyboardModalFrame } from '../../components/KeyboardModalFrame';
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { createModuleLogger } from '../../logging/logger';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
@@ -176,9 +176,11 @@ export function ParentUnlockModal() {
           };
 
   return (
-    <KeyboardAvoidingView
-      behavior="height"
-      style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}
+    <KeyboardModalFrame
+      contentTestID="parent-unlock-keyboard-content"
+      hideUntilKeyboardPositioned={false}
+      initialVerticalPosition="bottom"
+      style={{ backgroundColor: tokens.modalBackdrop }}
       testID="parent-unlock-keyboard-frame"
     >
       <View style={styles.card}>
@@ -232,19 +234,14 @@ export function ParentUnlockModal() {
           </LoggedPressable>
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardModalFrame>
   );
 }
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
-    backdrop: {
-      alignItems: 'center',
-      flex: 1,
-      justifyContent: 'center',
-      padding: 18,
-    },
     card: {
+      alignSelf: 'center',
       backgroundColor: tokens.modalSurface,
       borderColor: tokens.border,
       borderRadius: 24,
@@ -252,10 +249,10 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       flexShrink: 1,
       gap: 10,
       maxHeight: '100%',
-      maxWidth: 420,
+      maxWidth: 360,
       paddingHorizontal: 18,
       paddingVertical: 18,
-      width: '100%',
+      width: '92%',
     },
     eyebrow: {
       color: tokens.accent,

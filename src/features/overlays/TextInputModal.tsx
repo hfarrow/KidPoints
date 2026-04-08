@@ -8,11 +8,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {
-  KeyboardAvoidingView,
-  useResizeMode,
-} from 'react-native-keyboard-controller';
 
+import { KeyboardModalFrame } from '../../components/KeyboardModalFrame';
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { ActionPill } from '../../components/Skeleton';
 import { createModuleLogger } from '../../logging/logger';
@@ -54,21 +51,28 @@ function ActiveTextInputModal({
   tokens,
   value,
 }: ActiveTextInputModalProps) {
-  useResizeMode();
-
   useEffect(() => {
+    log.debug('Scheduling text input modal focus after frame commit', {
+      inputAccessibilityLabel: request.inputAccessibilityLabel,
+      requestId: request.requestId,
+    });
+
     return scheduleAfterFrameCommit(() => {
+      log.debug('Running scheduled text input modal focus', {
+        inputAccessibilityLabel: request.inputAccessibilityLabel,
+        requestId: request.requestId,
+      });
       inputRef.current?.focus();
     });
-  }, [inputRef]);
+  }, [inputRef, request.inputAccessibilityLabel, request.requestId]);
 
   return (
-    <View
-      style={[styles.overlayRoot, { backgroundColor: tokens.modalBackdrop }]}
-    >
-      <KeyboardAvoidingView
-        behavior="height"
-        style={styles.keyboardFrame}
+    <View style={styles.overlayRoot}>
+      <KeyboardModalFrame
+        contentTestID="text-input-keyboard-content"
+        hideUntilKeyboardPositioned={false}
+        initialVerticalPosition="bottom"
+        style={{ backgroundColor: tokens.modalBackdrop }}
         testID="text-input-keyboard-frame"
       >
         <View style={styles.card}>
@@ -87,6 +91,18 @@ function ActiveTextInputModal({
               if (errorMessage) {
                 setErrorMessage('');
               }
+            }}
+            onBlur={() => {
+              log.debug('Text input modal input blurred', {
+                inputAccessibilityLabel: request.inputAccessibilityLabel,
+                requestId: request.requestId,
+              });
+            }}
+            onFocus={() => {
+              log.debug('Text input modal input focused', {
+                inputAccessibilityLabel: request.inputAccessibilityLabel,
+                requestId: request.requestId,
+              });
             }}
             placeholder={request.placeholder ?? ''}
             placeholderTextColor={tokens.textMuted}
@@ -117,7 +133,7 @@ function ActiveTextInputModal({
             )}
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardModalFrame>
     </View>
   );
 }
@@ -145,6 +161,12 @@ export function TextInputModal() {
       return;
     }
 
+    log.debug('Text input modal request activated', {
+      inputAccessibilityLabel: request.inputAccessibilityLabel,
+      requestId: request.requestId,
+      title: request.title,
+    });
+
     setValue(request.initialValue ?? '');
     setErrorMessage('');
   }, [request]);
@@ -157,6 +179,18 @@ export function TextInputModal() {
   }, []);
 
   const isVisible = !!request && !isBlockingRouteModalPath(pathname);
+
+  useEffect(() => {
+    if (!request) {
+      return;
+    }
+
+    log.debug('Text input modal visibility changed', {
+      isVisible,
+      pathname,
+      requestId: request.requestId,
+    });
+  }, [isVisible, pathname, request]);
 
   useEffect(() => {
     if (!isVisible) {
@@ -235,12 +269,6 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       ...StyleSheet.absoluteFillObject,
       elevation: 1000,
       zIndex: 1000,
-    },
-    keyboardFrame: {
-      alignItems: 'center',
-      flex: 1,
-      justifyContent: 'center',
-      padding: 18,
     },
     card: {
       backgroundColor: tokens.modalSurface,

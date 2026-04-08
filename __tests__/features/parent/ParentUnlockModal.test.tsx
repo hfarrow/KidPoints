@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import { ParentUnlockModal } from '../../../src/features/parent/ParentUnlockModal';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
@@ -6,6 +7,15 @@ import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import { createLocalSettingsStore } from '../../../src/state/localSettingsStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
+const keyboardControllerModule = jest.requireMock(
+  'react-native-keyboard-controller',
+) as {
+  __emitKeyboardEvent: (
+    name: 'keyboardDidHide' | 'keyboardWillShow',
+    event?: { height?: number },
+  ) => void;
+  __resetKeyboardEvents: () => void;
+};
 const mockBack = jest.fn();
 let mockMode: string | undefined;
 
@@ -20,6 +30,7 @@ jest.mock('expo-router', () => ({
 
 describe('ParentUnlockModal', () => {
   beforeEach(() => {
+    keyboardControllerModule.__resetKeyboardEvents();
     mockBack.mockReset();
     mockMode = undefined;
   });
@@ -38,8 +49,38 @@ describe('ParentUnlockModal', () => {
     );
 
     expect(
-      screen.getByTestId('parent-unlock-keyboard-frame').props.behavior,
-    ).toBe('height');
+      StyleSheet.flatten(
+        screen.getByTestId('parent-unlock-keyboard-frame').props.style,
+      ).justifyContent,
+    ).toBe('flex-end');
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('parent-unlock-keyboard-frame').props.style,
+      ).paddingBottom,
+    ).toBe(18);
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('parent-unlock-keyboard-content').props.style,
+      ).opacity,
+    ).toBe(1);
+
+    act(() => {
+      keyboardControllerModule.__emitKeyboardEvent('keyboardWillShow', {
+        height: 240,
+      });
+    });
+
+    const openStyle = StyleSheet.flatten(
+      screen.getByTestId('parent-unlock-keyboard-frame').props.style,
+    );
+    expect(openStyle.justifyContent).toBe('flex-end');
+    expect(openStyle.paddingBottom).toBe(250);
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('parent-unlock-keyboard-content').props.style,
+      ).opacity,
+    ).toBe(1);
+
     fireEvent.changeText(screen.getByLabelText('Parent PIN'), '1111');
     fireEvent.press(screen.getByText('Unlock'));
 
@@ -88,8 +129,10 @@ describe('ParentUnlockModal', () => {
 
     expect(rehydratedStore.getState().parentPin).toBe('1234');
     expect(
-      screen.getByTestId('parent-unlock-keyboard-frame').props.behavior,
-    ).toBe('height');
+      StyleSheet.flatten(
+        screen.getByTestId('parent-unlock-keyboard-frame').props.style,
+      ).justifyContent,
+    ).toBe('flex-end');
     expect(mockBack).toHaveBeenCalled();
   });
 });
