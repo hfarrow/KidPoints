@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import { AlarmScreen } from '../../../src/features/alarm/AlarmScreen';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
@@ -32,6 +32,10 @@ jest.mock('expo-router', () => ({
 }));
 
 describe('AlarmScreen', () => {
+  beforeEach(() => {
+    jest.useRealTimers();
+  });
+
   it('renders the locked parent-gated state and opens the unlock flow', () => {
     render(
       <SharedStoreProvider
@@ -105,5 +109,45 @@ describe('AlarmScreen', () => {
     expect(screen.getByLabelText('Alarm duration seconds').props.value).toBe(
       '1',
     );
+  });
+
+  it('does not flash a longer countdown when resuming from pause', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-04-07T12:00:00.000Z'));
+
+    render(
+      <SharedStoreProvider
+        initialDocument={createInitialSharedDocument({
+          deviceId: 'alarm-resume-glitch',
+        })}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <AlarmScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    fireEvent.press(screen.getByLabelText('Alarm start timer'));
+
+    act(() => {
+      jest.advanceTimersByTime(61_000);
+    });
+
+    fireEvent.press(screen.getByLabelText('Alarm pause timer'));
+
+    act(() => {
+      jest.advanceTimersByTime(10 * 60_000);
+    });
+
+    fireEvent.press(screen.getByLabelText('Alarm start timer'));
+
+    expect(screen.queryByText('15:00')).toBeNull();
+    expect(screen.getByText('13:59')).toBeTruthy();
   });
 });

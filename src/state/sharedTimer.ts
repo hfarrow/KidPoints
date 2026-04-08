@@ -190,7 +190,11 @@ export function computeSharedTimerSnapshot(
     };
   }
 
-  const remainingMs = Math.max(timerState.cycleStartedAt + intervalMs - now, 0);
+  const remainingMs = clamp(
+    timerState.cycleStartedAt + intervalMs - now,
+    0,
+    intervalMs,
+  );
   const isExpired = remainingMs === 0;
 
   return {
