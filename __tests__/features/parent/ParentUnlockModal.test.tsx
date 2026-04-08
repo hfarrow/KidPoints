@@ -21,6 +21,11 @@ const keyboardControllerModule = jest.requireMock(
   ) => void;
   __resetKeyboardEvents: () => void;
 };
+const scheduleAfterFrameCommitModule = jest.requireMock(
+  '../../../src/timing/scheduleAfterFrameCommit',
+) as {
+  scheduleAfterFrameCommit: jest.Mock;
+};
 const mockBack = jest.fn();
 let mockMode: string | undefined;
 
@@ -31,6 +36,9 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: mockBack,
   }),
+}));
+jest.mock('../../../src/timing/scheduleAfterFrameCommit', () => ({
+  scheduleAfterFrameCommit: jest.fn(() => jest.fn()),
 }));
 
 function expectPinSlots(expectedDigits: ('empty' | 'masked' | string)[]) {
@@ -89,6 +97,7 @@ async function rehydrateSharedTransactions(
 describe('ParentUnlockModal', () => {
   beforeEach(() => {
     keyboardControllerModule.__resetKeyboardEvents();
+    scheduleAfterFrameCommitModule.scheduleAfterFrameCommit.mockClear();
     mockBack.mockReset();
     mockMode = undefined;
   });
@@ -117,6 +126,9 @@ describe('ParentUnlockModal', () => {
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
+    expect(
+      scheduleAfterFrameCommitModule.scheduleAfterFrameCommit,
+    ).toHaveBeenCalledTimes(1);
 
     expect(
       StyleSheet.flatten(
@@ -237,12 +249,18 @@ describe('ParentUnlockModal', () => {
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
+    expect(
+      scheduleAfterFrameCommitModule.scheduleAfterFrameCommit,
+    ).toHaveBeenCalledTimes(1);
 
     expect(screen.getByText('Set Parent PIN')).toBeTruthy();
     expect(screen.queryByText('Cancel')).toBeNull();
 
     fireEvent.changeText(screen.getByLabelText('Create Parent PIN'), '1234');
     fireEvent.press(screen.getByText('Continue'));
+    expect(
+      scheduleAfterFrameCommitModule.scheduleAfterFrameCommit,
+    ).toHaveBeenCalledTimes(2);
 
     expect(screen.getByText('Confirm Parent PIN')).toBeTruthy();
 
@@ -267,5 +285,42 @@ describe('ParentUnlockModal', () => {
       ).justifyContent,
     ).toBe('flex-end');
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('re-focuses the setup input after a mismatched confirmation resets the flow', () => {
+    render(
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <ParentUnlockModal />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+    expect(
+      scheduleAfterFrameCommitModule.scheduleAfterFrameCommit,
+    ).toHaveBeenCalledTimes(1);
+
+    fireEvent.changeText(screen.getByLabelText('Create Parent PIN'), '1234');
+    fireEvent.press(screen.getByText('Continue'));
+    expect(
+      scheduleAfterFrameCommitModule.scheduleAfterFrameCommit,
+    ).toHaveBeenCalledTimes(2);
+
+    fireEvent.changeText(screen.getByLabelText('Confirm Parent PIN'), '9999');
+    fireEvent.press(screen.getByText('Save PIN'));
+    expect(
+      scheduleAfterFrameCommitModule.scheduleAfterFrameCommit,
+    ).toHaveBeenCalledTimes(3);
+
+    expect(screen.getByText('Set Parent PIN')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Those PINs did not match. Enter a new PIN to try again.',
+      ),
+    ).toBeTruthy();
   });
 });

@@ -6,6 +6,7 @@ import { KeyboardModalFrame } from '../../components/KeyboardModalFrame';
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { createModuleLogger } from '../../logging/logger';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
+import { scheduleAfterFrameCommit } from '../../timing/scheduleAfterFrameCommit';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 import {
   normalizeParentPin,
@@ -48,6 +49,7 @@ export function ParentUnlockModal() {
   const requestedMode = resolveParentModalMode(mode);
   const effectiveMode = parentPin ? requestedMode : 'setup';
   const canDismiss = effectiveMode !== 'setup';
+  const pinInputRef = useRef<TextInput>(null);
   const unlockFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -298,6 +300,17 @@ export function ParentUnlockModal() {
     effectiveMode === 'unlock'
       ? [styles.body, styles.unlockBody, errorMessage && styles.bodyError]
       : [styles.body, errorMessage && styles.bodyError];
+  const pinInputFocusKey = `${effectiveMode}:${stage}`;
+
+  useEffect(() => {
+    if (!pinInputFocusKey) {
+      return;
+    }
+
+    return scheduleAfterFrameCommit(() => {
+      pinInputRef.current?.focus();
+    });
+  }, [pinInputFocusKey]);
 
   return (
     <KeyboardModalFrame
@@ -363,7 +376,6 @@ export function ParentUnlockModal() {
           </View>
           <TextInput
             accessibilityLabel={copy.accessibilityLabel}
-            autoFocus
             caretHidden
             keyboardType="number-pad"
             key={copy.accessibilityLabel}
@@ -374,6 +386,7 @@ export function ParentUnlockModal() {
             onFocus={() => setIsPinInputFocused(true)}
             placeholder=""
             placeholderTextColor={tokens.textMuted}
+            ref={pinInputRef}
             selection={{ end: pin.length, start: pin.length }}
             showSoftInputOnFocus
             style={styles.hiddenInput}
