@@ -10,6 +10,15 @@ const mockResolveExpiredTimerChild = jest.fn();
 const mockUseNotifications = jest.fn();
 const mockUseParentSession = jest.fn();
 const mockUseLocalSettingsStore = jest.fn();
+const mockKeyboardModalFrame = jest.fn();
+
+jest.mock('@expo/vector-icons', () => {
+  const { Text } = jest.requireActual('react-native');
+
+  return {
+    Feather: ({ name }: { name: string }) => <Text>{name}</Text>,
+  };
+});
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
@@ -19,22 +28,39 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('../../../src/components/KeyboardModalFrame', () => ({
-  KeyboardModalFrame: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
+  KeyboardModalFrame: (props: {
+    children: ReactNode;
+    initialVerticalPosition?: 'bottom' | 'center';
+  }) => {
+    mockKeyboardModalFrame(props);
+
+    return <>{props.children}</>;
+  },
 }));
 
 jest.mock('../../../src/components/LoggedPressable', () => ({
   LoggedPressable: ({
+    accessibilityLabel,
     children,
+    disabled,
     onPress,
   }: {
+    accessibilityLabel?: string;
     children: ReactNode;
+    disabled?: boolean;
     onPress: () => void;
   }) => {
     const { Pressable } = jest.requireActual('react-native');
 
-    return <Pressable onPress={onPress}>{children}</Pressable>;
+    return (
+      <Pressable
+        accessibilityLabel={accessibilityLabel}
+        disabled={disabled}
+        onPress={onPress}
+      >
+        {children}
+      </Pressable>
+    );
   },
 }));
 
@@ -83,8 +109,10 @@ jest.mock('../../../src/features/theme/themeContext', () => ({
       border: '#cbd5e1',
       controlSurface: '#e2e8f0',
       controlText: '#0f172a',
+      critical: '#9d174d',
       modalBackdrop: 'rgba(15, 23, 42, 0.65)',
       modalSurface: '#ffffff',
+      success: '#15803d',
       textMuted: '#64748b',
       textPrimary: '#0f172a',
     },
@@ -98,8 +126,10 @@ jest.mock('../../../src/features/theme/themeContext', () => ({
         border: '#cbd5e1',
         controlSurface: '#e2e8f0',
         controlText: '#0f172a',
+        critical: '#9d174d',
         modalBackdrop: 'rgba(15, 23, 42, 0.65)',
         modalSurface: '#ffffff',
+        success: '#15803d',
         textMuted: '#64748b',
         textPrimary: '#0f172a',
       },
@@ -132,6 +162,11 @@ describe('TimerCheckInModal', () => {
 
     fireEvent.press(screen.getByText('Unlock'));
     expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
+    expect(mockKeyboardModalFrame).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialVerticalPosition: 'center',
+      }),
+    );
   });
 
   it('shows child actions and resolves awards when the parent session is unlocked', () => {
@@ -141,8 +176,9 @@ describe('TimerCheckInModal', () => {
 
     expect(screen.getByText('Parent Check-In')).toBeTruthy();
     expect(screen.getByText('Avery')).toBeTruthy();
+    expect(screen.queryByText(/Review the timer that triggered/i)).toBeNull();
 
-    fireEvent.press(screen.getByText('Award +1'));
+    fireEvent.press(screen.getByLabelText('Award point to Avery'));
     expect(mockResolveExpiredTimerChild).toHaveBeenCalledWith(
       'child-1',
       'awarded',

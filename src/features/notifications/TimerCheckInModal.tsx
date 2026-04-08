@@ -1,13 +1,10 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { KeyboardModalFrame } from '../../components/KeyboardModalFrame';
 import { LoggedPressable } from '../../components/LoggedPressable';
-import {
-  ActionPill,
-  ActionPillRow,
-  StatusBadge,
-} from '../../components/Skeleton';
+import { ActionPill } from '../../components/Skeleton';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
@@ -20,9 +17,48 @@ function formatTriggeredAt(timestamp: number) {
   });
 }
 
+function ResolveChildButton({
+  accessibilityLabel,
+  color,
+  iconName,
+  isActive,
+  isDisabled,
+  side,
+  onPress,
+}: {
+  accessibilityLabel: string;
+  color: string;
+  iconName: 'thumbs-down' | 'thumbs-up';
+  isActive: boolean;
+  isDisabled: boolean;
+  side: 'left' | 'right';
+  onPress: () => void;
+}) {
+  const styles = useThemedStyles(createStyles);
+
+  return (
+    <LoggedPressable
+      accessibilityLabel={accessibilityLabel}
+      disabled={isDisabled}
+      logContext={{ accessibilityLabel, isActive }}
+      logLabel={accessibilityLabel}
+      onPress={onPress}
+      style={[
+        styles.resolveButton,
+        side === 'left' ? styles.resolveButtonLeft : styles.resolveButtonRight,
+        isActive ? styles.resolveButtonActive : styles.resolveButtonIdle,
+        isDisabled && styles.resolveButtonDisabled,
+      ]}
+    >
+      <Feather color={color} name={iconName} size={18} />
+    </LoggedPressable>
+  );
+}
+
 export function TimerCheckInModal() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
+  const { width: windowWidth } = useWindowDimensions();
   const parentPin = useLocalSettingsStore((state) => state.parentPin);
   const { isParentUnlocked } = useParentSession();
   const {
@@ -30,7 +66,7 @@ export function TimerCheckInModal() {
     dismissCheckInFlow,
     resolveExpiredTimerChild,
   } = useNotifications();
-  const { tokens } = useAppTheme();
+  const { resolvedTheme, tokens } = useAppTheme();
 
   useEffect(() => {
     if (activeExpiredTimerSession) {
@@ -45,21 +81,27 @@ export function TimerCheckInModal() {
     return null;
   }
 
+  const cardWidth = Math.min(Math.max(windowWidth - 36, 280), 456);
+
   return (
     <KeyboardModalFrame
       contentTestID="timer-check-in-content"
       hideUntilKeyboardPositioned={false}
-      initialVerticalPosition="bottom"
+      initialVerticalPosition="center"
       style={{ backgroundColor: tokens.modalBackdrop }}
       testID="timer-check-in-frame"
     >
-      <View style={styles.card} testID="timer-check-in-card">
-        <Text style={styles.eyebrow}>Timer Notification</Text>
+      <View
+        style={[styles.card, { width: cardWidth }]}
+        testID="timer-check-in-card"
+      >
+        <View style={styles.headerRow}>
+          <Text style={styles.eyebrow}>Timer Notification</Text>
+          <Text style={styles.triggeredAt}>
+            {formatTriggeredAt(activeExpiredTimerSession.triggeredAt)}
+          </Text>
+        </View>
         <Text style={styles.title}>Parent Check-In</Text>
-        <Text style={styles.body}>
-          Review the timer that triggered at{' '}
-          {formatTriggeredAt(activeExpiredTimerSession.triggeredAt)}.
-        </Text>
 
         {!isParentUnlocked ? (
           <View style={styles.lockedState}>
@@ -79,43 +121,61 @@ export function TimerCheckInModal() {
         ) : (
           <View style={styles.childList}>
             {activeExpiredTimerSession.childActions.map((childAction) => (
-              <View key={childAction.childId} style={styles.childCard}>
-                <View style={styles.childHeader}>
+              <View key={childAction.childId} style={styles.childRail}>
+                <ResolveChildButton
+                  accessibilityLabel={`Dismiss point for ${childAction.childName}`}
+                  color={
+                    childAction.status === 'dismissed'
+                      ? resolvedTheme === 'dark'
+                        ? '#ffe5f1'
+                        : tokens.critical
+                      : resolvedTheme === 'dark'
+                        ? '#f0b4d0'
+                        : '#9d174d'
+                  }
+                  iconName="thumbs-down"
+                  isActive={childAction.status === 'dismissed'}
+                  isDisabled={childAction.status !== 'pending'}
+                  side="left"
+                  onPress={() =>
+                    void resolveExpiredTimerChild(
+                      childAction.childId,
+                      'dismissed',
+                    )
+                  }
+                />
+                <View style={styles.childRailCore}>
                   <Text style={styles.childName}>{childAction.childName}</Text>
-                  <StatusBadge
-                    label={childAction.status}
-                    tone={
-                      childAction.status === 'pending'
-                        ? 'warning'
-                        : childAction.status === 'awarded'
-                          ? 'good'
-                          : 'neutral'
-                    }
-                  />
+                  <Text style={styles.childStatus}>
+                    {childAction.status === 'pending'
+                      ? 'Pending'
+                      : childAction.status === 'awarded'
+                        ? 'Awarded +1'
+                        : 'Dismissed'}
+                  </Text>
                 </View>
-                {childAction.status === 'pending' ? (
-                  <ActionPillRow>
-                    <ActionPill
-                      label="Award +1"
-                      onPress={() =>
-                        void resolveExpiredTimerChild(
-                          childAction.childId,
-                          'awarded',
-                        )
-                      }
-                      tone="primary"
-                    />
-                    <ActionPill
-                      label="Dismiss"
-                      onPress={() =>
-                        void resolveExpiredTimerChild(
-                          childAction.childId,
-                          'dismissed',
-                        )
-                      }
-                    />
-                  </ActionPillRow>
-                ) : null}
+                <ResolveChildButton
+                  accessibilityLabel={`Award point to ${childAction.childName}`}
+                  color={
+                    childAction.status === 'awarded'
+                      ? resolvedTheme === 'dark'
+                        ? '#c8ffd8'
+                        : tokens.success
+                      : resolvedTheme === 'dark'
+                        ? '#8bc9a1'
+                        : '#2e7d50'
+                  }
+                  iconName="thumbs-up"
+                  isActive={childAction.status === 'awarded'}
+                  isDisabled={childAction.status !== 'pending'}
+                  side="right"
+                  onPress={() =>
+                    void resolveExpiredTimerChild(
+                      childAction.childId,
+                      'awarded',
+                    )
+                  }
+                />
               </View>
             ))}
           </View>
@@ -136,46 +196,60 @@ export function TimerCheckInModal() {
   );
 }
 
-const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
+const createStyles = ({
+  resolvedTheme,
+  tokens,
+}: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
-    body: {
-      color: tokens.textMuted,
-      fontSize: 14,
-      lineHeight: 20,
-    },
     card: {
       alignSelf: 'center',
       backgroundColor: tokens.modalSurface,
       borderColor: tokens.border,
       borderRadius: 22,
       borderWidth: 1,
+      flexShrink: 1,
       gap: 12,
-      maxWidth: 380,
-      paddingHorizontal: 18,
+      maxHeight: '100%',
+      maxWidth: 456,
+      paddingHorizontal: 14,
       paddingVertical: 18,
-      width: '92%',
-    },
-    childCard: {
-      backgroundColor: tokens.controlSurface,
-      borderRadius: 16,
-      gap: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-    },
-    childHeader: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: 10,
-      justifyContent: 'space-between',
     },
     childList: {
-      gap: 10,
+      gap: 8,
     },
     childName: {
       color: tokens.textPrimary,
-      flex: 1,
+      flexShrink: 1,
       fontSize: 16,
-      fontWeight: '800',
+      fontWeight: '900',
+      textAlign: 'center',
+    },
+    childRail: {
+      alignItems: 'center',
+      backgroundColor: tokens.controlSurface,
+      borderRadius: 999,
+      flexDirection: 'row',
+      minHeight: 58,
+      overflow: 'hidden',
+      width: '100%',
+    },
+    childRailCore: {
+      alignItems: 'center',
+      backgroundColor: tokens.controlSurface,
+      flexBasis: 140,
+      flexGrow: 1,
+      flexShrink: 0,
+      gap: 2,
+      justifyContent: 'center',
+      minWidth: 140,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    childStatus: {
+      color: tokens.textMuted,
+      fontSize: 12,
+      fontWeight: '700',
+      textAlign: 'center',
     },
     closeButton: {
       alignItems: 'center',
@@ -198,6 +272,12 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       letterSpacing: 1,
       textTransform: 'uppercase',
     },
+    headerRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 10,
+      justifyContent: 'space-between',
+    },
     lockedCopy: {
       color: tokens.textMuted,
       fontSize: 13,
@@ -206,9 +286,44 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     lockedState: {
       gap: 10,
     },
+    resolveButton: {
+      alignItems: 'center',
+      alignSelf: 'stretch',
+      flexGrow: 0,
+      flexShrink: 0,
+      justifyContent: 'center',
+      width: 56,
+      minWidth: 56,
+      paddingHorizontal: 8,
+      paddingVertical: 10,
+    },
+    resolveButtonActive: {
+      opacity: 1,
+    },
+    resolveButtonDisabled: {
+      opacity: 0.7,
+    },
+    resolveButtonIdle: {
+      opacity: 1,
+    },
+    resolveButtonLeft: {
+      backgroundColor: resolvedTheme === 'dark' ? '#562646' : '#ffd7eb',
+      borderRightColor: resolvedTheme === 'dark' ? '#7c3a63' : '#f4b6d6',
+      borderRightWidth: 1,
+    },
+    resolveButtonRight: {
+      backgroundColor: resolvedTheme === 'dark' ? '#20452f' : '#dff8e8',
+      borderLeftColor: resolvedTheme === 'dark' ? '#2f6a45' : '#bce7ca',
+      borderLeftWidth: 1,
+    },
     title: {
       color: tokens.textPrimary,
       fontSize: 24,
       fontWeight: '900',
+    },
+    triggeredAt: {
+      color: tokens.textMuted,
+      fontSize: 12,
+      fontWeight: '700',
     },
   });
