@@ -29,6 +29,7 @@ type AppThemeValue = {
 
 type AppThemeProviderProps = PropsWithChildren<{
   initialLogLevel?: AppLogLevel;
+  initialParentPin?: string | null;
   initialThemeMode?: ThemeMode;
   storage?: StateStorage;
 }>;
@@ -36,6 +37,7 @@ type AppThemeProviderProps = PropsWithChildren<{
 export function AppThemeProvider({
   children,
   initialLogLevel,
+  initialParentPin,
   initialThemeMode = 'system',
   storage,
 }: AppThemeProviderProps) {
@@ -48,6 +50,7 @@ export function AppThemeProvider({
   return (
     <LocalSettingsStoreProvider
       initialLogLevel={initialLogLevel}
+      initialParentPin={initialParentPin}
       initialThemeMode={initialThemeMode}
       storage={storage}
     >

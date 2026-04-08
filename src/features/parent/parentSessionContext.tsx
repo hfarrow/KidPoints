@@ -1,5 +1,6 @@
 import { type PropsWithChildren, useEffect } from 'react';
 import { createModuleLogger } from '../../logging/logger';
+import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import {
   SessionUiStoreProvider,
   useSessionUiStore,
@@ -36,8 +37,13 @@ export function ParentSessionProvider({
 }
 
 export function useParentSession() {
+  const parentPin = useLocalSettingsStore((state) => state.parentPin);
+  const attemptSessionUnlock = useSessionUiStore(
+    (state) => state.attemptUnlock,
+  );
+
   return {
-    attemptUnlock: useSessionUiStore((state) => state.attemptUnlock),
+    attemptUnlock: (pin) => attemptSessionUnlock(pin, parentPin),
     isParentUnlocked: useSessionUiStore((state) => state.isParentUnlocked),
     lockParentMode: useSessionUiStore((state) => state.lockParentMode),
     unlockParentMode: useSessionUiStore((state) => state.unlockParentMode),

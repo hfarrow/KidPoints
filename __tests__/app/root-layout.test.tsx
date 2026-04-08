@@ -5,6 +5,7 @@ import RootLayout from '../../app/_layout';
 
 const mockPathname = '/';
 const mockSegments = ['(tabs)', 'index'];
+const mockPush = jest.fn();
 
 jest.mock('expo-status-bar', () => ({
   StatusBar: () => null,
@@ -23,7 +24,7 @@ jest.mock('expo-router', () => {
     options,
   }: {
     name: string;
-    options?: { presentation?: string };
+    options?: { gestureEnabled?: boolean; presentation?: string };
   }) {
     return <Text>{`${name}:${options?.presentation ?? 'default'}`}</Text>;
   }
@@ -33,6 +34,10 @@ jest.mock('expo-router', () => {
   return {
     Stack,
     usePathname: () => mockPathname,
+    useRootNavigationState: () => ({ key: 'root-ready' }),
+    useRouter: () => ({
+      push: mockPush,
+    }),
     useSegments: () => mockSegments,
   };
 });

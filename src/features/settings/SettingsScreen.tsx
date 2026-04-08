@@ -26,6 +26,7 @@ export function SettingsScreen() {
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked, lockParentMode } = useParentSession();
   const { resolvedTheme, setThemeMode, themeMode, tokens } = useAppTheme();
+  const parentPin = useLocalSettingsStore((state) => state.parentPin);
   const logLevel = useLocalSettingsStore((state) => state.logLevel);
   const setLogLevel = useLocalSettingsStore((state) => state.setLogLevel);
 
@@ -83,20 +84,33 @@ export function SettingsScreen() {
       <Tile
         accessory={
           <StatusBadge
-            label={isParentUnlocked ? 'Unlocked' : 'Locked'}
-            tone={isParentUnlocked ? 'good' : 'warning'}
+            label={
+              !parentPin
+                ? 'Setup Required'
+                : isParentUnlocked
+                  ? 'Unlocked'
+                  : 'Locked'
+            }
+            tone={parentPin && isParentUnlocked ? 'good' : 'warning'}
           />
         }
         title="Parent Session"
       >
         <Text style={styles.body}>
-          Parent Mode stays local to this device for now, uses the hardcoded PIN
-          `0000`, and defaults to unlocked in development.
+          Parent Mode stays local to this device. Use the parent PIN to unlock
+          protected controls, and change it here whenever you need to.
         </Text>
         <ActionPillRow>
           <ActionPill
-            label={isParentUnlocked ? 'Lock' : 'Unlock'}
+            label={
+              !parentPin ? 'Set PIN' : isParentUnlocked ? 'Lock' : 'Unlock'
+            }
             onPress={() => {
+              if (!parentPin) {
+                router.push('/parent-unlock?mode=setup');
+                return;
+              }
+
               if (isParentUnlocked) {
                 lockParentMode();
                 return;
@@ -106,6 +120,12 @@ export function SettingsScreen() {
             }}
             tone="primary"
           />
+          {parentPin && isParentUnlocked ? (
+            <ActionPill
+              label="Change PIN"
+              onPress={() => router.push('/parent-unlock?mode=change')}
+            />
+          ) : null}
         </ActionPillRow>
       </Tile>
 

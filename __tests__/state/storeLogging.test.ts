@@ -95,6 +95,7 @@ describe('store logging', () => {
 
     store.getState().setThemeMode('dark');
     store.getState().setLogLevel('error');
+    store.getState().setParentPin('2468');
 
     expect(mockLogger.debug).toHaveBeenCalledWith(
       'Local settings mutation committed',
@@ -110,6 +111,14 @@ describe('store logging', () => {
         logLevel: 'error',
       }),
     );
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Local settings mutation committed',
+      expect.objectContaining({
+        action: 'setParentPin',
+        hasParentPin: true,
+        pinLength: 4,
+      }),
+    );
   });
 
   it('logs session ui failures as errors and unlocks as debug', () => {
@@ -117,8 +126,8 @@ describe('store logging', () => {
       initialParentUnlocked: false,
     });
 
-    expect(store.getState().attemptUnlock('1234')).toBe(false);
-    expect(store.getState().attemptUnlock('0000')).toBe(true);
+    expect(store.getState().attemptUnlock('1234', '2468')).toBe(false);
+    expect(store.getState().attemptUnlock('2468', '2468')).toBe(true);
 
     expect(mockLogger.error).toHaveBeenCalledWith(
       'Session UI mutation rejected',

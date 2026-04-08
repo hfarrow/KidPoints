@@ -47,4 +47,26 @@ describe('localSettingsStore', () => {
 
     expect(secondStore.getState().logLevel).toBe('error');
   });
+
+  it('rehydrates the persisted parent pin', async () => {
+    const storage = createMemoryStorage();
+    const firstStore = createLocalSettingsStore({
+      storage,
+    });
+
+    firstStore.getState().setParentPin('2468');
+
+    const secondStore = createLocalSettingsStore({
+      initialParentPin: null,
+      storage,
+    });
+
+    await (
+      secondStore as typeof secondStore & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(secondStore.getState().parentPin).toBe('2468');
+  });
 });

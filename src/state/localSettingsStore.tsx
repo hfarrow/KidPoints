@@ -21,8 +21,12 @@ import {
 } from '../logging/logger';
 
 type LocalSettingsState = {
+  hasHydrated: boolean;
   logLevel: AppLogLevel;
+  markHydrated: () => void;
+  parentPin: string | null;
   setLogLevel: (logLevel: AppLogLevel) => void;
+  setParentPin: (parentPin: string) => void;
   setThemeMode: (themeMode: ThemeMode) => void;
   themeMode: ThemeMode;
 };
@@ -38,29 +42,45 @@ const LocalSettingsStoreContext = createContext<LocalSettingsStore | null>(
 
 type LocalSettingsStoreProviderProps = PropsWithChildren<{
   initialLogLevel?: AppLogLevel;
+  initialParentPin?: string | null;
   initialThemeMode?: ThemeMode;
   storage?: StateStorage;
 }>;
 
 export function createLocalSettingsStore({
   initialLogLevel = getDefaultAppLogLevel(),
+  initialParentPin = null,
   initialThemeMode = 'system',
   storage = AsyncStorage,
 }: {
   initialLogLevel?: AppLogLevel;
+  initialParentPin?: string | null;
   initialThemeMode?: ThemeMode;
   storage?: StateStorage;
 } = {}) {
   return createStore<LocalSettingsState>()(
     persist(
       (set) => ({
+        hasHydrated: false,
         logLevel: initialLogLevel,
+        markHydrated: () => {
+          set({ hasHydrated: true });
+        },
+        parentPin: initialParentPin,
         setLogLevel: (logLevel) => {
           log.debug('Local settings mutation committed', {
             action: 'setLogLevel',
             logLevel,
           });
           set({ logLevel });
+        },
+        setParentPin: (parentPin) => {
+          log.debug('Local settings mutation committed', {
+            action: 'setParentPin',
+            hasParentPin: true,
+            pinLength: parentPin.length,
+          });
+          set({ parentPin });
         },
         setThemeMode: (themeMode) => {
           log.debug('Local settings mutation committed', {
@@ -73,7 +93,26 @@ export function createLocalSettingsStore({
       }),
       {
         name: LOCAL_SETTINGS_STORAGE_KEY,
-        partialize: ({ logLevel, themeMode }) => ({ logLevel, themeMode }),
+        onRehydrateStorage: () => (state, error) => {
+          if (error) {
+            log.error('Local settings rehydrate failed', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          } else {
+            log.info('Local settings rehydrated persisted state', {
+              hasParentPin: Boolean(state?.parentPin),
+              logLevel: state?.logLevel ?? initialLogLevel,
+              themeMode: state?.themeMode ?? initialThemeMode,
+            });
+          }
+
+          state?.markHydrated();
+        },
+        partialize: ({ logLevel, parentPin, themeMode }) => ({
+          logLevel,
+          parentPin,
+          themeMode,
+        }),
         storage: createJSONStorage(() => storage),
       },
     ),
@@ -83,6 +122,7 @@ export function createLocalSettingsStore({
 export function LocalSettingsStoreProvider({
   children,
   initialLogLevel = getDefaultAppLogLevel(),
+  initialParentPin = null,
   initialThemeMode = 'system',
   storage,
 }: LocalSettingsStoreProviderProps) {
@@ -91,6 +131,7 @@ export function LocalSettingsStoreProvider({
   if (!storeRef.current) {
     storeRef.current = createLocalSettingsStore({
       initialLogLevel,
+      initialParentPin,
       initialThemeMode,
       storage,
     });
@@ -99,9 +140,10 @@ export function LocalSettingsStoreProvider({
   useEffect(() => {
     log.info('Local settings store provider initialized', {
       initialLogLevel,
+      initialParentPinConfigured: Boolean(initialParentPin),
       initialThemeMode,
     });
-  }, [initialLogLevel, initialThemeMode]);
+  }, [initialLogLevel, initialParentPin, initialThemeMode]);
 
   return (
     <LocalSettingsStoreContext.Provider value={storeRef.current}>

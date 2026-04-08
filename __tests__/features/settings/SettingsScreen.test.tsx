@@ -37,6 +37,7 @@ describe('SettingsScreen', () => {
     render(
       <ParentSessionProvider initialParentUnlocked={false}>
         <AppThemeProvider
+          initialParentPin="2468"
           initialThemeMode="light"
           storage={createMemoryStorage()}
         >
@@ -58,10 +59,11 @@ describe('SettingsScreen', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
-  it('shows Lock in the unlocked state and does not route away', () => {
+  it('shows Lock and Change PIN in the unlocked state', () => {
     render(
       <ParentSessionProvider initialParentUnlocked>
         <AppThemeProvider
+          initialParentPin="2468"
           initialThemeMode="light"
           storage={createMemoryStorage()}
         >
@@ -69,6 +71,13 @@ describe('SettingsScreen', () => {
         </AppThemeProvider>
       </ParentSessionProvider>,
     );
+
+    expect(screen.getByText('Change PIN')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Change PIN'));
+    expect(mockPush).toHaveBeenCalledWith('/parent-unlock?mode=change');
+
+    mockPush.mockReset();
 
     fireEvent.press(screen.getByText('Lock'));
     expect(mockPush).not.toHaveBeenCalled();
@@ -92,5 +101,22 @@ describe('SettingsScreen', () => {
     fireEvent.press(screen.getByText('error'));
 
     expect(screen.getAllByText('error')).toHaveLength(2);
+  });
+
+  it('shows Set PIN when the device has not configured one yet', () => {
+    render(
+      <ParentSessionProvider initialParentUnlocked={false}>
+        <AppThemeProvider
+          initialThemeMode="light"
+          storage={createMemoryStorage()}
+        >
+          <SettingsScreen />
+        </AppThemeProvider>
+      </ParentSessionProvider>,
+    );
+
+    fireEvent.press(screen.getByText('Set PIN'));
+
+    expect(mockPush).toHaveBeenCalledWith('/parent-unlock?mode=setup');
   });
 });

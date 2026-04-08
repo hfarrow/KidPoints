@@ -1,60 +1,201 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { createModuleLogger } from '../../logging/logger';
-import { DEFAULT_PARENT_PIN } from '../../state/sessionUiStore';
+import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import {
+  normalizeParentPin,
+  PARENT_PIN_LENGTH,
+  validateParentPin,
+} from './parentPin';
 import { useParentSession } from './parentSessionContext';
 
 const log = createModuleLogger('parent-unlock-modal');
 
+type ParentModalMode = 'change' | 'setup' | 'unlock';
+type ParentModalStage = 'confirm' | 'entry';
+
+function resolveParentModalMode(
+  value: string | string[] | undefined,
+): ParentModalMode {
+  const nextValue = Array.isArray(value) ? value[0] : value;
+
+  if (nextValue === 'change' || nextValue === 'setup') {
+    return nextValue;
+  }
+
+  return 'unlock';
+}
+
 export function ParentUnlockModal() {
+  const { mode } = useLocalSearchParams<{ mode?: string | string[] }>();
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
-  const { attemptUnlock } = useParentSession();
+  const parentPin = useLocalSettingsStore((state) => state.parentPin);
+  const setParentPin = useLocalSettingsStore((state) => state.setParentPin);
+  const { attemptUnlock, unlockParentMode } = useParentSession();
   const { tokens } = useAppTheme();
+  const requestedMode = resolveParentModalMode(mode);
+  const effectiveMode = parentPin ? requestedMode : 'setup';
+  const canDismiss = effectiveMode !== 'setup';
   const [pin, setPin] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [pendingPin, setPendingPin] = useState('');
+  const [stage, setStage] = useState<ParentModalStage>('entry');
 
   useEffect(() => {
-    log.debug('Parent unlock modal initialized');
-  }, []);
+    log.debug('Parent unlock modal initialized', {
+      canDismiss,
+      mode: effectiveMode,
+      stage,
+    });
+  }, [canDismiss, effectiveMode, stage]);
 
-  const submitPin = (value: string) => {
-    const didUnlock = attemptUnlock(value);
+  useEffect(() => {
+    log.debug('Parent unlock flow reset', {
+      mode: effectiveMode,
+    });
+    setErrorMessage('');
+    setPendingPin('');
+    setPin('');
+    setStage('entry');
+  }, [effectiveMode]);
 
-    if (!didUnlock) {
-      setErrorMessage('That PIN does not match the temporary parent code.');
+  useEffect(() => {
+    if (canDismiss) {
       return;
     }
 
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => true,
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [canDismiss]);
+
+  const resetPinSetup = (nextErrorMessage = '') => {
+    setErrorMessage(nextErrorMessage);
+    setPendingPin('');
+    setPin('');
+    setStage('entry');
+  };
+
+  const moveToPinConfirmation = (value: string) => {
+    const validationError = validateParentPin(value);
+
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+
+    setErrorMessage('');
+    setPendingPin(value);
+    setPin('');
+    setStage('confirm');
+  };
+
+  const submitPin = (value: string) => {
+    if (effectiveMode === 'unlock') {
+      const didUnlock = attemptUnlock(value);
+
+      if (!didUnlock) {
+        setErrorMessage(
+          'That PIN does not match the parent PIN for this device.',
+        );
+        return;
+      }
+
+      router.back();
+      return;
+    }
+
+    if (stage === 'entry') {
+      moveToPinConfirmation(value);
+      return;
+    }
+
+    const validationError = validateParentPin(value);
+
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+
+    if (value !== pendingPin) {
+      resetPinSetup('Those PINs did not match. Enter a new PIN to try again.');
+      return;
+    }
+
+    setParentPin(value);
+    unlockParentMode();
     router.back();
   };
+
+  const copy =
+    effectiveMode === 'unlock'
+      ? {
+          accessibilityLabel: 'Parent PIN',
+          body: 'Enter the parent PIN for this device to unlock parent-gated controls.',
+          confirmLabel: 'Unlock',
+          title: 'Unlock Parent Controls',
+        }
+      : stage === 'confirm'
+        ? {
+            accessibilityLabel:
+              effectiveMode === 'change'
+                ? 'Confirm New Parent PIN'
+                : 'Confirm Parent PIN',
+            body: `Enter the same ${PARENT_PIN_LENGTH}-digit PIN again to confirm it.`,
+            confirmLabel: effectiveMode === 'change' ? 'Save PIN' : 'Save PIN',
+            title:
+              effectiveMode === 'change'
+                ? 'Confirm New Parent PIN'
+                : 'Confirm Parent PIN',
+          }
+        : {
+            accessibilityLabel:
+              effectiveMode === 'change'
+                ? 'New Parent PIN'
+                : 'Create Parent PIN',
+            body:
+              effectiveMode === 'change'
+                ? `Set a new ${PARENT_PIN_LENGTH}-digit PIN for this device. You will confirm it on the next step.`
+                : `Create a ${PARENT_PIN_LENGTH}-digit PIN for this device. You will confirm it on the next step before Parent Mode can be used.`,
+            confirmLabel: 'Continue',
+            title:
+              effectiveMode === 'change'
+                ? 'Change Parent PIN'
+                : 'Set Parent PIN',
+          };
 
   return (
     <View style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}>
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Parent Mode</Text>
-        <Text style={styles.title}>Unlock Parent Controls</Text>
-        <Text style={styles.body}>
-          Enter the temporary PIN to view parent-gated controls. The default PIN
-          for this milestone is `0000`.
-        </Text>
+        <Text style={styles.title}>{copy.title}</Text>
+        <Text style={styles.body}>{copy.body}</Text>
         <TextInput
-          accessibilityLabel="Parent PIN"
+          accessibilityLabel={copy.accessibilityLabel}
           autoFocus
           keyboardType="number-pad"
           onChangeText={(nextValue) => {
-            setPin(nextValue);
+            const normalizedValue = normalizeParentPin(nextValue);
+
+            setPin(normalizedValue);
             if (errorMessage) {
               setErrorMessage('');
             }
 
             if (
-              nextValue.length === DEFAULT_PARENT_PIN.length &&
-              attemptUnlock(nextValue)
+              effectiveMode === 'unlock' &&
+              normalizedValue.length === PARENT_PIN_LENGTH &&
+              attemptUnlock(normalizedValue)
             ) {
               router.back();
             }
@@ -64,22 +205,25 @@ export function ParentUnlockModal() {
           secureTextEntry
           style={styles.input}
           value={pin}
+          maxLength={PARENT_PIN_LENGTH}
         />
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
         <View style={styles.actions}>
+          {canDismiss ? (
+            <LoggedPressable
+              logLabel="Cancel Parent Unlock"
+              onPress={() => router.back()}
+              style={styles.secondaryAction}
+            >
+              <Text style={styles.secondaryText}>Cancel</Text>
+            </LoggedPressable>
+          ) : null}
           <LoggedPressable
-            logLabel="Cancel Parent Unlock"
-            onPress={() => router.back()}
-            style={styles.secondaryAction}
-          >
-            <Text style={styles.secondaryText}>Cancel</Text>
-          </LoggedPressable>
-          <LoggedPressable
-            logLabel="Unlock Parent Controls"
+            logLabel={copy.confirmLabel}
             onPress={() => submitPin(pin)}
             style={styles.primaryAction}
           >
-            <Text style={styles.primaryText}>Unlock</Text>
+            <Text style={styles.primaryText}>{copy.confirmLabel}</Text>
           </LoggedPressable>
         </View>
       </View>
