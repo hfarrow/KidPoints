@@ -4,7 +4,6 @@ import {
   type PropsWithChildren,
   useContext,
   useEffect,
-  useRef,
 } from 'react';
 import { useStore } from 'zustand';
 import {
@@ -20,6 +19,7 @@ import {
   createStructuredLog,
   getDefaultAppLogLevel,
 } from '../logging/logger';
+import { useStableStoreReference } from './useStableStoreReference';
 
 type LocalSettingsState = {
   hasHydrated: boolean;
@@ -35,6 +35,7 @@ type LocalSettingsState = {
 type LocalSettingsStore = StoreApi<LocalSettingsState>;
 
 const LOCAL_SETTINGS_STORAGE_KEY = 'kidpoints.local-settings.v1';
+const LOCAL_SETTINGS_STORE_BUILD_TOKEN = Symbol('local-settings-store-build');
 const log = createModuleLogger('local-settings-store');
 const logLocalSettingsMutation = createStructuredLog(
   log,
@@ -142,16 +143,18 @@ export function LocalSettingsStoreProvider({
   initialThemeMode = 'system',
   storage,
 }: LocalSettingsStoreProviderProps) {
-  const storeRef = useRef<LocalSettingsStore | null>(null);
-
-  if (!storeRef.current) {
-    storeRef.current = createLocalSettingsStore({
-      initialLogLevel,
-      initialParentPin,
-      initialThemeMode,
-      storage,
-    });
-  }
+  const store = useStableStoreReference(
+    () =>
+      createLocalSettingsStore({
+        initialLogLevel,
+        initialParentPin,
+        initialThemeMode,
+        storage,
+      }),
+    {
+      devRefreshToken: LOCAL_SETTINGS_STORE_BUILD_TOKEN,
+    },
+  );
 
   useEffect(() => {
     log.info('Local settings store provider initialized', {
@@ -162,7 +165,7 @@ export function LocalSettingsStoreProvider({
   }, [initialLogLevel, initialParentPin, initialThemeMode]);
 
   return (
-    <LocalSettingsStoreContext.Provider value={storeRef.current}>
+    <LocalSettingsStoreContext.Provider value={store}>
       {children}
     </LocalSettingsStoreContext.Provider>
   );

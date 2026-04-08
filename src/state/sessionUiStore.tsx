@@ -4,7 +4,6 @@ import {
   type PropsWithChildren,
   useContext,
   useEffect,
-  useRef,
 } from 'react';
 import { useStore } from 'zustand';
 import {
@@ -15,8 +14,10 @@ import {
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import { createModuleLogger, createStructuredLog } from '../logging/logger';
+import { useStableStoreReference } from './useStableStoreReference';
 
 const SESSION_UI_STORAGE_KEY = 'kidpoints.session-ui.v1';
+const SESSION_UI_STORE_BUILD_TOKEN = Symbol('session-ui-store-build');
 const log = createModuleLogger('session-ui-store');
 const logSessionUiMutation = createStructuredLog(
   log,
@@ -130,11 +131,12 @@ export function SessionUiStoreProvider({
   initialParentUnlocked,
   storage,
 }: SessionUiStoreProviderProps) {
-  const storeRef = useRef<SessionUiStore | null>(null);
-
-  if (!storeRef.current) {
-    storeRef.current = createSessionUiStore({ initialParentUnlocked, storage });
-  }
+  const store = useStableStoreReference(
+    () => createSessionUiStore({ initialParentUnlocked, storage }),
+    {
+      devRefreshToken: SESSION_UI_STORE_BUILD_TOKEN,
+    },
+  );
 
   useEffect(() => {
     log.info('Session UI store provider initialized', {
@@ -143,7 +145,7 @@ export function SessionUiStoreProvider({
   }, [initialParentUnlocked]);
 
   return (
-    <SessionUiStoreContext.Provider value={storeRef.current}>
+    <SessionUiStoreContext.Provider value={store}>
       {children}
     </SessionUiStoreContext.Provider>
   );

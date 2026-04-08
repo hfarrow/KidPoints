@@ -5,7 +5,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
 } from 'react';
 import { useStore } from 'zustand';
 import {
@@ -40,6 +39,7 @@ import type {
   TransactionRecord,
   TransactionRow,
 } from './sharedTypes';
+import { useStableStoreReference } from './useStableStoreReference';
 
 type SharedStoreState = {
   addChild: (name: string) => SharedCommandResult;
@@ -61,6 +61,7 @@ type SharedStoreState = {
 type SharedStore = StoreApi<SharedStoreState>;
 
 const SHARED_STORAGE_KEY = 'kidpoints.shared-document.v2';
+const SHARED_STORE_BUILD_TOKEN = Symbol('shared-store-build');
 const log = createModuleLogger('shared-store');
 const logCommittedSharedStoreMutation = createStructuredLog(
   log,
@@ -1849,21 +1850,23 @@ export function SharedStoreProvider({
   initialDocument,
   storage,
 }: SharedStoreProviderProps) {
-  const storeRef = useRef<SharedStore | null>(null);
-
-  if (!storeRef.current) {
-    storeRef.current = createSharedStore({
-      initialDocument,
-      storage,
-    });
-  }
+  const store = useStableStoreReference(
+    () =>
+      createSharedStore({
+        initialDocument,
+        storage,
+      }),
+    {
+      devRefreshToken: SHARED_STORE_BUILD_TOKEN,
+    },
+  );
 
   useEffect(() => {
     log.info('Shared store provider initialized');
   }, []);
 
   return (
-    <SharedStoreContext.Provider value={storeRef.current}>
+    <SharedStoreContext.Provider value={store}>
       {children}
     </SharedStoreContext.Provider>
   );
