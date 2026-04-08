@@ -7520,6 +7520,7 @@ __metadata:
     jest-expo: "npm:~54.0.17"
     react: "npm:19.1.0"
     react-native: "npm:0.81.5"
+    react-native-logs: "npm:^5.6.0"
     react-native-safe-area-context: "npm:~5.6.0"
     react-native-screens: "npm:~4.16.0"
     react-test-renderer: "npm:19.1.0"
@@ -9334,6 +9335,13 @@ __metadata:
     react: "*"
     react-native: "*"
   checksum: 10c0/28cebd5f1f3632864ff5e342278721d1e5e38627ae73859a8814012116ef15c629fee7137a6c9c97bb05d94bbe639b0b47e69b36fc2735ab53ed31570140663f
+  languageName: node
+  linkType: hard
+
+"react-native-logs@npm:^5.6.0":
+  version: 5.6.0
+  resolution: "react-native-logs@npm:5.6.0"
+  checksum: 10c0/2532a965053819ae9209fe59c1e1511397425f86a98ce2f1a28b34bdf0618b055248c5b59b7d382d6a8e422b4c647601cd24f68b401a322f48ed2e6aaf5ce806
   languageName: node
   linkType: hard
 
