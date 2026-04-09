@@ -9,7 +9,7 @@ export function MainScreenActions() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked, lockParentMode } = useParentSession();
-  const { resolvedTheme, tokens } = useAppTheme();
+  const { tokens } = useAppTheme();
 
   return (
     <View style={styles.row}>
@@ -44,13 +44,7 @@ export function MainScreenActions() {
         ]}
       >
         <Feather
-          color={
-            isParentUnlocked
-              ? resolvedTheme === 'dark'
-                ? '#dcfce7'
-                : '#14532d'
-              : tokens.controlText
-          }
+          color={isParentUnlocked ? tokens.successText : tokens.controlText}
           name={isParentUnlocked ? 'unlock' : 'lock'}
           size={18}
         />

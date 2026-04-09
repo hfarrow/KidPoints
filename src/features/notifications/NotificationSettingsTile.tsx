@@ -35,7 +35,7 @@ function formatOptionalTime(timestamp: number | null) {
 
 export function NotificationSettingsTile() {
   const styles = useThemedStyles(createStyles);
-  const { resolvedTheme, tokens } = useAppTheme();
+  const { tokens } = useAppTheme();
   const {
     activeExpiredTimerSession,
     engineAvailable,
@@ -100,7 +100,7 @@ export function NotificationSettingsTile() {
               onValueChange={setNotificationsEnabled}
               thumbColor="#f8fafc"
               trackColor={{
-                false: resolvedTheme === 'dark' ? '#475569' : '#94a3b8',
+                false: tokens.controlTrackOff,
                 true: tokens.accent,
               }}
               value={notificationsEnabled}

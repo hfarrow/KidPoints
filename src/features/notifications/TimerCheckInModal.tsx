@@ -77,7 +77,7 @@ export function TimerCheckInModal() {
   const { isParentUnlocked } = useParentSession();
   const { activeExpiredTimerSession, resolveExpiredTimerChild } =
     useNotifications();
-  const { resolvedTheme, tokens } = useAppTheme();
+  const { tokens } = useAppTheme();
 
   const closeModal = useCallback(() => {
     if (router.canGoBack()) {
@@ -143,15 +143,7 @@ export function TimerCheckInModal() {
               <View key={childAction.childId} style={styles.childRail}>
                 <ResolveChildButton
                   accessibilityLabel={`Dismiss point for ${childAction.childName}`}
-                  color={
-                    childAction.status === 'dismissed'
-                      ? resolvedTheme === 'dark'
-                        ? '#ffe5f1'
-                        : tokens.critical
-                      : resolvedTheme === 'dark'
-                        ? '#f0b4d0'
-                        : '#9d174d'
-                  }
+                  color={tokens.resolveDismissText}
                   iconName="thumbs-down"
                   isActive={childAction.status === 'dismissed'}
                   isDisabled={childAction.status === 'dismissed'}
@@ -179,15 +171,7 @@ export function TimerCheckInModal() {
                 </View>
                 <ResolveChildButton
                   accessibilityLabel={`Award point to ${childAction.childName}`}
-                  color={
-                    childAction.status === 'awarded'
-                      ? resolvedTheme === 'dark'
-                        ? '#c8ffd8'
-                        : tokens.success
-                      : resolvedTheme === 'dark'
-                        ? '#8bc9a1'
-                        : '#2e7d50'
-                  }
+                  color={tokens.resolveAwardText}
                   iconName="thumbs-up"
                   isActive={childAction.status === 'awarded'}
                   isDisabled={childAction.status === 'awarded'}
@@ -221,7 +205,7 @@ export function TimerCheckInModal() {
             onValueChange={setRestartCountdownAfterCheckIn}
             thumbColor="#f8fafc"
             trackColor={{
-              false: resolvedTheme === 'dark' ? '#475569' : '#94a3b8',
+              false: tokens.controlTrackOff,
               true: tokens.accent,
             }}
             value={restartCountdownAfterCheckIn}
@@ -232,10 +216,7 @@ export function TimerCheckInModal() {
   );
 }
 
-const createStyles = ({
-  resolvedTheme,
-  tokens,
-}: ReturnType<typeof useAppTheme>) =>
+const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
     card: {
       alignSelf: 'center',
@@ -329,13 +310,13 @@ const createStyles = ({
       opacity: 1,
     },
     resolveButtonLeft: {
-      backgroundColor: resolvedTheme === 'dark' ? '#562646' : '#ffd7eb',
-      borderRightColor: resolvedTheme === 'dark' ? '#7c3a63' : '#f4b6d6',
+      backgroundColor: tokens.resolveDismissSurface,
+      borderRightColor: tokens.resolveDismissBorder,
       borderRightWidth: 1,
     },
     resolveButtonRight: {
-      backgroundColor: resolvedTheme === 'dark' ? '#20452f' : '#dff8e8',
-      borderLeftColor: resolvedTheme === 'dark' ? '#2f6a45' : '#bce7ca',
+      backgroundColor: tokens.resolveAwardSurface,
+      borderLeftColor: tokens.resolveAwardBorder,
       borderLeftWidth: 1,
     },
     title: {

@@ -114,9 +114,9 @@ describe('ParentUnlockModal', () => {
 
   it('rejects a bad configured pin and accepts the stored pin as soon as it is entered', async () => {
     jest.useFakeTimers();
-    const accentColor = getThemeTokens('light').accent;
-    const errorColor = getThemeTokens('light').critical;
-    const successColor = getThemeTokens('light').success;
+    const accentColor = getThemeTokens('default', 'light').accent;
+    const errorColor = getThemeTokens('default', 'light').critical;
+    const successColor = getThemeTokens('default', 'light').success;
     const sharedStorage = createMemoryStorage();
 
     render(

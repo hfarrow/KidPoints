@@ -50,6 +50,29 @@ describe('localSettingsStore', () => {
     expect(secondStore.getState().themeMode).toBe('dark');
   });
 
+  it('rehydrates the persisted active theme id', async () => {
+    const storage = createMemoryStorage();
+    const firstStore = createLocalSettingsStore({
+      initialActiveThemeId: 'default',
+      storage,
+    });
+
+    firstStore.getState().setActiveThemeId('gruvbox');
+
+    const secondStore = createLocalSettingsStore({
+      initialActiveThemeId: 'default',
+      storage,
+    });
+
+    await (
+      secondStore as typeof secondStore & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(secondStore.getState().activeThemeId).toBe('gruvbox');
+  });
+
   it('rehydrates the persisted notifications enabled state', async () => {
     const storage = createMemoryStorage();
     const firstStore = createLocalSettingsStore({
@@ -191,6 +214,29 @@ describe('localSettingsStore', () => {
     ).persist.rehydrate();
 
     expect(store.getState().logLevel).toBe('info');
+  });
+
+  it('falls back to the default theme when persisted theme ids are invalid', async () => {
+    const storage = createMemoryStorage({
+      'kidpoints.local-settings.v1': JSON.stringify({
+        state: {
+          activeThemeId: 'midnight',
+        },
+        version: 0,
+      }),
+    });
+    const store = createLocalSettingsStore({
+      initialActiveThemeId: 'gruvbox',
+      storage,
+    });
+
+    await (
+      store as typeof store & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(store.getState().activeThemeId).toBe('default');
   });
 
   it('rehydrates the persisted parent pin', async () => {

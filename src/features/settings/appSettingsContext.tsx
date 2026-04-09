@@ -4,12 +4,13 @@ import type { StateStorage } from 'zustand/middleware';
 import type { AppLogLevel } from '../../logging/logger';
 import { createModuleLogger } from '../../logging/logger';
 import { LocalSettingsStoreProvider } from '../../state/localSettingsStore';
-import type { ThemeMode } from '../theme/theme';
+import { DEFAULT_THEME_ID, type ThemeId, type ThemeMode } from '../theme/theme';
 
 const log = createModuleLogger('app-settings-context');
 
 type AppSettingsProviderProps = PropsWithChildren<{
   allowTemporaryLogLevel?: boolean;
+  initialActiveThemeId?: ThemeId;
   initialHapticsEnabled?: boolean;
   initialLogLevel?: AppLogLevel;
   initialNotificationsEnabled?: boolean;
@@ -22,6 +23,7 @@ type AppSettingsProviderProps = PropsWithChildren<{
 export function AppSettingsProvider({
   allowTemporaryLogLevel,
   children,
+  initialActiveThemeId = DEFAULT_THEME_ID,
   initialHapticsEnabled,
   initialLogLevel,
   initialNotificationsEnabled,
@@ -32,13 +34,15 @@ export function AppSettingsProvider({
 }: AppSettingsProviderProps) {
   useEffect(() => {
     log.info('App settings provider initialized', {
+      initialActiveThemeId,
       initialThemeMode,
     });
-  }, [initialThemeMode]);
+  }, [initialActiveThemeId, initialThemeMode]);
 
   return (
     <LocalSettingsStoreProvider
       allowTemporaryLogLevel={allowTemporaryLogLevel}
+      initialActiveThemeId={initialActiveThemeId}
       initialHapticsEnabled={initialHapticsEnabled}
       initialLogLevel={initialLogLevel}
       initialNotificationsEnabled={initialNotificationsEnabled}

@@ -81,6 +81,40 @@ describe('SettingsScreen', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
+  it('shows the active theme family and lets you switch to gruvbox', () => {
+    render(
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppSettingsProvider
+            initialActiveThemeId="default"
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <SettingsScreen />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(screen.getByText('KidPoints')).toBeTruthy();
+    expect(
+      screen.queryByText('Retro warm neutrals with classic Gruvbox contrast.'),
+    ).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Open theme family menu'));
+
+    expect(
+      screen.getByText('Retro warm neutrals with classic Gruvbox contrast.'),
+    ).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Gruvbox'));
+
+    expect(screen.getByText('Gruvbox')).toBeTruthy();
+    expect(
+      screen.queryByText('Retro warm neutrals with classic Gruvbox contrast.'),
+    ).toBeNull();
+  });
+
   it('shows Lock and Change PIN in the unlocked state', async () => {
     const sharedStorage = createMemoryStorage();
 

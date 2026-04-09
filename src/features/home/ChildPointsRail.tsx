@@ -314,10 +314,7 @@ export function ChildPointsRail({
   );
 }
 
-const createStyles = ({
-  resolvedTheme,
-  tokens,
-}: ReturnType<typeof useAppTheme>) =>
+const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
     pointsSummary: {
       flex: 1,
@@ -341,15 +338,15 @@ const createStyles = ({
       paddingVertical: 8,
     },
     pointsCapLeft: {
-      backgroundColor: resolvedTheme === 'dark' ? '#562646' : '#ffd7eb',
-      borderRightColor: resolvedTheme === 'dark' ? '#7c3a63' : '#f4b6d6',
+      backgroundColor: tokens.actionDecrementSurface,
+      borderRightColor: tokens.actionDecrementBorder,
       borderRightWidth: 1,
       flexBasis: 0,
       flexGrow: 2,
     },
     pointsCapRight: {
-      backgroundColor: resolvedTheme === 'dark' ? '#1f3560' : '#dbe8ff',
-      borderLeftColor: resolvedTheme === 'dark' ? '#33528d' : '#bccffb',
+      backgroundColor: tokens.actionIncrementSurface,
+      borderLeftColor: tokens.actionIncrementBorder,
       borderLeftWidth: 1,
       flexBasis: 0,
       flexGrow: 2,
@@ -375,10 +372,10 @@ const createStyles = ({
       fontWeight: '800',
     },
     pointsCapTextLeft: {
-      color: resolvedTheme === 'dark' ? '#ffe5f1' : '#8a1d55',
+      color: tokens.actionDecrementText,
     },
     pointsCapTextRight: {
-      color: resolvedTheme === 'dark' ? '#e2ecff' : '#23458f',
+      color: tokens.actionIncrementText,
     },
     pointsValueViewport: {
       alignItems: 'center',

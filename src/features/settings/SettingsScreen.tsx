@@ -1,5 +1,6 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
@@ -9,6 +10,8 @@ import { ScreenScaffold } from '../../components/ScreenScaffold';
 import {
   ActionPill,
   ActionPillRow,
+  CompactSurface,
+  SectionLabel,
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
@@ -19,16 +22,34 @@ import {
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
-import type { ThemeMode } from '../theme/theme';
+import type { ThemeDefinition, ThemeMode } from '../theme/theme';
 
 const THEME_OPTIONS: ThemeMode[] = ['light', 'dark', 'system'];
 const log = createModuleLogger('settings-screen');
 
+function getThemeDescription(theme: ThemeDefinition) {
+  if (theme.id === 'gruvbox') {
+    return 'Retro warm neutrals with classic Gruvbox contrast.';
+  }
+
+  return 'Playful violet and berry-blue accents.';
+}
+
 export function SettingsScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
+  const [isThemeMenuOpen, setThemeMenuOpen] = useState(false);
   const { isParentUnlocked, lockParentMode } = useParentSession();
-  const { resolvedTheme, setThemeMode, themeMode, tokens } = useAppTheme();
+  const {
+    activeTheme,
+    activeThemeId,
+    availableThemes,
+    resolvedTheme,
+    setActiveThemeId,
+    setThemeMode,
+    themeMode,
+    tokens,
+  } = useAppTheme();
   const parentPin = useLocalSettingsStore((state) => state.parentPin);
   const hapticsEnabled = useLocalSettingsStore((state) => state.hapticsEnabled);
   const logLevel = useLocalSettingsStore((state) => state.logLevel);
@@ -47,33 +68,122 @@ export function SettingsScreen() {
       <ScreenHeader title="Settings" />
 
       <Tile accessory={<StatusBadge label={resolvedTheme} />} title="Theme">
-        <View style={styles.optionRow}>
-          {THEME_OPTIONS.map((option) => {
-            const isActive = themeMode === option;
+        <View style={styles.themeSection}>
+          <SectionLabel>Theme Family</SectionLabel>
+          <LoggedPressable
+            accessibilityLabel={
+              isThemeMenuOpen
+                ? 'Close theme family menu'
+                : 'Open theme family menu'
+            }
+            accessibilityRole="button"
+            logContext={{
+              activeThemeId,
+              isThemeMenuOpen,
+            }}
+            logLabel={
+              isThemeMenuOpen
+                ? 'Close theme family menu'
+                : 'Open theme family menu'
+            }
+            onPress={() => setThemeMenuOpen((current) => !current)}
+            style={[
+              styles.themeMenuTrigger,
+              isThemeMenuOpen && {
+                backgroundColor: tokens.accentSoft,
+                borderColor: tokens.accent,
+              },
+            ]}
+          >
+            <View style={styles.themeMenuTriggerCopy}>
+              <Text style={styles.themeMenuTriggerLabel}>
+                {activeTheme.label}
+              </Text>
+              <Text style={styles.themeMenuTriggerHelper}>
+                Choose the app color family.
+              </Text>
+            </View>
+            <Feather
+              color={tokens.controlText}
+              name={isThemeMenuOpen ? 'chevron-up' : 'chevron-down'}
+              size={18}
+            />
+          </LoggedPressable>
+          {isThemeMenuOpen ? (
+            <CompactSurface style={styles.themeMenu}>
+              {availableThemes.map((theme) => {
+                const isActive = theme.id === activeThemeId;
 
-            return (
-              <LoggedPressable
-                key={option}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isActive }}
-                logContext={{
-                  selected: isActive,
-                  themeMode: option,
-                }}
-                logLabel={`Set theme to ${option}`}
-                onPress={() => setThemeMode(option)}
-                style={[
-                  styles.option,
-                  isActive && {
-                    backgroundColor: tokens.accentSoft,
-                    borderColor: tokens.accent,
-                  },
-                ]}
-              >
-                <Text style={styles.optionTitle}>{option}</Text>
-              </LoggedPressable>
-            );
-          })}
+                return (
+                  <LoggedPressable
+                    key={theme.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isActive }}
+                    logContext={{
+                      selected: isActive,
+                      themeId: theme.id,
+                    }}
+                    logLabel={`Set theme family to ${theme.label}`}
+                    onPress={() => {
+                      setActiveThemeId(theme.id);
+                      setThemeMenuOpen(false);
+                    }}
+                    style={[
+                      styles.themeMenuOption,
+                      isActive && {
+                        backgroundColor: tokens.accentSoft,
+                        borderColor: tokens.accent,
+                      },
+                    ]}
+                  >
+                    <View style={styles.themeMenuOptionCopy}>
+                      <Text style={styles.themeMenuOptionTitle}>
+                        {theme.label}
+                      </Text>
+                      <Text style={styles.themeMenuOptionDescription}>
+                        {getThemeDescription(theme)}
+                      </Text>
+                    </View>
+                    {isActive ? (
+                      <StatusBadge label="Active" size="mini" />
+                    ) : null}
+                  </LoggedPressable>
+                );
+              })}
+            </CompactSurface>
+          ) : null}
+        </View>
+
+        <View style={styles.themeSection}>
+          <SectionLabel>Appearance Mode</SectionLabel>
+          <View style={styles.optionRow}>
+            {THEME_OPTIONS.map((option) => {
+              const isActive = themeMode === option;
+
+              return (
+                <LoggedPressable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
+                  logContext={{
+                    selected: isActive,
+                    themeMode: option,
+                  }}
+                  logLabel={`Set theme mode to ${option}`}
+                  onPress={() => setThemeMode(option)}
+                  style={[
+                    styles.option,
+                    isActive && {
+                      backgroundColor: tokens.accentSoft,
+                      borderColor: tokens.accent,
+                    },
+                  ]}
+                >
+                  <Text style={styles.optionTitle}>{option}</Text>
+                </LoggedPressable>
+              );
+            })}
+          </View>
         </View>
       </Tile>
 
@@ -142,7 +252,7 @@ export function SettingsScreen() {
             onValueChange={setHapticsEnabled}
             thumbColor="#f8fafc"
             trackColor={{
-              false: resolvedTheme === 'dark' ? '#475569' : '#94a3b8',
+              false: tokens.controlTrackOff,
               true: tokens.accent,
             }}
             value={hapticsEnabled}
@@ -202,6 +312,68 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       color: tokens.textMuted,
       fontSize: 14,
       lineHeight: 20,
+    },
+    themeMenu: {
+      gap: 8,
+    },
+    themeMenuOption: {
+      alignItems: 'center',
+      backgroundColor: tokens.controlSurface,
+      borderColor: tokens.border,
+      borderRadius: 16,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 12,
+      justifyContent: 'space-between',
+      minHeight: 56,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    themeMenuOptionCopy: {
+      flex: 1,
+      gap: 4,
+      minWidth: 0,
+    },
+    themeMenuOptionDescription: {
+      color: tokens.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    themeMenuOptionTitle: {
+      color: tokens.textPrimary,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    themeMenuTrigger: {
+      alignItems: 'center',
+      backgroundColor: tokens.controlSurface,
+      borderColor: tokens.border,
+      borderRadius: 16,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 12,
+      justifyContent: 'space-between',
+      minHeight: 56,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    themeMenuTriggerCopy: {
+      flex: 1,
+      gap: 4,
+      minWidth: 0,
+    },
+    themeMenuTriggerHelper: {
+      color: tokens.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    themeMenuTriggerLabel: {
+      color: tokens.textPrimary,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    themeSection: {
+      gap: 8,
     },
     optionRow: {
       flexDirection: 'row',
