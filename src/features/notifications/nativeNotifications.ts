@@ -73,6 +73,7 @@ type NotificationsNativeModule = NativeModule<{
   getRuntimeStatus: () => Promise<string>;
   openExactAlarmSettings: () => Promise<void>;
   openFullScreenIntentSettings: () => Promise<void>;
+  moveTaskToBack: () => Promise<boolean>;
   openNotificationSettings: () => Promise<void>;
   openPromotedNotificationSettings: () => Promise<void>;
   pauseTimer: (documentJson: string) => Promise<string>;
@@ -259,6 +260,16 @@ export async function openFullScreenIntentSettings() {
 
   log.info('Opening full-screen intent settings');
   await nativeModuleRef.openFullScreenIntentSettings();
+}
+
+export async function moveTaskToBack() {
+  if (!nativeModuleRef) {
+    logModuleUnavailable('moveTaskToBack');
+    return false;
+  }
+
+  log.debug('Moving notifications task to background');
+  return nativeModuleRef.moveTaskToBack();
 }
 
 export async function stopExpiredAlarmPlayback() {
@@ -496,8 +507,8 @@ function normalizeLaunchSource(
   value: unknown,
 ): PendingNotificationLaunchAction['launchSource'] {
   switch (value) {
-    case 'content':
-    case 'full-screen':
+    case 'notification':
+    case 'full-screen-intent':
       return value;
     default:
       return null;

@@ -62,6 +62,7 @@ jest.mock('../../../src/features/notifications/nativeNotifications', () => ({
   getNotificationRuntimeStatus: jest.fn(),
   isNotificationsModuleAvailable: jest.fn(() => true),
   loadPersistedNotificationDocument: jest.fn(),
+  moveTaskToBack: jest.fn(async () => true),
   openExactAlarmSettings: jest.fn(async () => undefined),
   openFullScreenIntentSettings: jest.fn(async () => undefined),
   openNotificationSettings: jest.fn(async () => undefined),
@@ -91,6 +92,7 @@ const {
   getBufferedNotificationLogs: mockGetBufferedNotificationLogs,
   getNotificationRuntimeStatus: mockGetNotificationRuntimeStatus,
   loadPersistedNotificationDocument: mockLoadPersistedNotificationDocument,
+  moveTaskToBack: mockMoveTaskToBack,
   pauseNotificationTimer: mockPauseNotificationTimer,
   requestNotificationPermission: mockRequestNotificationPermission,
   startNotificationTimer: mockStartNotificationTimer,
@@ -111,6 +113,7 @@ const {
     Promise<NotificationDocument | null>,
     []
   >;
+  moveTaskToBack: jest.Mock;
   pauseNotificationTimer: jest.Mock;
   requestNotificationPermission: jest.Mock;
   startNotificationTimer: jest.Mock;
@@ -691,7 +694,7 @@ describe('NotificationsProvider', () => {
     ]);
   });
 
-  it('keeps alarm playback running for full-screen launch actions', async () => {
+  it('keeps alarm playback running for full-screen-intent launch actions', async () => {
     mockConsumePendingNotificationLaunchAction.mockResolvedValue(null);
 
     renderProvider({
@@ -715,7 +718,7 @@ describe('NotificationsProvider', () => {
     await act(async () => {
       launchActionListener?.({
         intervalId: 'interval-1',
-        launchSource: 'full-screen',
+        launchSource: 'full-screen-intent',
         notificationId: 5001,
         sessionId: 'session-1',
         triggeredAt: 100,
@@ -731,6 +734,84 @@ describe('NotificationsProvider', () => {
         targetPathname: '/timer-check-in',
       }),
     ]);
+  });
+
+  it('moves the task to the background when a full-screen-intent check-in flow is completed', async () => {
+    try {
+      const runningFixture = createExpiredRunningSharedDocumentFixture();
+      mockConsumePendingNotificationLaunchAction.mockResolvedValue(null);
+      mockLoadPersistedNotificationDocument.mockResolvedValue(null);
+
+      renderProvider({
+        initialDocument: runningFixture.document,
+        initialParentUnlocked: true,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('notifications-ready').props.children).toBe(
+          'ready',
+        ),
+      );
+
+      const notificationStateListener =
+        mockAddNotificationStateChangeListener.mock.calls[0]?.[0];
+      const launchActionListener =
+        mockAddNotificationLaunchActionListener.mock.calls[0]?.[0];
+
+      await act(async () => {
+        notificationStateListener?.({
+          document: createExpiredNotificationDocument(runningFixture.childId),
+          reason: 'interval-triggered',
+          runtimeStatus: {
+            countdownNotificationChannelImportance: 2,
+            countdownNotificationHasPromotableCharacteristics: true,
+            countdownNotificationIsOngoing: false,
+            countdownNotificationRequestedPromoted: true,
+            countdownNotificationUsesChronometer: true,
+            countdownNotificationWhen: null,
+            exactAlarmPermissionGranted: true,
+            expiredNotificationCategory: 'alarm',
+            expiredNotificationChannelImportance: 4,
+            expiredNotificationHasCustomHeadsUp: true,
+            expiredNotificationHasFullScreenIntent: true,
+            fullScreenIntentPermissionGranted: true,
+            fullScreenIntentSettingsResolvable: true,
+            isAppInForeground: false,
+            isRunning: false,
+            lastTriggeredAt: 100,
+            nextTriggerAt: null,
+            notificationPermissionGranted: true,
+            promotedNotificationPermissionGranted: true,
+            promotedNotificationSettingsResolvable: true,
+            sessionId: 'session-1',
+          },
+        });
+        launchActionListener?.({
+          intervalId: 'interval-1',
+          launchSource: 'full-screen-intent',
+          notificationId: 5001,
+          sessionId: 'session-1',
+          triggeredAt: 100,
+          type: 'check-in',
+        });
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'interval-1',
+        ),
+      );
+
+      mockMoveTaskToBack.mockClear();
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Award child'));
+      });
+
+      await waitFor(() => expect(mockMoveTaskToBack).toHaveBeenCalledTimes(1));
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('queues parent unlock first when a notification launch arrives while locked', async () => {

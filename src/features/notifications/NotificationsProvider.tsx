@@ -27,6 +27,7 @@ import {
   getNotificationRuntimeStatus,
   isNotificationsModuleAvailable,
   loadPersistedNotificationDocument,
+  moveTaskToBack,
   type NotificationNativeLogEntry,
   openExactAlarmSettings,
   openFullScreenIntentSettings,
@@ -285,6 +286,17 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     return nextRuntimeStatus;
   }, []);
 
+  const completeFullScreenLaunchIfNeeded = useCallback(
+    (launchAction: PendingNotificationLaunchAction | null | undefined) => {
+      if (launchAction?.launchSource !== 'full-screen-intent') {
+        return;
+      }
+
+      void moveTaskToBack();
+    },
+    [],
+  );
+
   const applyNativeDocumentJson = useCallback(
     (
       documentJson: string,
@@ -357,9 +369,10 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   );
 
   const dismissCheckInFlow = useCallback(() => {
+    const launchAction = pendingLaunchActionRef.current;
     const activeExpiredTimerSession = getExpiredTimerSession(
       notificationDocumentRef.current,
-      pendingLaunchActionRef.current,
+      launchAction,
     );
 
     activeLaunchActionKeyRef.current = null;
@@ -376,7 +389,12 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       resetSharedTimer: true,
     });
     resetSharedTimer();
-  }, [removeStartupNavigationRequest, resetSharedTimer]);
+    completeFullScreenLaunchIfNeeded(launchAction);
+  }, [
+    completeFullScreenLaunchIfNeeded,
+    removeStartupNavigationRequest,
+    resetSharedTimer,
+  ]);
 
   const handleLaunchAction = useCallback(
     async (
@@ -411,7 +429,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       });
       if (
         source !== 'foreground-event' &&
-        launchAction.launchSource !== 'full-screen'
+        launchAction.launchSource !== 'full-screen-intent'
       ) {
         await stopExpiredAlarmPlayback();
       }
@@ -731,6 +749,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         notificationDocumentRef.current,
         pendingLaunchActionRef.current,
       );
+      const launchAction = pendingLaunchActionRef.current;
 
       if (!activeExpiredTimerSession) {
         return;
@@ -799,6 +818,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         } else {
           resetSharedTimer();
         }
+        completeFullScreenLaunchIfNeeded(launchAction);
         return;
       }
 
@@ -807,6 +827,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     [
       isParentUnlocked,
       parentPin,
+      completeFullScreenLaunchIfNeeded,
       queueStartupNavigationRequest,
       removeStartupNavigationRequest,
       resetSharedTimer,

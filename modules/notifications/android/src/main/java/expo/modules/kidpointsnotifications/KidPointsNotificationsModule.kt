@@ -3,6 +3,7 @@ package expo.modules.kidpointsnotifications
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONObject
+import java.util.concurrent.CountDownLatch
 
 class KidPointsNotificationsModule : Module() {
   companion object {
@@ -197,6 +198,25 @@ class KidPointsNotificationsModule : Module() {
 
     AsyncFunction("stopExpiredAlarmPlayback") {
       KidPointsNotificationsEngine.stopExpiredAlarmPlayback()
+    }
+
+    AsyncFunction("moveTaskToBack") {
+      val activity = appContext.currentActivity ?: return@AsyncFunction false
+      var movedToBack = false
+      val latch = CountDownLatch(1)
+
+      activity.runOnUiThread {
+        movedToBack = activity.moveTaskToBack(false)
+
+        if (!movedToBack) {
+          activity.finish()
+        }
+
+        latch.countDown()
+      }
+
+      latch.await()
+      movedToBack
     }
   }
 

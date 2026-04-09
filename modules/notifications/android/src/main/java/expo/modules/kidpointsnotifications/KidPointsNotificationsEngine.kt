@@ -54,8 +54,12 @@ private const val CHECK_IN_REQUEST_CODE_BASE = 7100
 private const val FULL_SCREEN_CHECK_IN_REQUEST_CODE_BASE = 8100
 private const val STOP_EXPIRED_REQUEST_CODE_BASE = 7200
 private const val LAUNCH_ACTION_CHECK_IN = "check-in"
-private const val LAUNCH_SOURCE_CONTENT = "content"
-private const val LAUNCH_SOURCE_FULL_SCREEN = "full-screen"
+// "notification" means the user explicitly interacted with the notification
+// UI such as tapping the body or a Check-in action button.
+private const val LAUNCH_SOURCE_NOTIFICATION = "notification"
+// "full-screen-intent" means Android auto-opened the app from the
+// full-screen-intent alarm path while the device was locked.
+private const val LAUNCH_SOURCE_FULL_SCREEN_INTENT = "full-screen-intent"
 
 private const val LOG_TAG = "KidPointsNotifications"
 private const val LOG_NOTIFICATION_TAG = "KidPointsNotificationsNotif"
@@ -690,7 +694,7 @@ object KidPointsNotificationsEngine {
       return
     }
 
-    if (launchSource != LAUNCH_SOURCE_FULL_SCREEN) {
+    if (launchSource != LAUNCH_SOURCE_FULL_SCREEN_INTENT) {
       stopExpiredAlarmPlayback()
     }
 
@@ -832,13 +836,13 @@ object KidPointsNotificationsEngine {
       createCheckInPendingIntent(
         context,
         expiredInterval,
-        launchSource = LAUNCH_SOURCE_CONTENT,
+        launchSource = LAUNCH_SOURCE_NOTIFICATION,
       )
     val fullScreenPendingIntent =
       createCheckInPendingIntent(
         context,
         expiredInterval,
-        launchSource = LAUNCH_SOURCE_FULL_SCREEN,
+        launchSource = LAUNCH_SOURCE_FULL_SCREEN_INTENT,
       )
 
     return NotificationCompat.Builder(context, EXPIRED_CHANNEL_ID)
@@ -1120,11 +1124,11 @@ object KidPointsNotificationsEngine {
   private fun createCheckInPendingIntent(
     context: Context,
     expiredInterval: JSONObject,
-    launchSource: String = LAUNCH_SOURCE_CONTENT,
+    launchSource: String = LAUNCH_SOURCE_NOTIFICATION,
   ): PendingIntent {
     val notificationId = expiredInterval.optInt("notificationId")
     val requestCodeBase =
-      if (launchSource == LAUNCH_SOURCE_FULL_SCREEN) {
+      if (launchSource == LAUNCH_SOURCE_FULL_SCREEN_INTENT) {
         FULL_SCREEN_CHECK_IN_REQUEST_CODE_BASE
       } else {
         CHECK_IN_REQUEST_CODE_BASE

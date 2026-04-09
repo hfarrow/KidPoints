@@ -31,7 +31,10 @@ export type NotificationRuntimeStatus = {
 
 export type PendingNotificationLaunchAction = {
   intervalId: string | null;
-  launchSource?: 'content' | 'full-screen' | null;
+  // "notification" means the user tapped notification UI.
+  // "full-screen-intent" means Android auto-opened the app from the
+  // lock-screen alarm notification path.
+  launchSource?: 'notification' | 'full-screen-intent' | null;
   notificationId: number | null;
   sessionId: string | null;
   triggeredAt: number | null;

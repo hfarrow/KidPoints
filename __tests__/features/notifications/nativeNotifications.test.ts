@@ -26,6 +26,7 @@ describe('nativeNotifications', () => {
     expect(
       await nativeNotifications.consumePendingNotificationLaunchAction(),
     ).toBeNull();
+    expect(await nativeNotifications.moveTaskToBack()).toBe(false);
     expect(await nativeNotifications.getNotificationRuntimeStatus()).toEqual({
       countdownNotificationChannelImportance: null,
       countdownNotificationHasPromotableCharacteristics: false,
@@ -116,7 +117,7 @@ describe('nativeNotifications', () => {
       getPendingLaunchAction: jest.fn(async () =>
         JSON.stringify({
           intervalId: 'interval-1',
-          launchSource: 'full-screen',
+          launchSource: 'full-screen-intent',
           notificationId: 5001,
           sessionId: 'session-1',
           triggeredAt: 123,
@@ -126,6 +127,7 @@ describe('nativeNotifications', () => {
       getRuntimeStatus: jest.fn(async () => '{'),
       openExactAlarmSettings: jest.fn(async () => undefined),
       openFullScreenIntentSettings: jest.fn(async () => undefined),
+      moveTaskToBack: jest.fn(async () => true),
       openNotificationSettings: jest.fn(async () => undefined),
       openPromotedNotificationSettings: jest.fn(async () => undefined),
       pauseTimer: jest.fn(async (documentJson: string) => documentJson),
@@ -204,7 +206,7 @@ describe('nativeNotifications', () => {
     subscriptions[2]?.({
       actionJson: JSON.stringify({
         intervalId: 'interval-1',
-        launchSource: 'full-screen',
+        launchSource: 'full-screen-intent',
         notificationId: 5001,
         sessionId: 'session-1',
         triggeredAt: 123,
@@ -227,12 +229,13 @@ describe('nativeNotifications', () => {
       await nativeNotifications.getPendingNotificationLaunchAction(),
     ).toEqual({
       intervalId: 'interval-1',
-      launchSource: 'full-screen',
+      launchSource: 'full-screen-intent',
       notificationId: 5001,
       sessionId: 'session-1',
       triggeredAt: 123,
       type: 'check-in',
     });
+    expect(await nativeNotifications.moveTaskToBack()).toBe(true);
     expect(
       await nativeNotifications.getNotificationRuntimeStatus(),
     ).toMatchObject({
@@ -275,7 +278,7 @@ describe('nativeNotifications', () => {
     });
     expect(onLaunchAction).toHaveBeenCalledWith({
       intervalId: 'interval-1',
-      launchSource: 'full-screen',
+      launchSource: 'full-screen-intent',
       notificationId: 5001,
       sessionId: 'session-1',
       triggeredAt: 123,
