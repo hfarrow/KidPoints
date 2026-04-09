@@ -90,6 +90,11 @@ data class PendingNotificationLaunchActionPayload(
   val triggeredAt: Long?,
 )
 
+internal fun shouldPostExpiredNotification(
+  canPostExpiredNotification: Boolean,
+  isAppInForeground: Boolean,
+): Boolean = canPostExpiredNotification && !isAppInForeground
+
 object KidPointsNotificationsEngine {
   @Volatile
   private var isAppInForeground = false
@@ -353,15 +358,20 @@ object KidPointsNotificationsEngine {
       persistPendingLaunchAction(context, pendingLaunchAction)
     }
 
-    if (
-      expiredInterval != null &&
-      timerConfig.optBoolean("notificationsEnabled", true) &&
-      isNotificationPermissionGranted(context) &&
-      notificationId != null
-    ) {
+    val shouldPostExpiredNotification =
+      shouldPostExpiredNotification(
+        canPostExpiredNotification =
+          expiredInterval != null &&
+            timerConfig.optBoolean("notificationsEnabled", true) &&
+            isNotificationPermissionGranted(context) &&
+            notificationId != null,
+        isAppInForeground = isAppInForeground,
+      )
+
+    if (shouldPostExpiredNotification) {
       NotificationManagerCompat.from(context).notify(
-        notificationId,
-        createExpiredNotification(context, expiredInterval),
+        requireNotNull(notificationId),
+        createExpiredNotification(context, requireNotNull(expiredInterval)),
       )
       logNotification(
         "Posted expired notification",
@@ -427,12 +437,33 @@ object KidPointsNotificationsEngine {
     val nextTriggerAt = runtime?.optLongOrNull("nextTriggerAt")
     val countdownNotification = buildCountdownNotification(context, nextTriggerAt ?: System.currentTimeMillis())
     val countdownChannel = getCountdownChannel(context)
-    val expiredNotification = head
-      ?.optJSONArray("expiredIntervals")
-      ?.toJsonObjects()
-      ?.lastOrNull()
-      ?.let { createExpiredNotification(context, it) }
-    val expiredChannel = getExpiredChannel(context)
+    val canPostExpiredNotification =
+      head
+        ?.optJSONArray("expiredIntervals")
+        ?.toJsonObjects()
+        ?.lastOrNull() != null &&
+        isNotificationPermissionGranted(context)
+    val expiredNotification =
+      if (
+        shouldPostExpiredNotification(
+          canPostExpiredNotification = canPostExpiredNotification,
+          isAppInForeground = isAppInForeground,
+        )
+      ) {
+        head
+          ?.optJSONArray("expiredIntervals")
+          ?.toJsonObjects()
+          ?.lastOrNull()
+          ?.let { createExpiredNotification(context, it) }
+      } else {
+        null
+      }
+    val expiredChannel =
+      if (expiredNotification != null) {
+        getExpiredChannel(context)
+      } else {
+        null
+      }
 
     return NotificationRuntimeStatusPayload(
       countdownNotificationChannelImportance = countdownChannel?.importance,

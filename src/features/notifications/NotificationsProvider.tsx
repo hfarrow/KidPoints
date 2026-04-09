@@ -113,6 +113,22 @@ function createLaunchActionKey(
   });
 }
 
+function createPendingLaunchActionFromExpiredSession(
+  expiredTimerSession: ExpiredTimerSession | null | undefined,
+): PendingNotificationLaunchAction | null {
+  if (!expiredTimerSession) {
+    return null;
+  }
+
+  return {
+    intervalId: expiredTimerSession.intervalId,
+    notificationId: expiredTimerSession.notificationId,
+    sessionId: expiredTimerSession.sessionId,
+    triggeredAt: expiredTimerSession.triggeredAt,
+    type: 'check-in',
+  };
+}
+
 export function NotificationsProvider({ children }: PropsWithChildren) {
   const engineAvailable = isNotificationsModuleAvailable();
   const sharedStoreApi = useSharedStoreApi() as SharedStoreWithPersist;
@@ -365,7 +381,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   const handleLaunchAction = useCallback(
     async (
       launchAction: PendingNotificationLaunchAction | null,
-      source: 'event' | 'resume' | 'startup',
+      source: 'event' | 'foreground-event' | 'resume' | 'startup',
     ) => {
       if (!launchAction) {
         return;
@@ -392,7 +408,9 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         notificationId: launchAction.notificationId,
         source,
       });
-      await stopExpiredAlarmPlayback();
+      if (source !== 'foreground-event') {
+        await stopExpiredAlarmPlayback();
+      }
       setPendingLaunchAction(launchAction);
 
       if (!isParentUnlocked) {
@@ -586,6 +604,23 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         notificationDocumentRef.current = mergedDocument;
         lastSyncedDocumentRef.current = mergedDocument;
         setRuntimeStatus(nextRuntimeStatus);
+
+        if (
+          reason === 'interval-triggered' &&
+          nextRuntimeStatus.isAppInForeground
+        ) {
+          const latestExpiredTimerSession =
+            mergedDocument.head.expiredIntervals[
+              mergedDocument.head.expiredIntervals.length - 1
+            ] ?? null;
+          const launchAction = createPendingLaunchActionFromExpiredSession(
+            latestExpiredTimerSession,
+          );
+
+          if (launchAction) {
+            void handleLaunchAction(launchAction, 'foreground-event');
+          }
+        }
 
         if (
           reason === 'timer-paused-notification' &&

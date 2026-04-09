@@ -715,6 +715,76 @@ describe('NotificationsProvider', () => {
     expect(mockRequestNotificationPermission).not.toHaveBeenCalled();
   });
 
+  it('opens the check-in modal from a foreground expiry without stopping the alarm playback', async () => {
+    try {
+      const runningFixture = createExpiredRunningSharedDocumentFixture();
+      mockConsumePendingNotificationLaunchAction.mockResolvedValue(null);
+      mockLoadPersistedNotificationDocument.mockResolvedValue(null);
+
+      renderProvider({
+        initialDocument: runningFixture.document,
+        initialParentUnlocked: true,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('notifications-ready').props.children).toBe(
+          'ready',
+        ),
+      );
+
+      mockStopExpiredAlarmPlayback.mockClear();
+
+      const notificationStateListener =
+        mockAddNotificationStateChangeListener.mock.calls[0]?.[0];
+
+      await act(async () => {
+        notificationStateListener?.({
+          document: createExpiredNotificationDocument(runningFixture.childId),
+          reason: 'interval-triggered',
+          runtimeStatus: {
+            countdownNotificationChannelImportance: 2,
+            countdownNotificationHasPromotableCharacteristics: true,
+            countdownNotificationIsOngoing: false,
+            countdownNotificationRequestedPromoted: true,
+            countdownNotificationUsesChronometer: true,
+            countdownNotificationWhen: null,
+            exactAlarmPermissionGranted: true,
+            expiredNotificationCategory: null,
+            expiredNotificationChannelImportance: null,
+            expiredNotificationHasCustomHeadsUp: false,
+            expiredNotificationHasFullScreenIntent: false,
+            fullScreenIntentPermissionGranted: true,
+            fullScreenIntentSettingsResolvable: true,
+            isAppInForeground: true,
+            isRunning: false,
+            lastTriggeredAt: 100,
+            nextTriggerAt: null,
+            notificationPermissionGranted: true,
+            promotedNotificationPermissionGranted: true,
+            promotedNotificationSettingsResolvable: true,
+            sessionId: 'session-1',
+          },
+        });
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'interval-1',
+        ),
+      );
+      expect(mockStopExpiredAlarmPlayback).not.toHaveBeenCalled();
+      expect(useStartupNavigationStore.getState().requests).toEqual([
+        expect.objectContaining({
+          href: '/timer-check-in',
+          id: 'notifications-check-in',
+          targetPathname: '/timer-check-in',
+        }),
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('defers check-in point commits until the session is fully resolved and records one transaction', async () => {
     try {
       const multiChildFixture = createExpiredRunningSharedDocumentFixture([
