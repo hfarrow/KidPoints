@@ -39,6 +39,7 @@ const val ACTION_PAUSE_TIMER = "expo.modules.kidpointsnotifications.action.PAUSE
 
 const val EXTRA_TRIGGER_AT = "triggerAt"
 const val EXTRA_LAUNCH_ACTION_JSON = "launchActionJson"
+const val EXTRA_LAUNCH_SOURCE = "launchSource"
 const val EXTRA_CHILD_COUNT = "childCount"
 
 const val COUNTDOWN_NOTIFICATION_ID = 4100
@@ -50,8 +51,11 @@ private const val OPEN_APP_REQUEST_CODE = 7001
 private const val PAUSE_TIMER_REQUEST_CODE = 7002
 private const val STOP_TIMER_REQUEST_CODE = 7003
 private const val CHECK_IN_REQUEST_CODE_BASE = 7100
+private const val FULL_SCREEN_CHECK_IN_REQUEST_CODE_BASE = 8100
 private const val STOP_EXPIRED_REQUEST_CODE_BASE = 7200
 private const val LAUNCH_ACTION_CHECK_IN = "check-in"
+private const val LAUNCH_SOURCE_CONTENT = "content"
+private const val LAUNCH_SOURCE_FULL_SCREEN = "full-screen"
 
 private const val LOG_TAG = "KidPointsNotifications"
 private const val LOG_NOTIFICATION_TAG = "KidPointsNotificationsNotif"
@@ -670,10 +674,12 @@ object KidPointsNotificationsEngine {
   }
 
   fun handleActivityIntent(context: Context, intent: Intent?) {
+    val launchSource = intent?.getStringExtra(EXTRA_LAUNCH_SOURCE)
     logIntent(
       "Received activity intent",
       createLogContext(
         "intent" to describeIntent(intent),
+        "launchSource" to launchSource,
         "moduleAttached" to (KidPointsNotificationsModule.instance != null),
       ),
     )
@@ -684,11 +690,15 @@ object KidPointsNotificationsEngine {
       return
     }
 
-    stopExpiredAlarmPlayback()
-    persistPendingLaunchAction(context, actionJson)
-    KidPointsNotificationsModule.instance?.emitLaunchAction(actionJson)
+    if (launchSource != LAUNCH_SOURCE_FULL_SCREEN) {
+      stopExpiredAlarmPlayback()
+    }
 
-    val notificationId = JSONObject(actionJson).optIntOrNull("notificationId")
+    val emittedActionJson = applyLaunchSourceToActionJson(actionJson, launchSource)
+    persistPendingLaunchAction(context, emittedActionJson)
+    KidPointsNotificationsModule.instance?.emitLaunchAction(emittedActionJson)
+
+    val notificationId = JSONObject(emittedActionJson).optIntOrNull("notificationId")
     if (notificationId != null) {
       NotificationManagerCompat.from(context).cancel(notificationId)
       logNotification(
@@ -701,8 +711,9 @@ object KidPointsNotificationsEngine {
       "Handled activity launch intent",
       createLogContext(
         "emittedEvent" to (KidPointsNotificationsModule.instance != null),
+        "launchSource" to launchSource,
         "notificationId" to notificationId,
-        "payload" to parseJsonObjectOrRaw(actionJson),
+        "payload" to parseJsonObjectOrRaw(emittedActionJson),
       ),
     )
   }
@@ -817,12 +828,24 @@ object KidPointsNotificationsEngine {
         "$childCount children need check-in"
       }
     val headsUpRemoteViews = createExpiredHeadsUpRemoteViews(context, expiredInterval, reviewText)
+    val contentPendingIntent =
+      createCheckInPendingIntent(
+        context,
+        expiredInterval,
+        launchSource = LAUNCH_SOURCE_CONTENT,
+      )
+    val fullScreenPendingIntent =
+      createCheckInPendingIntent(
+        context,
+        expiredInterval,
+        launchSource = LAUNCH_SOURCE_FULL_SCREEN,
+      )
 
     return NotificationCompat.Builder(context, EXPIRED_CHANNEL_ID)
       .addAction(
         0,
         "Check-in",
-        createCheckInPendingIntent(context, expiredInterval),
+        contentPendingIntent,
       )
       .addAction(
         0,
@@ -833,10 +856,10 @@ object KidPointsNotificationsEngine {
       .setCategory(NotificationCompat.CATEGORY_ALARM)
       .setContentText(reviewText)
       .setContentTitle("Time to Check-in!")
-      .setContentIntent(createCheckInPendingIntent(context, expiredInterval))
+      .setContentIntent(contentPendingIntent)
       .setCustomHeadsUpContentView(headsUpRemoteViews)
       .setDeleteIntent(createExpiredStopPendingIntent(context, expiredInterval))
-      .setFullScreenIntent(createCheckInPendingIntent(context, expiredInterval), true)
+      .setFullScreenIntent(fullScreenPendingIntent, true)
       .setOnlyAlertOnce(false)
       .setOngoing(true)
       .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -1097,15 +1120,23 @@ object KidPointsNotificationsEngine {
   private fun createCheckInPendingIntent(
     context: Context,
     expiredInterval: JSONObject,
+    launchSource: String = LAUNCH_SOURCE_CONTENT,
   ): PendingIntent {
     val notificationId = expiredInterval.optInt("notificationId")
-    val requestCode = CHECK_IN_REQUEST_CODE_BASE + (notificationId % 1_000)
+    val requestCodeBase =
+      if (launchSource == LAUNCH_SOURCE_FULL_SCREEN) {
+        FULL_SCREEN_CHECK_IN_REQUEST_CODE_BASE
+      } else {
+        CHECK_IN_REQUEST_CODE_BASE
+      }
+    val requestCode = requestCodeBase + (notificationId % 1_000)
     val actionJson = createCheckInLaunchAction(expiredInterval)
 
     logIntent(
       "Creating check-in pending intent",
       createLogContext(
         "intervalId" to expiredInterval.optString("intervalId"),
+        "launchSource" to launchSource,
         "notificationId" to notificationId,
         "payload" to parseJsonObjectOrRaw(actionJson),
         "requestCode" to requestCode,
@@ -1117,6 +1148,7 @@ object KidPointsNotificationsEngine {
       requestCode,
       createLaunchIntent(context).apply {
         putExtra(EXTRA_LAUNCH_ACTION_JSON, actionJson)
+        putExtra(EXTRA_LAUNCH_SOURCE, launchSource)
       },
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       createBackgroundActivityStartOptionsBundle(),
@@ -1284,6 +1316,20 @@ object KidPointsNotificationsEngine {
       put("sessionId", expiredInterval.optStringOrNull("sessionId") ?: JSONObject.NULL)
       put("triggeredAt", expiredInterval.optLongOrNull("triggeredAt") ?: JSONObject.NULL)
     }.toString()
+
+  private fun applyLaunchSourceToActionJson(
+    actionJson: String,
+    launchSource: String?,
+  ): String {
+    if (launchSource.isNullOrBlank()) {
+      return actionJson
+    }
+
+    return JSONObject(actionJson)
+      .apply {
+        put("launchSource", launchSource)
+      }.toString()
+  }
 
   private fun extractExpiredNotificationIds(document: JSONObject): Set<Int> =
     getHead(document)

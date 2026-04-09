@@ -691,6 +691,48 @@ describe('NotificationsProvider', () => {
     ]);
   });
 
+  it('keeps alarm playback running for full-screen launch actions', async () => {
+    mockConsumePendingNotificationLaunchAction.mockResolvedValue(null);
+
+    renderProvider({
+      initialDocument: sharedFixture.document,
+      initialParentUnlocked: true,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('notifications-ready').props.children).toBe(
+        'ready',
+      ),
+    );
+
+    mockStopExpiredAlarmPlayback.mockClear();
+
+    const launchActionListener =
+      mockAddNotificationLaunchActionListener.mock.calls[0]?.[0];
+
+    expect(typeof launchActionListener).toBe('function');
+
+    await act(async () => {
+      launchActionListener?.({
+        intervalId: 'interval-1',
+        launchSource: 'full-screen',
+        notificationId: 5001,
+        sessionId: 'session-1',
+        triggeredAt: 100,
+        type: 'check-in',
+      });
+    });
+
+    expect(mockStopExpiredAlarmPlayback).not.toHaveBeenCalled();
+    expect(useStartupNavigationStore.getState().requests).toEqual([
+      expect.objectContaining({
+        href: '/timer-check-in',
+        id: 'notifications-check-in',
+        targetPathname: '/timer-check-in',
+      }),
+    ]);
+  });
+
   it('queues parent unlock first when a notification launch arrives while locked', async () => {
     renderProvider({
       initialDocument: sharedFixture.document,

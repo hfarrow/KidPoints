@@ -405,10 +405,14 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
 
       log.info('Handling notification launch action', {
         intervalId: launchAction.intervalId,
+        launchSource: launchAction.launchSource ?? null,
         notificationId: launchAction.notificationId,
         source,
       });
-      if (source !== 'foreground-event') {
+      if (
+        source !== 'foreground-event' &&
+        launchAction.launchSource !== 'full-screen'
+      ) {
         await stopExpiredAlarmPlayback();
       }
       setPendingLaunchAction(launchAction);

@@ -116,6 +116,7 @@ describe('nativeNotifications', () => {
       getPendingLaunchAction: jest.fn(async () =>
         JSON.stringify({
           intervalId: 'interval-1',
+          launchSource: 'full-screen',
           notificationId: 5001,
           sessionId: 'session-1',
           triggeredAt: 123,
@@ -203,6 +204,7 @@ describe('nativeNotifications', () => {
     subscriptions[2]?.({
       actionJson: JSON.stringify({
         intervalId: 'interval-1',
+        launchSource: 'full-screen',
         notificationId: 5001,
         sessionId: 'session-1',
         triggeredAt: 123,
@@ -225,6 +227,7 @@ describe('nativeNotifications', () => {
       await nativeNotifications.getPendingNotificationLaunchAction(),
     ).toEqual({
       intervalId: 'interval-1',
+      launchSource: 'full-screen',
       notificationId: 5001,
       sessionId: 'session-1',
       triggeredAt: 123,
@@ -272,6 +275,7 @@ describe('nativeNotifications', () => {
     });
     expect(onLaunchAction).toHaveBeenCalledWith({
       intervalId: 'interval-1',
+      launchSource: 'full-screen',
       notificationId: 5001,
       sessionId: 'session-1',
       triggeredAt: 123,

@@ -480,13 +480,28 @@ function parsePendingNotificationLaunchAction(
     return null;
   }
 
+  const launchSource = normalizeLaunchSource(parsedValue.launchSource);
+
   return {
     intervalId: parsedValue.intervalId ?? null,
+    ...(launchSource ? { launchSource } : {}),
     notificationId: parsedValue.notificationId ?? null,
     sessionId: normalizeOptionalString(parsedValue.sessionId),
     triggeredAt: parsedValue.triggeredAt ?? null,
     type: 'check-in',
   };
+}
+
+function normalizeLaunchSource(
+  value: unknown,
+): PendingNotificationLaunchAction['launchSource'] {
+  switch (value) {
+    case 'content':
+    case 'full-screen':
+      return value;
+    default:
+      return null;
+  }
 }
 
 function normalizeOptionalString(value: unknown): string | null {

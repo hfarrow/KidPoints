@@ -31,6 +31,7 @@ export type NotificationRuntimeStatus = {
 
 export type PendingNotificationLaunchAction = {
   intervalId: string | null;
+  launchSource?: 'content' | 'full-screen' | null;
   notificationId: number | null;
   sessionId: string | null;
   triggeredAt: number | null;
