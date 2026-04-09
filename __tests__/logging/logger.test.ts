@@ -1,8 +1,10 @@
 import {
   appLogger,
+  clearCapturedAppLogs,
   createModuleLogger,
   createStructuredLog,
   getAppLogLevel,
+  getCapturedAppLogs,
   getDefaultAppLogLevel,
   getSelectableAppLogLevels,
   isAppLogLevel,
@@ -16,6 +18,7 @@ describe('logger', () => {
   const initialLogLevel = getDefaultAppLogLevel();
 
   beforeEach(() => {
+    clearCapturedAppLogs();
     setAppLogLevel(initialLogLevel);
   });
 
@@ -46,35 +49,41 @@ describe('logger', () => {
     );
   });
 
-  it('maps warn logs through console.warn with namespace output', () => {
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  it('captures warn logs without writing to the Jest terminal output', () => {
     const settingsLogger = createModuleLogger('settings-warn');
 
     settingsLogger.warn('Saved changes');
 
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(String(warnSpy.mock.calls[0]?.[0])).toContain('settings-warn');
-    expect(String(warnSpy.mock.calls[0]?.[0])).toContain('[WARN ]');
-    expect(String(warnSpy.mock.calls[0]?.[0])).toMatch(
+    const capturedLogs = getCapturedAppLogs();
+
+    expect(capturedLogs).toHaveLength(1);
+    expect(capturedLogs[0]?.consoleMethod).toBe('warn');
+    expect(capturedLogs[0]?.level).toBe('warn');
+    expect(capturedLogs[0]?.renderedMessage).toContain('settings-warn');
+    expect(capturedLogs[0]?.renderedMessage).toContain('[WARN ]');
+    expect(capturedLogs[0]?.renderedMessage).toMatch(
       /\[WARN \] \[[^\]]*\.\d{3}[^\]]*\]/,
     );
-    expect(String(warnSpy.mock.calls[0]?.[0])).toContain('Saved changes');
+    expect(capturedLogs[0]?.renderedMessage).toContain('Saved changes');
   });
 
   it('supports temp logs and colorizes development terminal output', () => {
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     const settingsLogger = createModuleLogger('settings-temp');
 
     setAppLogLevel('temp');
     settingsLogger.temp('Temporary log');
 
-    expect(logSpy).toHaveBeenCalledTimes(1);
-    expect(String(logSpy.mock.calls[0]?.[0])).toContain('settings-temp');
-    expect(String(logSpy.mock.calls[0]?.[0])).toContain('[TEMP ]');
-    expect(String(logSpy.mock.calls[0]?.[0])).toContain('Temporary log');
-    expect(String(logSpy.mock.calls[0]?.[0])).toContain('\u001b[');
-    expect(String(logSpy.mock.calls[0]?.[0]).startsWith(' ')).toBe(true);
-    expect(String(logSpy.mock.calls[0]?.[0])).toContain('\u001b[38;5;67m');
+    const capturedLogs = getCapturedAppLogs();
+
+    expect(capturedLogs).toHaveLength(1);
+    expect(capturedLogs[0]?.consoleMethod).toBe('log');
+    expect(capturedLogs[0]?.level).toBe('temp');
+    expect(capturedLogs[0]?.renderedMessage).toContain('settings-temp');
+    expect(capturedLogs[0]?.renderedMessage).toContain('[TEMP ]');
+    expect(capturedLogs[0]?.renderedMessage).toContain('Temporary log');
+    expect(capturedLogs[0]?.renderedMessage).toContain('\u001b[');
+    expect(capturedLogs[0]?.renderedMessage.startsWith(' ')).toBe(true);
+    expect(capturedLogs[0]?.renderedMessage).toContain('\u001b[38;5;67m');
   });
 
   it('updates the active root logger severity at runtime', () => {
@@ -84,17 +93,15 @@ describe('logger', () => {
   });
 
   it('filters temp logs when the active severity is debug', () => {
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     const settingsLogger = createModuleLogger('settings-temp-filtered');
 
     setAppLogLevel('debug');
     settingsLogger.temp('Hidden temp log');
 
-    expect(logSpy).not.toHaveBeenCalled();
+    expect(getCapturedAppLogs()).toHaveLength(0);
   });
 
   it('creates a fixed-message logger that forwards details', () => {
-    const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
     const settingsLogger = createModuleLogger('settings-structured');
     const logEvent = createStructuredLog(
       settingsLogger,
@@ -104,14 +111,16 @@ describe('logger', () => {
 
     logEvent({ action: 'save' });
 
-    expect(infoSpy).toHaveBeenCalledTimes(1);
-    expect(String(infoSpy.mock.calls[0]?.[0])).toContain('settings-structured');
-    expect(String(infoSpy.mock.calls[0]?.[0])).toContain('Settings event');
-    expect(String(infoSpy.mock.calls[0]?.[0])).toContain('save');
+    const capturedLogs = getCapturedAppLogs();
+
+    expect(capturedLogs).toHaveLength(1);
+    expect(capturedLogs[0]?.consoleMethod).toBe('info');
+    expect(capturedLogs[0]?.renderedMessage).toContain('settings-structured');
+    expect(capturedLogs[0]?.renderedMessage).toContain('Settings event');
+    expect(capturedLogs[0]?.renderedMessage).toContain('save');
   });
 
   it('forwards native log metadata through the shared logger', () => {
-    const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
     const nativeLogger = createModuleLogger('notifications-native');
 
     logForwardedNativeEntry(
@@ -126,26 +135,21 @@ describe('logger', () => {
       { notificationId: 5001 },
     );
 
-    expect(infoSpy).toHaveBeenCalledTimes(1);
-    expect(String(infoSpy.mock.calls[0]?.[0])).toContain(
-      'notifications-native',
-    );
-    expect(String(infoSpy.mock.calls[0]?.[0])).toContain(
-      'Forwarded native log',
-    );
-    expect(String(infoSpy.mock.calls[0]?.[0])).toContain('notificationId');
-    expect(String(infoSpy.mock.calls[0]?.[0])).toContain('nativeTimestamp');
-    expect(String(infoSpy.mock.calls[0]?.[0])).not.toContain(
-      'nativeTimestampMs',
-    );
-    expect(String(infoSpy.mock.calls[0]?.[0])).not.toContain('nativeSequence');
-    expect(String(infoSpy.mock.calls[0]?.[0])).not.toContain('nativeTag');
-    expect(String(infoSpy.mock.calls[0]?.[0])).toContain('\u001b[38;5;141m');
+    const capturedLogs = getCapturedAppLogs();
+
+    expect(capturedLogs).toHaveLength(1);
+    expect(capturedLogs[0]?.consoleMethod).toBe('info');
+    expect(capturedLogs[0]?.renderedMessage).toContain('notifications-native');
+    expect(capturedLogs[0]?.renderedMessage).toContain('Forwarded native log');
+    expect(capturedLogs[0]?.renderedMessage).toContain('notificationId');
+    expect(capturedLogs[0]?.renderedMessage).toContain('nativeTimestamp');
+    expect(capturedLogs[0]?.renderedMessage).not.toContain('nativeTimestampMs');
+    expect(capturedLogs[0]?.renderedMessage).not.toContain('nativeSequence');
+    expect(capturedLogs[0]?.renderedMessage).not.toContain('nativeTag');
+    expect(capturedLogs[0]?.renderedMessage).toContain('\u001b[38;5;141m');
   });
 
   it('keeps direct JS logs grayscale while forwarded native logs use purple tones', () => {
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
-    const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
     const jsLogger = createModuleLogger('settings');
     const nativeLogger = createModuleLogger('notifications-native');
 
@@ -166,15 +170,17 @@ describe('logger', () => {
       timestampMs: new Date('2026-04-08T12:34:56.789Z').getTime(),
     });
 
-    expect(String(logSpy.mock.calls[0]?.[0])).toContain('\u001b[38;5;246m');
-    expect(String(logSpy.mock.calls[1]?.[0])).toContain('\u001b[38;5;98m');
-    expect(String(infoSpy.mock.calls[0]?.[0])).toContain('\u001b[38;5;255m');
-    expect(String(infoSpy.mock.calls[1]?.[0])).toContain('\u001b[38;5;141m');
+    const capturedLogs = getCapturedAppLogs();
+
+    expect(capturedLogs).toHaveLength(4);
+    expect(capturedLogs[0]?.renderedMessage).toContain('\u001b[38;5;246m');
+    expect(capturedLogs[1]?.renderedMessage).toContain('\u001b[38;5;255m');
+    expect(capturedLogs[2]?.renderedMessage).toContain('\u001b[38;5;98m');
+    expect(capturedLogs[3]?.renderedMessage).toContain('\u001b[38;5;141m');
   });
 
   it('marks forwarded native logs that arrive out of order with an asterisk timestamp', () => {
     jest.useFakeTimers();
-    const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
     const jsLogger = createModuleLogger('settings-order');
     const nativeLogger = createModuleLogger('notifications-native');
 
@@ -190,8 +196,11 @@ describe('logger', () => {
       timestampMs: new Date('2026-04-08T14:00:05.000Z').getTime(),
     });
 
-    expect(String(infoSpy.mock.calls[0]?.[0])).not.toContain('[*');
-    expect(String(infoSpy.mock.calls[1]?.[0])).toContain('[*');
+    const capturedLogs = getCapturedAppLogs();
+
+    expect(capturedLogs).toHaveLength(2);
+    expect(capturedLogs[0]?.renderedMessage).not.toContain('[*');
+    expect(capturedLogs[1]?.renderedMessage).toContain('[*');
   });
 
   it('validates and normalizes app log levels', () => {

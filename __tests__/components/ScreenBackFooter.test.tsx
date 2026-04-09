@@ -1,8 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import type { ReactNode } from 'react';
 
 import { ScreenBackFooter } from '../../src/components/ScreenBackFooter';
-import { AppProviders } from '../../src/providers/AppProviders';
 
 const mockBack = jest.fn();
 
@@ -10,24 +8,36 @@ jest.mock('@expo/vector-icons', () => ({
   Feather: () => null,
 }));
 
-jest.mock('react-native-safe-area-context', () => {
-  const { View } = jest.requireActual('react-native');
-
-  return {
-    SafeAreaProvider: ({ children }: { children: ReactNode }) => (
-      <View>{children}</View>
-    ),
-    initialWindowMetrics: {
-      frame: { height: 800, width: 400, x: 0, y: 0 },
-      insets: { bottom: 0, left: 0, right: 0, top: 0 },
-    },
-  };
-});
-
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: mockBack,
   }),
+}));
+
+jest.mock('../../src/features/theme/themeContext', () => ({
+  useAppTheme: () => ({
+    tokens: {
+      border: '#cbd5e1',
+      controlSurface: '#e2e8f0',
+      controlText: '#0f172a',
+    },
+  }),
+  useThemedStyles: <T,>(
+    createStyles: (theme: {
+      tokens: {
+        border: string;
+        controlSurface: string;
+        controlText: string;
+      };
+    }) => T,
+  ) =>
+    createStyles({
+      tokens: {
+        border: '#cbd5e1',
+        controlSurface: '#e2e8f0',
+        controlText: '#0f172a',
+      },
+    }),
 }));
 
 describe('ScreenBackFooter', () => {
@@ -36,11 +46,7 @@ describe('ScreenBackFooter', () => {
   });
 
   it('renders a back action and routes back when pressed', () => {
-    render(
-      <AppProviders>
-        <ScreenBackFooter />
-      </AppProviders>,
-    );
+    render(<ScreenBackFooter />);
 
     fireEvent.press(screen.getByLabelText('Go Back'));
 

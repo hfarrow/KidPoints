@@ -11,20 +11,6 @@ jest.mock('expo-status-bar', () => ({
   StatusBar: () => null,
 }));
 
-jest.mock('react-native-safe-area-context', () => {
-  const { View } = jest.requireActual('react-native');
-
-  return {
-    SafeAreaProvider: ({ children }: { children: ReactNode }) => (
-      <View>{children}</View>
-    ),
-    initialWindowMetrics: {
-      frame: { height: 800, width: 400, x: 0, y: 0 },
-      insets: { bottom: 0, left: 0, right: 0, top: 0 },
-    },
-  };
-});
-
 jest.mock('expo-router', () => {
   const mockReactNative = jest.requireActual('react-native');
   const { Text, View } = mockReactNative;
@@ -55,6 +41,32 @@ jest.mock('expo-router', () => {
     useSegments: () => mockSegments,
   };
 });
+
+jest.mock('../../src/providers/AppProviders', () => ({
+  AppProviders: ({ children }: { children: ReactNode }) => children,
+}));
+
+jest.mock('../../src/features/overlays/TextInputModal', () => ({
+  TextInputModal: () => null,
+}));
+
+jest.mock('../../src/features/parent/ParentPinSetupGate', () => ({
+  ParentPinSetupGate: () => null,
+}));
+
+jest.mock('../../src/navigation/RootNavigationLifecycleLogger', () => ({
+  RootNavigationLifecycleLogger: () => null,
+}));
+
+jest.mock('../../src/navigation/StartupNavigationCoordinator', () => ({
+  StartupNavigationCoordinator: () => null,
+}));
+
+jest.mock('../../src/features/theme/themeContext', () => ({
+  useAppTheme: () => ({
+    statusBarStyle: 'dark',
+  }),
+}));
 
 describe('RootLayout', () => {
   it('registers the tab shell and route-backed modals at the root level', () => {

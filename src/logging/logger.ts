@@ -22,6 +22,12 @@ export type ForwardedNativeLogEntry = {
   tag: string;
   timestampMs: number;
 };
+export type CapturedAppLogRecord = {
+  consoleMethod: 'log' | 'info' | 'warn' | 'error';
+  level: AppLogLevel;
+  renderedMessage: string;
+  sequence: number;
+};
 
 export type AppLogger = LoggerInstance<AppLogLevel>;
 export const SUPPORTED_APP_LOG_LEVELS = Object.keys(
@@ -35,6 +41,7 @@ const isDevelopment =
   typeof __DEV__ === 'boolean'
     ? __DEV__
     : process.env.NODE_ENV !== 'production';
+const isJestEnvironment = Boolean(process.env.JEST_WORKER_ID);
 const defaultAppLogLevel: AppLogLevel = isDevelopment ? 'debug' : 'info';
 
 const selectableProductionAppLogLevels: AppLogLevel[] = [
@@ -70,6 +77,8 @@ const forwardedNativeOccurredAtMsMarker = Symbol(
   'forwarded-native-occurred-at-ms',
 );
 let latestObservedLogTimestampMs = 0;
+let capturedAppLogSequence = 0;
+const capturedAppLogs: CapturedAppLogRecord[] = [];
 
 type ConsoleMethod = 'log' | 'info' | 'warn' | 'error';
 type AppConsoleTransportOptions = {
@@ -96,21 +105,38 @@ const appConsoleTransport: transportFunctionType<AppConsoleTransportOptions> = (
     shouldColorize && colorCode
       ? `${colorCode}${props.msg}${resetTerminalColor}`
       : props.msg;
-  const message =
+  const renderedMessage =
     logMethod === 'log' ? ` ${formattedMessage}` : formattedMessage;
+
+  dispatchAppLogOutput({
+    consoleMethod: logMethod,
+    level: props.level.text as AppLogLevel,
+    renderedMessage,
+  });
+
+  return true;
+};
+
+function dispatchAppLogOutput(record: Omit<CapturedAppLogRecord, 'sequence'>) {
+  if (isJestEnvironment) {
+    capturedAppLogs.push({
+      ...record,
+      sequence: ++capturedAppLogSequence,
+    });
+    return;
+  }
+
   const consoleMethods = console as unknown as Record<
     string,
     ((message: string) => void) | undefined
   >;
 
-  if (consoleMethods[logMethod]) {
-    consoleMethods[logMethod]?.(message);
+  if (consoleMethods[record.consoleMethod]) {
+    consoleMethods[record.consoleMethod]?.(record.renderedMessage);
   } else {
-    console.log(message);
+    console.log(record.renderedMessage);
   }
-
-  return true;
-};
+}
 
 function resolveAppLogColorCode(
   props: Parameters<typeof appConsoleTransport>[0],
@@ -302,6 +328,16 @@ export function createStructuredLog(
 
 export function getDefaultAppLogLevel(): AppLogLevel {
   return defaultAppLogLevel;
+}
+
+export function getCapturedAppLogs(): CapturedAppLogRecord[] {
+  return capturedAppLogs.map((record) => ({ ...record }));
+}
+
+export function clearCapturedAppLogs() {
+  capturedAppLogs.length = 0;
+  capturedAppLogSequence = 0;
+  latestObservedLogTimestampMs = 0;
 }
 
 export function logForwardedNativeEntry(

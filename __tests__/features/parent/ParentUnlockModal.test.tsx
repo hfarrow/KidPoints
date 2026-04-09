@@ -115,7 +115,10 @@ describe('ParentUnlockModal', () => {
 
     render(
       <SharedStoreProvider storage={sharedStorage}>
-        <ParentSessionProvider initialParentUnlocked={false}>
+        <ParentSessionProvider
+          initialParentUnlocked={false}
+          storage={createMemoryStorage()}
+        >
           <AppThemeProvider
             initialParentPin="2468"
             initialThemeMode="light"
@@ -242,7 +245,10 @@ describe('ParentUnlockModal', () => {
 
     render(
       <SharedStoreProvider storage={sharedStorage}>
-        <ParentSessionProvider initialParentUnlocked={false}>
+        <ParentSessionProvider
+          initialParentUnlocked={false}
+          storage={createMemoryStorage()}
+        >
           <AppThemeProvider initialThemeMode="light" storage={storage}>
             <ParentUnlockModal />
           </AppThemeProvider>
@@ -290,7 +296,10 @@ describe('ParentUnlockModal', () => {
   it('re-focuses the setup input after a mismatched confirmation resets the flow', () => {
     render(
       <SharedStoreProvider storage={createMemoryStorage()}>
-        <ParentSessionProvider initialParentUnlocked={false}>
+        <ParentSessionProvider
+          initialParentUnlocked={false}
+          storage={createMemoryStorage()}
+        >
           <AppThemeProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}

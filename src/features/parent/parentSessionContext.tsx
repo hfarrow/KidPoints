@@ -1,4 +1,5 @@
 import { type PropsWithChildren, useEffect } from 'react';
+import type { StateStorage } from 'zustand/middleware';
 import { createModuleLogger } from '../../logging/logger';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import {
@@ -18,11 +19,13 @@ type ParentSessionContextValue = {
 
 type ParentSessionProviderProps = PropsWithChildren<{
   initialParentUnlocked?: boolean;
+  storage?: StateStorage;
 }>;
 
 export function ParentSessionProvider({
   children,
   initialParentUnlocked,
+  storage,
 }: ParentSessionProviderProps) {
   useEffect(() => {
     log.info('Parent session provider initialized', {
@@ -31,7 +34,10 @@ export function ParentSessionProvider({
   }, [initialParentUnlocked]);
 
   return (
-    <SessionUiStoreProvider initialParentUnlocked={initialParentUnlocked}>
+    <SessionUiStoreProvider
+      initialParentUnlocked={initialParentUnlocked}
+      storage={storage}
+    >
       {children}
     </SessionUiStoreProvider>
   );
