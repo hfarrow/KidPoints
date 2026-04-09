@@ -459,6 +459,37 @@ export function getExpiredTimerSession(
   );
 }
 
+export function createPendingLaunchActionFromExpiredTimerSession(
+  expiredTimerSession: ExpiredTimerSession,
+): PendingNotificationLaunchAction {
+  return {
+    intervalId: expiredTimerSession.intervalId,
+    notificationId: expiredTimerSession.notificationId,
+    sessionId: expiredTimerSession.sessionId,
+    triggeredAt: expiredTimerSession.triggeredAt,
+    type: 'check-in',
+  };
+}
+
+export function getRestorablePendingLaunchAction(
+  document: NotificationDocument | null | undefined,
+  launchAction: PendingNotificationLaunchAction | null | undefined,
+): PendingNotificationLaunchAction | null {
+  if (launchAction?.intervalId) {
+    return launchAction;
+  }
+
+  const latestExpiredInterval = document?.head.expiredIntervals.at(-1);
+
+  if (!latestExpiredInterval) {
+    return null;
+  }
+
+  return createPendingLaunchActionFromExpiredTimerSession(
+    latestExpiredInterval,
+  );
+}
+
 export function resolveExpiredTimerChildAction(
   document: NotificationDocument,
   options: {

@@ -15,7 +15,7 @@ const appLogLevels = {
 
 export type AppLogLevel = keyof typeof appLogLevels;
 export type AppLogDetails = Record<string, unknown>;
-export type ForwardedNativeAppLogLevel = Exclude<AppLogLevel, 'temp'>;
+export type ForwardedNativeAppLogLevel = AppLogLevel;
 export type ForwardedNativeLogEntry = {
   level: ForwardedNativeAppLogLevel;
   message: string;

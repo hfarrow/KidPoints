@@ -77,6 +77,14 @@ object NotificationNativeLogRelay {
     log("info", tag, message, contextJson)
   }
 
+  fun temp(
+    tag: String,
+    message: String,
+    contextJson: String? = null,
+  ) {
+    log("temp", tag, message, contextJson)
+  }
+
   fun warn(
     tag: String,
     message: String,
@@ -155,6 +163,7 @@ object NotificationNativeLogRelay {
     when (entry.level) {
       "error" -> Log.e(entry.tag, renderedMessage)
       "info" -> Log.i(entry.tag, renderedMessage)
+      "temp" -> Log.d(entry.tag, "[TEMP] $renderedMessage")
       "warn" -> Log.w(entry.tag, renderedMessage)
       else -> Log.d(entry.tag, renderedMessage)
     }
@@ -162,7 +171,7 @@ object NotificationNativeLogRelay {
 
   private fun normalizeLevel(level: String): String =
     when (level) {
-      "error", "info", "warn" -> level
+      "error", "info", "temp", "warn" -> level
       else -> "debug"
     }
 }

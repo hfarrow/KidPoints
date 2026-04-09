@@ -106,7 +106,7 @@ describe('nativeNotifications', () => {
         JSON.stringify([
           {
             contextJson: JSON.stringify({ source: 'buffer' }),
-            level: 'debug',
+            level: 'temp',
             message: 'Buffered native log',
             sequence: 1,
             tag: 'KidPointsNotifications',
@@ -197,7 +197,7 @@ describe('nativeNotifications', () => {
     });
     subscriptions[1]?.({
       contextJson: JSON.stringify({ source: 'event' }),
-      level: 'warn',
+      level: 'temp',
       message: 'Native event log',
       sequence: 2,
       tag: 'KidPointsNotificationsIntent',
@@ -246,7 +246,7 @@ describe('nativeNotifications', () => {
     expect(nativeNotifications.getBufferedNotificationLogs()).toEqual([
       {
         contextJson: JSON.stringify({ source: 'buffer' }),
-        level: 'debug',
+        level: 'temp',
         message: 'Buffered native log',
         sequence: 1,
         tag: 'KidPointsNotifications',
@@ -270,7 +270,7 @@ describe('nativeNotifications', () => {
     );
     expect(onLogEntry).toHaveBeenCalledWith({
       contextJson: JSON.stringify({ source: 'event' }),
-      level: 'warn',
+      level: 'temp',
       message: 'Native event log',
       sequence: 2,
       tag: 'KidPointsNotificationsIntent',

@@ -92,8 +92,8 @@ export function NotificationSettingsTile() {
             <View style={styles.toggleCopy}>
               <SectionLabel>Device Notifications</SectionLabel>
               <Text style={styles.helper}>
-                Keep the native countdown live update and timer expiry alerts in
-                sync with this device.
+                Keep the native countdown live update, timer expiry alerts, and
+                lock-screen popup access in sync with this device.
               </Text>
             </View>
             <Switch
@@ -142,7 +142,7 @@ export function NotificationSettingsTile() {
             }
           />
           <StatusRow
-            label="Alarm Popup"
+            label="Lock Screen Popup"
             value={
               notificationsEnabled
                 ? runtimeStatus.fullScreenIntentPermissionGranted
@@ -210,7 +210,7 @@ export function NotificationSettingsTile() {
           onPress={() => void openExactAlarmSettings()}
         />
         <ActionPill
-          label="Alarm Popup"
+          label="Lock Screen Popup"
           onPress={() => void openFullScreenIntentSettings()}
         />
         <ActionPill

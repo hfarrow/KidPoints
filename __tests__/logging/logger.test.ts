@@ -185,6 +185,33 @@ describe('logger', () => {
     });
   });
 
+  it('forwards native temp logs through the shared logger', () => {
+    const nativeLogger = createModuleLogger('notifications-native-temp');
+
+    setAppLogLevel('temp');
+    logForwardedNativeEntry(nativeLogger, {
+      level: 'temp',
+      message: 'Forwarded native temp log',
+      sequence: 11,
+      tag: 'KidPointsNotifications',
+      timestampMs: new Date('2026-04-08T12:34:56.789Z').getTime(),
+    });
+
+    const capturedLogs = getCapturedAppLogs();
+    const bufferedEntries = getAppBufferedLogEntries();
+
+    expect(capturedLogs).toHaveLength(1);
+    expect(capturedLogs[0]?.level).toBe('temp');
+    expect(capturedLogs[0]?.renderedMessage).toContain(
+      'Forwarded native temp log',
+    );
+    expect(bufferedEntries[0]).toMatchObject({
+      level: 'temp',
+      namespace: 'notifications-native-temp',
+      previewText: 'Forwarded native temp log',
+    });
+  });
+
   it('keeps direct JS logs grayscale while forwarded native logs use purple tones', () => {
     const jsLogger = createModuleLogger('settings');
     const nativeLogger = createModuleLogger('notifications-native');

@@ -590,6 +590,7 @@ function normalizeNotificationNativeLogLevel(
   switch (level) {
     case 'error':
     case 'info':
+    case 'temp':
     case 'warn':
       return level;
     default:

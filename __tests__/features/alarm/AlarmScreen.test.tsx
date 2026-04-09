@@ -141,6 +141,7 @@ describe('AlarmScreen', () => {
 
     expect(screen.getByText('Readiness')).toBeTruthy();
     expect(screen.getByText('Runtime')).toBeTruthy();
+    expect(screen.getAllByText('Lock Screen Popup').length).toBeGreaterThan(0);
     expect(screen.getByText('Connected')).toBeTruthy();
     expect(screen.getAllByText('Allowed').length).toBeGreaterThan(0);
 

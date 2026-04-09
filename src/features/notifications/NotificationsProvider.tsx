@@ -44,9 +44,11 @@ import {
   areNotificationDocumentsEqual,
   createDefaultNotificationRuntimeStatus,
   createEmptyNotificationDocument,
+  createPendingLaunchActionFromExpiredTimerSession,
   deriveNotificationDocument,
   type ExpiredTimerSession,
   getExpiredTimerSession,
+  getRestorablePendingLaunchAction,
   type NotificationDocument,
   type NotificationRuntimeStatus,
   type PendingNotificationLaunchAction,
@@ -113,22 +115,6 @@ function createLaunchActionKey(
     triggeredAt: launchAction.triggeredAt,
     type: launchAction.type,
   });
-}
-
-function createPendingLaunchActionFromExpiredSession(
-  expiredTimerSession: ExpiredTimerSession | null | undefined,
-): PendingNotificationLaunchAction | null {
-  if (!expiredTimerSession) {
-    return null;
-  }
-
-  return {
-    intervalId: expiredTimerSession.intervalId,
-    notificationId: expiredTimerSession.notificationId,
-    sessionId: expiredTimerSession.sessionId,
-    triggeredAt: expiredTimerSession.triggeredAt,
-    type: 'check-in',
-  };
 }
 
 function getCheckInRouteForLaunchAction(
@@ -386,6 +372,34 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     [applyNativeDocumentJson, engineAvailable, refreshRuntimeStatus],
   );
 
+  const restoreMissedLaunchAction = useCallback(
+    (
+      source: 'resume' | 'startup',
+      launchAction: PendingNotificationLaunchAction | null,
+    ) => {
+      const restoredLaunchAction = getRestorablePendingLaunchAction(
+        notificationDocumentRef.current,
+        launchAction,
+      );
+
+      if (launchAction || !restoredLaunchAction) {
+        return restoredLaunchAction;
+      }
+
+      log.info(
+        'Restoring missed check-in launch action from persisted session',
+        {
+          intervalId: restoredLaunchAction.intervalId,
+          notificationId: restoredLaunchAction.notificationId,
+          source,
+        },
+      );
+
+      return restoredLaunchAction;
+    },
+    [],
+  );
+
   const dismissCheckInFlow = useCallback(() => {
     const launchAction = pendingLaunchActionRef.current;
     const activeExpiredTimerSession = getExpiredTimerSession(
@@ -612,7 +626,10 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       didConsumeStartupLaunchActionRef.current = true;
       void consumePendingNotificationLaunchAction().then((launchAction) => {
         if (!isCancelled) {
-          void handleLaunchAction(launchAction, 'startup');
+          void handleLaunchAction(
+            restoreMissedLaunchAction('startup', launchAction),
+            'startup',
+          );
         }
       });
     }
@@ -653,9 +670,11 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
             mergedDocument.head.expiredIntervals[
               mergedDocument.head.expiredIntervals.length - 1
             ] ?? null;
-          const launchAction = createPendingLaunchActionFromExpiredSession(
-            latestExpiredTimerSession,
-          );
+          const launchAction = latestExpiredTimerSession
+            ? createPendingLaunchActionFromExpiredTimerSession(
+                latestExpiredTimerSession,
+              )
+            : null;
 
           if (launchAction) {
             void handleLaunchAction(launchAction, 'foreground-event');
@@ -702,7 +721,10 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
 
         void consumePendingNotificationLaunchAction().then((launchAction) => {
           if (!isCancelled) {
-            void handleLaunchAction(launchAction, 'resume');
+            void handleLaunchAction(
+              restoreMissedLaunchAction('resume', launchAction),
+              'resume',
+            );
           }
         });
       },
@@ -722,6 +744,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     pauseSharedTimer,
     refreshRuntimeStatus,
     resetSharedTimer,
+    restoreMissedLaunchAction,
   ]);
 
   useEffect(() => {

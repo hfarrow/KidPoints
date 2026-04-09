@@ -648,6 +648,43 @@ describe('NotificationsProvider', () => {
     expect(mockRequestNotificationPermission).not.toHaveBeenCalled();
   });
 
+  it('restores an unresolved check-in from persisted notification state when no pending launch action remains', async () => {
+    try {
+      const runningFixture = createExpiredRunningSharedDocumentFixture();
+      mockConsumePendingNotificationLaunchAction.mockResolvedValue(null);
+      mockLoadPersistedNotificationDocument.mockResolvedValue(
+        createExpiredNotificationDocument(runningFixture.childId),
+      );
+
+      renderProvider({
+        initialDocument: runningFixture.document,
+        initialParentUnlocked: true,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('notifications-ready').props.children).toBe(
+          'ready',
+        ),
+      );
+
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'interval-1',
+        ),
+      );
+
+      expect(useStartupNavigationStore.getState().requests).toEqual([
+        expect.objectContaining({
+          href: '/timer-check-in',
+          id: 'notifications-check-in',
+          targetPathname: '/timer-check-in',
+        }),
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('ignores duplicate launch-action events for the same pending check-in', async () => {
     mockConsumePendingNotificationLaunchAction.mockResolvedValue(null);
 
