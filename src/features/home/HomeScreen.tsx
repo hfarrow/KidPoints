@@ -1,6 +1,6 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
@@ -21,6 +21,7 @@ import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import { CountdownTileSummary } from '../timer/CountdownTileSummary';
 import { TimerControlRail } from '../timer/TimerControlRail';
 import { useSharedTimerViewModel } from '../timer/useSharedTimerViewModel';
+import { ArchivedChildrenOverlay } from './ArchivedChildrenOverlay';
 import { ChildPointsRail } from './ChildPointsRail';
 
 const log = createModuleLogger('home-screen');
@@ -39,6 +40,8 @@ export function HomeScreen() {
   const setPoints = useSharedStore((state) => state.setPoints);
   const startTimer = useSharedStore((state) => state.startTimer);
   const timerViewModel = useSharedTimerViewModel();
+  const [isArchivedChildrenVisible, setIsArchivedChildrenVisible] =
+    useState(false);
   const activeChildren = useMemo(
     () =>
       head.activeChildIds
@@ -98,184 +101,193 @@ export function HomeScreen() {
   };
 
   return (
-    <ScreenScaffold>
-      <ScreenHeader
-        actions={<MainScreenActions />}
-        title="Home"
-        titleIcon={
-          <Ionicons color={tokens.textPrimary} name="home-outline" size={24} />
-        }
-      />
-
-      <Tile
-        accessory={
-          <StatusBadge
-            label={timerViewModel.statusLabel}
-            tone={timerViewModel.statusTone}
-          />
-        }
-        summary={
-          <CountdownTileSummary
-            remainingLabel={timerViewModel.remainingLabel}
-            statusLabel={timerViewModel.statusLabel}
-            statusTone={timerViewModel.statusTone}
-            trailingAction={
-              <LoggedPressable
-                accessibilityLabel={
-                  isParentUnlocked
-                    ? 'Open alarm settings'
-                    : 'Unlock parent mode for alarm settings'
-                }
-                logContext={{ isParentUnlocked }}
-                logLabel={
-                  isParentUnlocked
-                    ? 'Open alarm settings'
-                    : 'Unlock parent mode for alarm settings'
-                }
-                onPress={openAlarmScreen}
-                style={styles.summaryIconAction}
-              >
-                <Feather color={tokens.controlText} name="clock" size={16} />
-              </LoggedPressable>
-            }
-          />
-        }
-        title="Countdown"
-      >
-        {isParentUnlocked ? (
-          <TimerControlRail
-            contextLabel="Home"
-            onPause={() => {
-              pauseTimer();
-            }}
-            onReset={() => {
-              resetTimer();
-            }}
-            onStart={() => {
-              startTimer();
-            }}
-            pauseDisabled={!timerViewModel.canPause}
-            resetDisabled={!timerViewModel.canReset}
-            startDisabled={!timerViewModel.canStart}
-          />
-        ) : (
-          <ActionPillRow>
-            <ActionPill
-              label="Unlock To Control"
-              onPress={() => router.push('/parent-unlock')}
-              tone="primary"
-            />
-          </ActionPillRow>
-        )}
-      </Tile>
-
-      {activeChildren.length === 0 ? (
-        <Tile title="Add Child">
-          <View style={styles.emptyStateColumn}>
-            <Text style={styles.emptyStateCopy}>
-              Add a child to get started!
-            </Text>
-            <ActionPill
-              label={isParentUnlocked ? 'Add Child' : 'Unlock To Add'}
-              onPress={() => {
-                if (isParentUnlocked) {
-                  openAddChildModal();
-                  return;
-                }
-
-                router.push('/parent-unlock');
-              }}
-              tone="primary"
-            />
-          </View>
-        </Tile>
-      ) : null}
-
-      {activeChildren.map((child) => (
-        <Tile
-          collapsible={isParentUnlocked}
-          initiallyCollapsed={isParentUnlocked}
-          key={child.id}
-          summary={
-            <ChildPointsRail
-              childId={child.id}
-              childName={child.name}
-              isParentUnlocked={isParentUnlocked}
-              onAdjustPoints={(delta) => adjustPoints(child.id, delta)}
-              onEditPoints={() => {
-                if (!isParentUnlocked) {
-                  router.push('/parent-unlock');
-                  return;
-                }
-
-                openEditPointTotalModal(child.id, child.name, child.points);
-              }}
-              points={child.points}
+    <View style={styles.screenRoot}>
+      <ScreenScaffold>
+        <ScreenHeader
+          actions={<MainScreenActions />}
+          title="Home"
+          titleIcon={
+            <Ionicons
+              color={tokens.textPrimary}
+              name="home-outline"
+              size={24}
             />
           }
-          title={child.name}
+        />
+
+        <Tile
+          accessory={
+            <StatusBadge
+              label={timerViewModel.statusLabel}
+              tone={timerViewModel.statusTone}
+            />
+          }
+          summary={
+            <CountdownTileSummary
+              remainingLabel={timerViewModel.remainingLabel}
+              statusLabel={timerViewModel.statusLabel}
+              statusTone={timerViewModel.statusTone}
+              trailingAction={
+                <LoggedPressable
+                  accessibilityLabel={
+                    isParentUnlocked
+                      ? 'Open alarm settings'
+                      : 'Unlock parent mode for alarm settings'
+                  }
+                  logContext={{ isParentUnlocked }}
+                  logLabel={
+                    isParentUnlocked
+                      ? 'Open alarm settings'
+                      : 'Unlock parent mode for alarm settings'
+                  }
+                  onPress={openAlarmScreen}
+                  style={styles.summaryIconAction}
+                >
+                  <Feather color={tokens.controlText} name="clock" size={16} />
+                </LoggedPressable>
+              }
+            />
+          }
+          title="Countdown"
         >
           {isParentUnlocked ? (
+            <TimerControlRail
+              contextLabel="Home"
+              onPause={() => {
+                pauseTimer();
+              }}
+              onReset={() => {
+                resetTimer();
+              }}
+              onStart={() => {
+                startTimer();
+              }}
+              pauseDisabled={!timerViewModel.canPause}
+              resetDisabled={!timerViewModel.canReset}
+              startDisabled={!timerViewModel.canStart}
+            />
+          ) : (
             <ActionPillRow>
               <ActionPill
-                label="Archive"
-                onPress={() => {
-                  Alert.alert(
-                    'Archive Child',
-                    `${child.name} will be removed from Home, but their recorded transactions and data will stay available so you can restore them later.`,
-                    [
-                      { style: 'cancel', text: 'Cancel' },
-                      {
-                        onPress: () => {
-                          archiveChild(child.id);
-                        },
-                        style: 'destructive',
-                        text: 'Archive',
-                      },
-                    ],
-                  );
-                }}
-                tone="critical"
+                label="Unlock To Control"
+                onPress={() => router.push('/parent-unlock')}
+                tone="primary"
               />
             </ActionPillRow>
-          ) : null}
+          )}
         </Tile>
-      ))}
 
-      <Tile collapsible initiallyCollapsed title="Parent">
-        {isParentUnlocked ? (
-          <ActionPillRow>
-            <ActionPill label="Add Child" onPress={openAddChildModal} />
-            <ActionPill
-              label="Archived Children"
-              onPress={() => router.push('/list-browser')}
-            />
-            <ActionPill
-              label="Transactions"
-              onPress={() => router.push('/transactions')}
-            />
-          </ActionPillRow>
-        ) : (
-          <ActionPillRow>
-            <ActionPill
-              label="Unlock with PIN"
-              onPress={() => router.push('/parent-unlock')}
-              tone="primary"
-            />
-          </ActionPillRow>
-        )}
-      </Tile>
-    </ScreenScaffold>
+        {activeChildren.length === 0 ? (
+          <Tile title="Add Child">
+            <View style={styles.emptyStateColumn}>
+              <Text style={styles.emptyStateCopy}>
+                Add a child to get started!
+              </Text>
+              <ActionPill
+                label={isParentUnlocked ? 'Add Child' : 'Unlock To Add'}
+                onPress={() => {
+                  if (isParentUnlocked) {
+                    openAddChildModal();
+                    return;
+                  }
+
+                  router.push('/parent-unlock');
+                }}
+                tone="primary"
+              />
+            </View>
+          </Tile>
+        ) : null}
+
+        {activeChildren.map((child) => (
+          <Tile
+            collapsible={isParentUnlocked}
+            initiallyCollapsed={isParentUnlocked}
+            key={child.id}
+            summary={
+              <ChildPointsRail
+                childId={child.id}
+                childName={child.name}
+                isParentUnlocked={isParentUnlocked}
+                onAdjustPoints={(delta) => adjustPoints(child.id, delta)}
+                onEditPoints={() => {
+                  if (!isParentUnlocked) {
+                    router.push('/parent-unlock');
+                    return;
+                  }
+
+                  openEditPointTotalModal(child.id, child.name, child.points);
+                }}
+                points={child.points}
+              />
+            }
+            title={child.name}
+          >
+            {isParentUnlocked ? (
+              <ActionPillRow>
+                <ActionPill
+                  label="Archive"
+                  onPress={() => {
+                    Alert.alert(
+                      'Archive Child',
+                      `${child.name} will be removed from Home, but their recorded transactions and data will stay available so you can restore them later.`,
+                      [
+                        { style: 'cancel', text: 'Cancel' },
+                        {
+                          onPress: () => {
+                            archiveChild(child.id);
+                          },
+                          style: 'destructive',
+                          text: 'Archive',
+                        },
+                      ],
+                    );
+                  }}
+                  tone="critical"
+                />
+              </ActionPillRow>
+            ) : null}
+          </Tile>
+        ))}
+
+        <Tile collapsible initiallyCollapsed title="Parent">
+          {isParentUnlocked ? (
+            <ActionPillRow>
+              <ActionPill label="Add Child" onPress={openAddChildModal} />
+              <ActionPill
+                label="Archived Children"
+                onPress={() => {
+                  setIsArchivedChildrenVisible(true);
+                }}
+              />
+              <ActionPill
+                label="Transactions"
+                onPress={() => router.push('/transactions')}
+              />
+            </ActionPillRow>
+          ) : (
+            <ActionPillRow>
+              <ActionPill
+                label="Unlock with PIN"
+                onPress={() => router.push('/parent-unlock')}
+                tone="primary"
+              />
+            </ActionPillRow>
+          )}
+        </Tile>
+      </ScreenScaffold>
+      <ArchivedChildrenOverlay
+        onRequestClose={() => {
+          setIsArchivedChildrenVisible(false);
+        }}
+        visible={isArchivedChildrenVisible}
+      />
+    </View>
   );
 }
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
-    emptyStateRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: 10,
-    },
     emptyStateColumn: {
       gap: 10,
     },
@@ -293,5 +305,8 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       height: 32,
       justifyContent: 'center',
       width: 32,
+    },
+    screenRoot: {
+      flex: 1,
     },
   });

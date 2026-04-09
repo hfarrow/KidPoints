@@ -64,6 +64,35 @@ describe('HomeScreen', () => {
     return store.getState().document;
   }
 
+  function createDocumentWithArchivedChildren(args: {
+    children: { name: string; points: number }[];
+    deviceId: string;
+  }) {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({ deviceId: args.deviceId }),
+      storage: createMemoryStorage(),
+    });
+
+    args.children.forEach((child) => {
+      expect(store.getState().addChild(child.name).ok).toBe(true);
+      const childId = store.getState().document.head.activeChildIds.at(-1);
+
+      expect(childId).toBeTruthy();
+
+      if (!childId) {
+        return;
+      }
+
+      if (child.points > 0) {
+        expect(store.getState().setPoints(childId, child.points).ok).toBe(true);
+      }
+
+      expect(store.getState().archiveChild(childId).ok).toBe(true);
+    });
+
+    return store.getState().document;
+  }
+
   it('renders the empty state and opens supporting surfaces', () => {
     render(
       <SharedStoreProvider
@@ -228,5 +257,61 @@ describe('HomeScreen', () => {
     fireEvent.press(screen.getByText('Parent'));
     expect(screen.getByText('Add Child')).toBeTruthy();
     expect(screen.getByText('Transactions')).toBeTruthy();
+  });
+
+  it('opens archived children in a local overlay, restores items, and confirms permanent delete actions', () => {
+    const document = createDocumentWithArchivedChildren({
+      children: [
+        { name: 'Noah', points: 12 },
+        { name: 'Maya', points: 5 },
+      ],
+      deviceId: 'home-archived',
+    });
+
+    render(
+      <SharedStoreProvider
+        initialDocument={document}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppSettingsProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <HomeScreen />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    fireEvent.press(screen.getByText('Parent'));
+    fireEvent.press(screen.getByText('Archived Children'));
+
+    expect(
+      screen.getByText(
+        'Restore archived children back to Home or permanently remove them.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Noah')).toBeTruthy();
+    expect(screen.getByText('Maya')).toBeTruthy();
+    expect(screen.getAllByText('Restore to Home')).toHaveLength(2);
+    expect(screen.getAllByText('Delete Permanently')).toHaveLength(2);
+
+    fireEvent.press(screen.getAllByText('Restore to Home')[0]);
+    expect(screen.getAllByText('Restore to Home')).toHaveLength(1);
+
+    fireEvent.press(screen.getAllByText('Delete Permanently')[0]);
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Delete Child Permanently',
+      expect.stringContaining('removed forever'),
+      expect.any(Array),
+    );
+
+    fireEvent.press(screen.getByLabelText('Close Archived Children'));
+    expect(
+      screen.queryByText(
+        'Restore archived children back to Home or permanently remove them.',
+      ),
+    ).toBeNull();
   });
 });

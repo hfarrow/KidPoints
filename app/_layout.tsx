@@ -16,7 +16,6 @@ function RootNavigator() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" />
-        <Stack.Screen name="list-browser" />
         <Stack.Screen name="transactions" />
         <Stack.Screen
           name="parent-unlock"
