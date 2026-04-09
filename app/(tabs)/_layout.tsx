@@ -3,7 +3,7 @@ import { Tabs, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 
 import { useParentSession } from '../../src/features/parent/parentSessionContext';
-import { useAppTheme } from '../../src/features/theme/themeContext';
+import { useAppTheme } from '../../src/features/theme/appTheme';
 import { createModuleLogger } from '../../src/logging/logger';
 
 const log = createModuleLogger('tabs-layout');

@@ -16,7 +16,7 @@ import { createModuleLogger } from '../../logging/logger';
 import { isBlockingRouteModalPath } from '../../navigation/modalPaths';
 import { scheduleAfterFrameCommit } from '../../timing/scheduleAfterFrameCommit';
 import { useParentSession } from '../parent/parentSessionContext';
-import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import {
   clearTextInputModal,
   type TextInputModalRequest,

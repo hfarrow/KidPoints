@@ -7,7 +7,11 @@ import { LoggedPressable } from '../../components/LoggedPressable';
 import { createModuleLogger } from '../../logging/logger';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { scheduleAfterFrameCommit } from '../../timing/scheduleAfterFrameCommit';
-import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import {
+  triggerErrorHaptic,
+  triggerLightImpactHaptic,
+} from '../haptics/appHaptics';
+import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import {
   normalizeParentPin,
   PARENT_PIN_LENGTH,
@@ -42,6 +46,7 @@ export function ParentUnlockModal() {
   const { mode } = useLocalSearchParams<{ mode?: string | string[] }>();
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
+  const hapticsEnabled = useLocalSettingsStore((state) => state.hapticsEnabled);
   const parentPin = useLocalSettingsStore((state) => state.parentPin);
   const setParentPin = useLocalSettingsStore((state) => state.setParentPin);
   const { attemptUnlock, unlockParentMode } = useParentSession();
@@ -173,6 +178,7 @@ export function ParentUnlockModal() {
   };
 
   const beginFailedUnlockFeedback = () => {
+    triggerErrorHaptic(hapticsEnabled);
     setErrorMessage('That PIN does not match the parent PIN for this device.');
     setIsUnlockErrorPending(true);
     setIsUnlockSuccessPending(false);
@@ -230,9 +236,11 @@ export function ParentUnlockModal() {
     }
 
     const normalizedValue = normalizeParentPin(nextValue);
+    const isDigitAdded = normalizedValue.length > pin.length;
 
     setPin(normalizedValue);
-    if (normalizedValue.length > pin.length) {
+    if (isDigitAdded) {
+      triggerLightImpactHaptic(hapticsEnabled);
       setRevealedDigitIndex(normalizedValue.length - 1);
     } else {
       setRevealedDigitIndex(null);

@@ -1,10 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
+import * as appHaptics from '../../../src/features/haptics/appHaptics';
 import { ParentUnlockModal } from '../../../src/features/parent/ParentUnlockModal';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
+import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import { getThemeTokens } from '../../../src/features/theme/theme';
-import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import { createLocalSettingsStore } from '../../../src/state/localSettingsStore';
 import {
   createSharedStore,
@@ -39,6 +40,10 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('../../../src/timing/scheduleAfterFrameCommit', () => ({
   scheduleAfterFrameCommit: jest.fn(() => jest.fn()),
+}));
+jest.mock('../../../src/features/haptics/appHaptics', () => ({
+  triggerErrorHaptic: jest.fn(),
+  triggerLightImpactHaptic: jest.fn(),
 }));
 
 function expectPinSlots(expectedDigits: ('empty' | 'masked' | string)[]) {
@@ -98,6 +103,7 @@ describe('ParentUnlockModal', () => {
   beforeEach(() => {
     keyboardControllerModule.__resetKeyboardEvents();
     scheduleAfterFrameCommitModule.scheduleAfterFrameCommit.mockClear();
+    jest.clearAllMocks();
     mockBack.mockReset();
     mockMode = undefined;
   });
@@ -119,13 +125,13 @@ describe('ParentUnlockModal', () => {
           initialParentUnlocked={false}
           storage={createMemoryStorage()}
         >
-          <AppThemeProvider
+          <AppSettingsProvider
             initialParentPin="2468"
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <ParentUnlockModal />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -249,9 +255,9 @@ describe('ParentUnlockModal', () => {
           initialParentUnlocked={false}
           storage={createMemoryStorage()}
         >
-          <AppThemeProvider initialThemeMode="light" storage={storage}>
+          <AppSettingsProvider initialThemeMode="light" storage={storage}>
             <ParentUnlockModal />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -293,6 +299,72 @@ describe('ParentUnlockModal', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
+  it('plays light haptics for each entered digit and an error haptic for an incorrect unlock pin', () => {
+    jest.useFakeTimers();
+
+    render(
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider
+          initialParentUnlocked={false}
+          storage={createMemoryStorage()}
+        >
+          <AppSettingsProvider
+            initialHapticsEnabled={true}
+            initialParentPin="2468"
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <ParentUnlockModal />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    const pinInput = screen.getByLabelText('Parent PIN');
+
+    fireEvent.changeText(pinInput, '1');
+    fireEvent.changeText(pinInput, '11');
+    fireEvent.changeText(pinInput, '111');
+    fireEvent.changeText(pinInput, '1111');
+
+    expect(appHaptics.triggerLightImpactHaptic).toHaveBeenCalledTimes(4);
+    expect(appHaptics.triggerLightImpactHaptic).toHaveBeenNthCalledWith(
+      1,
+      true,
+    );
+    expect(appHaptics.triggerErrorHaptic).toHaveBeenCalledWith(true);
+  });
+
+  it('does not trigger parent pin haptics when the global setting is disabled', () => {
+    render(
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider
+          initialParentUnlocked={false}
+          storage={createMemoryStorage()}
+        >
+          <AppSettingsProvider
+            initialHapticsEnabled={false}
+            initialParentPin="2468"
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <ParentUnlockModal />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    const pinInput = screen.getByLabelText('Parent PIN');
+
+    fireEvent.changeText(pinInput, '1');
+    fireEvent.changeText(pinInput, '11');
+    fireEvent.changeText(pinInput, '111');
+    fireEvent.changeText(pinInput, '1111');
+
+    expect(appHaptics.triggerLightImpactHaptic).toHaveBeenCalledWith(false);
+    expect(appHaptics.triggerErrorHaptic).toHaveBeenCalledWith(false);
+  });
+
   it('re-focuses the setup input after a mismatched confirmation resets the flow', () => {
     render(
       <SharedStoreProvider storage={createMemoryStorage()}>
@@ -300,12 +372,12 @@ describe('ParentUnlockModal', () => {
           initialParentUnlocked={false}
           storage={createMemoryStorage()}
         >
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <ParentUnlockModal />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );

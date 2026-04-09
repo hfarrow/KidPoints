@@ -7,7 +7,7 @@ import {
   useTextInputModalStore,
 } from '../../../src/features/overlays/textInputModalStore';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
-import { AppThemeProvider } from '../../../src/features/theme/themeContext';
+import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import { SharedStoreProvider } from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
@@ -55,12 +55,12 @@ describe('TextInputModal', () => {
     render(
       <SharedStoreProvider storage={createMemoryStorage()}>
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <TextInputModal />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );

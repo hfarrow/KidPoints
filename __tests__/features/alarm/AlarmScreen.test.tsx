@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import { AlarmScreen } from '../../../src/features/alarm/AlarmScreen';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
-import { AppThemeProvider } from '../../../src/features/theme/themeContext';
+import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import {
   createInitialSharedDocument,
   SharedStoreProvider,
@@ -88,12 +88,12 @@ describe('AlarmScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked={false}>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <AlarmScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -119,12 +119,12 @@ describe('AlarmScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <AlarmScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -178,12 +178,12 @@ describe('AlarmScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <AlarmScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );

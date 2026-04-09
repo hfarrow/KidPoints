@@ -2,7 +2,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { useParentSession } from '../features/parent/parentSessionContext';
-import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../features/theme/appTheme';
 import { LoggedPressable } from './LoggedPressable';
 
 export function MainScreenActions() {

@@ -19,7 +19,7 @@ import { useSharedStore } from '../../state/sharedStore';
 import { normalizeTimerConfig } from '../../state/sharedTimer';
 import { NotificationSettingsTile } from '../notifications/NotificationSettingsTile';
 import { useParentSession } from '../parent/parentSessionContext';
-import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import { CountdownTileSummary } from '../timer/CountdownTileSummary';
 import { TimerControlRail } from '../timer/TimerControlRail';
 import { useSharedTimerViewModel } from '../timer/useSharedTimerViewModel';

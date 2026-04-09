@@ -24,11 +24,13 @@ import { useStableStoreReference } from './useStableStoreReference';
 
 type LocalSettingsState = {
   hasHydrated: boolean;
+  hapticsEnabled: boolean;
   logLevel: AppLogLevel;
   markHydrated: () => void;
   notificationsEnabled: boolean;
   parentPin: string | null;
   restartCountdownAfterCheckIn: boolean;
+  setHapticsEnabled: (hapticsEnabled: boolean) => void;
   setLogLevel: (logLevel: AppLogLevel) => void;
   setNotificationsEnabled: (notificationsEnabled: boolean) => void;
   setParentPin: (parentPin: string) => void;
@@ -66,6 +68,7 @@ const LocalSettingsStoreContext = createContext<LocalSettingsStore | null>(
 
 type LocalSettingsStoreProviderProps = PropsWithChildren<{
   allowTemporaryLogLevel?: boolean;
+  initialHapticsEnabled?: boolean;
   initialLogLevel?: AppLogLevel;
   initialNotificationsEnabled?: boolean;
   initialParentPin?: string | null;
@@ -76,6 +79,7 @@ type LocalSettingsStoreProviderProps = PropsWithChildren<{
 
 export function createLocalSettingsStore({
   allowTemporaryLogLevel,
+  initialHapticsEnabled = true,
   initialLogLevel = getDefaultAppLogLevel(),
   initialNotificationsEnabled = true,
   initialParentPin = null,
@@ -84,6 +88,7 @@ export function createLocalSettingsStore({
   storage = AsyncStorage,
 }: {
   allowTemporaryLogLevel?: boolean;
+  initialHapticsEnabled?: boolean;
   initialLogLevel?: AppLogLevel;
   initialNotificationsEnabled?: boolean;
   initialParentPin?: string | null;
@@ -99,6 +104,7 @@ export function createLocalSettingsStore({
     persist(
       (set) => ({
         hasHydrated: false,
+        hapticsEnabled: initialHapticsEnabled,
         logLevel: normalizedInitialLogLevel,
         markHydrated: () => {
           set({ hasHydrated: true });
@@ -106,6 +112,13 @@ export function createLocalSettingsStore({
         notificationsEnabled: initialNotificationsEnabled,
         parentPin: initialParentPin,
         restartCountdownAfterCheckIn: initialRestartCountdownAfterCheckIn,
+        setHapticsEnabled: (hapticsEnabled) => {
+          logLocalSettingsMutation({
+            action: 'setHapticsEnabled',
+            hapticsEnabled,
+          });
+          set({ hapticsEnabled });
+        },
         setLogLevel: (logLevel) => {
           const normalizedLogLevel = normalizeAppLogLevel(logLevel, {
             allowTemporaryLogLevel,
@@ -158,6 +171,8 @@ export function createLocalSettingsStore({
           return {
             ...currentState,
             ...persistedSettings,
+            hapticsEnabled:
+              persistedSettings.hapticsEnabled ?? initialHapticsEnabled,
             logLevel: normalizeAppLogLevel(persistedSettings.logLevel, {
               allowTemporaryLogLevel,
               fallbackLogLevel: normalizedInitialLogLevel,
@@ -178,6 +193,7 @@ export function createLocalSettingsStore({
             });
           } else {
             logLocalSettingsRehydrated({
+              hapticsEnabled: state?.hapticsEnabled ?? initialHapticsEnabled,
               hasParentPin: Boolean(state?.parentPin),
               logLevel: state?.logLevel ?? normalizedInitialLogLevel,
               notificationsEnabled:
@@ -192,12 +208,14 @@ export function createLocalSettingsStore({
           state?.markHydrated();
         },
         partialize: ({
+          hapticsEnabled,
           logLevel,
           notificationsEnabled,
           parentPin,
           restartCountdownAfterCheckIn,
           themeMode,
         }) => ({
+          hapticsEnabled,
           logLevel,
           notificationsEnabled,
           parentPin,
@@ -213,6 +231,7 @@ export function createLocalSettingsStore({
 export function LocalSettingsStoreProvider({
   allowTemporaryLogLevel,
   children,
+  initialHapticsEnabled = true,
   initialLogLevel = getDefaultAppLogLevel(),
   initialNotificationsEnabled = true,
   initialParentPin = null,
@@ -224,6 +243,7 @@ export function LocalSettingsStoreProvider({
     () =>
       createLocalSettingsStore({
         allowTemporaryLogLevel,
+        initialHapticsEnabled,
         initialLogLevel,
         initialNotificationsEnabled,
         initialParentPin,
@@ -238,6 +258,7 @@ export function LocalSettingsStoreProvider({
 
   useEffect(() => {
     log.info('Local settings store provider initialized', {
+      initialHapticsEnabled,
       initialLogLevel,
       initialNotificationsEnabled,
       initialParentPinConfigured: Boolean(initialParentPin),
@@ -246,6 +267,7 @@ export function LocalSettingsStoreProvider({
     });
   }, [
     initialLogLevel,
+    initialHapticsEnabled,
     initialNotificationsEnabled,
     initialParentPin,
     initialRestartCountdownAfterCheckIn,

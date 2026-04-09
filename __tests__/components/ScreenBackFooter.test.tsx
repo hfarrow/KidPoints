@@ -14,7 +14,7 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
-jest.mock('../../src/features/theme/themeContext', () => ({
+jest.mock('../../src/features/theme/appTheme', () => ({
   useAppTheme: () => ({
     tokens: {
       border: '#cbd5e1',

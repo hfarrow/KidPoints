@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { TextInputModal } from '../src/features/overlays/TextInputModal';
 import { ParentPinSetupGate } from '../src/features/parent/ParentPinSetupGate';
-import { useAppTheme } from '../src/features/theme/themeContext';
+import { useAppTheme } from '../src/features/theme/appTheme';
 import { RootNavigationLifecycleLogger } from '../src/navigation/RootNavigationLifecycleLogger';
 import { StartupNavigationCoordinator } from '../src/navigation/StartupNavigationCoordinator';
 import { AppProviders } from '../src/providers/AppProviders';

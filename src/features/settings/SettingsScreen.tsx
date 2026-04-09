@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Switch, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
@@ -18,8 +18,8 @@ import {
 } from '../../logging/logger';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useParentSession } from '../parent/parentSessionContext';
+import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import type { ThemeMode } from '../theme/theme';
-import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 
 const THEME_OPTIONS: ThemeMode[] = ['light', 'dark', 'system'];
 const log = createModuleLogger('settings-screen');
@@ -30,7 +30,11 @@ export function SettingsScreen() {
   const { isParentUnlocked, lockParentMode } = useParentSession();
   const { resolvedTheme, setThemeMode, themeMode, tokens } = useAppTheme();
   const parentPin = useLocalSettingsStore((state) => state.parentPin);
+  const hapticsEnabled = useLocalSettingsStore((state) => state.hapticsEnabled);
   const logLevel = useLocalSettingsStore((state) => state.logLevel);
+  const setHapticsEnabled = useLocalSettingsStore(
+    (state) => state.setHapticsEnabled,
+  );
   const setLogLevel = useLocalSettingsStore((state) => state.setLogLevel);
   const selectableAppLogLevels = getSelectableAppLogLevels();
 
@@ -121,6 +125,31 @@ export function SettingsScreen() {
         </ActionPillRow>
       </Tile>
 
+      <Tile
+        accessory={<StatusBadge label={hapticsEnabled ? 'On' : 'Off'} />}
+        title="Touch Feedback"
+      >
+        <View style={styles.toggleRow}>
+          <View style={styles.toggleCopy}>
+            <Text style={styles.toggleLabel}>Haptics</Text>
+            <Text style={styles.toggleHelper}>
+              Add light vibration feedback to supported button taps across the
+              app.
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Enable haptics"
+            onValueChange={setHapticsEnabled}
+            thumbColor="#f8fafc"
+            trackColor={{
+              false: resolvedTheme === 'dark' ? '#475569' : '#94a3b8',
+              true: tokens.accent,
+            }}
+            value={hapticsEnabled}
+          />
+        </View>
+      </Tile>
+
       <Tile accessory={<StatusBadge label={logLevel} />} title="Debug">
         <Text style={styles.body}>
           Choose the active app log level. This setting stays available in
@@ -197,5 +226,29 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       fontSize: 14,
       fontWeight: '800',
       textTransform: 'capitalize',
+    },
+    toggleCopy: {
+      flex: 1,
+      gap: 2,
+      minWidth: 0,
+    },
+    toggleHelper: {
+      color: tokens.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    toggleLabel: {
+      color: tokens.textPrimary,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    toggleRow: {
+      alignItems: 'center',
+      backgroundColor: tokens.controlSurface,
+      borderRadius: 16,
+      flexDirection: 'row',
+      gap: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
     },
   });

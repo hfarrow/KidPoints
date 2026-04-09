@@ -73,6 +73,29 @@ describe('localSettingsStore', () => {
     expect(secondStore.getState().notificationsEnabled).toBe(false);
   });
 
+  it('rehydrates the persisted haptics enabled state', async () => {
+    const storage = createMemoryStorage();
+    const firstStore = createLocalSettingsStore({
+      initialHapticsEnabled: true,
+      storage,
+    });
+
+    firstStore.getState().setHapticsEnabled(false);
+
+    const secondStore = createLocalSettingsStore({
+      initialHapticsEnabled: true,
+      storage,
+    });
+
+    await (
+      secondStore as typeof secondStore & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(secondStore.getState().hapticsEnabled).toBe(false);
+  });
+
   it('rehydrates the persisted restart-after-check-in setting', async () => {
     const storage = createMemoryStorage();
     const firstStore = createLocalSettingsStore({

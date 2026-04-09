@@ -8,7 +8,7 @@ import {
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
-import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import { useNotifications } from './NotificationsProvider';
 
 function StatusRow({ label, value }: { label: string; value: string }) {

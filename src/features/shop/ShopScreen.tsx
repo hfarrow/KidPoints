@@ -5,7 +5,7 @@ import { MainScreenActions } from '../../components/MainScreenActions';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
 import { createModuleLogger } from '../../logging/logger';
-import { useAppTheme } from '../theme/themeContext';
+import { useAppTheme } from '../theme/appTheme';
 
 const log = createModuleLogger('shop-screen');
 

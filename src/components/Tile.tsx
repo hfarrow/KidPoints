@@ -7,10 +7,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import {
-  type useAppTheme,
-  useThemedStyles,
-} from '../features/theme/themeContext';
+import { type useAppTheme, useThemedStyles } from '../features/theme/appTheme';
 import { LoggedPressable } from './LoggedPressable';
 
 type TileProps = {

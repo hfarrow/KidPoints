@@ -1,13 +1,7 @@
 import type { StatusBarStyle } from 'expo-status-bar';
-import { type PropsWithChildren, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useColorScheme } from 'react-native';
-import type { StateStorage } from 'zustand/middleware';
-import type { AppLogLevel } from '../../logging/logger';
-import { createModuleLogger } from '../../logging/logger';
-import {
-  LocalSettingsStoreProvider,
-  useLocalSettingsStore,
-} from '../../state/localSettingsStore';
+import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import {
   getThemeTokens,
   type ResolvedTheme,
@@ -15,8 +9,6 @@ import {
   type ThemeMode,
   type ThemeTokens,
 } from './theme';
-
-const log = createModuleLogger('theme-context');
 
 type AppThemeValue = {
   getScreenSurface: (isParentMode: boolean) => string;
@@ -26,41 +18,6 @@ type AppThemeValue = {
   themeMode: ThemeMode;
   tokens: ThemeTokens;
 };
-
-type AppThemeProviderProps = PropsWithChildren<{
-  initialLogLevel?: AppLogLevel;
-  initialNotificationsEnabled?: boolean;
-  initialParentPin?: string | null;
-  initialThemeMode?: ThemeMode;
-  storage?: StateStorage;
-}>;
-
-export function AppThemeProvider({
-  children,
-  initialLogLevel,
-  initialNotificationsEnabled,
-  initialParentPin,
-  initialThemeMode = 'system',
-  storage,
-}: AppThemeProviderProps) {
-  useEffect(() => {
-    log.info('App theme provider initialized', {
-      initialThemeMode,
-    });
-  }, [initialThemeMode]);
-
-  return (
-    <LocalSettingsStoreProvider
-      initialLogLevel={initialLogLevel}
-      initialNotificationsEnabled={initialNotificationsEnabled}
-      initialParentPin={initialParentPin}
-      initialThemeMode={initialThemeMode}
-      storage={storage}
-    >
-      {children}
-    </LocalSettingsStoreProvider>
-  );
-}
 
 export function useAppTheme() {
   const systemColorScheme = useColorScheme();

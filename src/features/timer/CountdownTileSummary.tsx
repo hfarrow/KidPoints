@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { type useAppTheme, useThemedStyles } from '../theme/appTheme';
 
 type CountdownTileSummaryProps = {
   remainingLabel: string;

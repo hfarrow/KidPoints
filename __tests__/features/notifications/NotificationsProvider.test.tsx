@@ -16,7 +16,7 @@ import type {
   PendingNotificationLaunchAction,
 } from '../../../src/features/notifications/notificationsModel';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
-import { AppThemeProvider } from '../../../src/features/theme/themeContext';
+import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import {
   clearStartupNavigationRequests,
   useStartupNavigationStore,
@@ -400,14 +400,14 @@ function renderProvider({
       storage={createMemoryStorage()}
     >
       <ParentSessionProvider initialParentUnlocked={initialParentUnlocked}>
-        <AppThemeProvider
+        <AppSettingsProvider
           initialThemeMode="light"
           storage={createMemoryStorage()}
         >
           <NotificationsProvider>
             <NotificationsProbe />
           </NotificationsProvider>
-        </AppThemeProvider>
+        </AppSettingsProvider>
       </ParentSessionProvider>
     </SharedStoreProvider>,
   );
@@ -1096,7 +1096,7 @@ describe('NotificationsProvider', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialNotificationsEnabled={false}
             initialThemeMode="light"
             storage={createMemoryStorage()}
@@ -1104,7 +1104,7 @@ describe('NotificationsProvider', () => {
             <NotificationsProvider>
               <NotificationsProbe />
             </NotificationsProvider>
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );

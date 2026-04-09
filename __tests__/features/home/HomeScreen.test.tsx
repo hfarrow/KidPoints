@@ -7,7 +7,7 @@ import {
   useTextInputModalStore,
 } from '../../../src/features/overlays/textInputModalStore';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
-import { AppThemeProvider } from '../../../src/features/theme/themeContext';
+import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import {
   createInitialSharedDocument,
   createSharedStore,
@@ -71,12 +71,12 @@ describe('HomeScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <HomeScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -108,12 +108,12 @@ describe('HomeScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked={false}>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <HomeScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -141,12 +141,12 @@ describe('HomeScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <HomeScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -181,12 +181,12 @@ describe('HomeScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <HomeScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -211,12 +211,12 @@ describe('HomeScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <HomeScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );

@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 
 import { ChildPointsRail } from '../../../src/features/home/ChildPointsRail';
-import { AppThemeProvider } from '../../../src/features/theme/themeContext';
+import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import type { SharedCommandResult } from '../../../src/state/sharedTypes';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
@@ -31,7 +31,10 @@ function ChildPointsRailHarness({
   const [points, setPoints] = useState(initialPoints);
 
   return (
-    <AppThemeProvider initialThemeMode="light" storage={createMemoryStorage()}>
+    <AppSettingsProvider
+      initialThemeMode="light"
+      storage={createMemoryStorage()}
+    >
       <ChildPointsRail
         childId="child-ava"
         childName={childName}
@@ -43,7 +46,7 @@ function ChildPointsRailHarness({
         onEditPoints={() => {}}
         points={points}
       />
-    </AppThemeProvider>
+    </AppSettingsProvider>
   );
 }
 
@@ -87,7 +90,7 @@ describe('ChildPointsRail', () => {
   it('snaps to an external total change and clears stale local queue state', async () => {
     const onAdjustPoints = (): SharedCommandResult => ({ ok: true });
     const { rerender } = render(
-      <AppThemeProvider
+      <AppSettingsProvider
         initialThemeMode="light"
         storage={createMemoryStorage()}
       >
@@ -99,13 +102,13 @@ describe('ChildPointsRail', () => {
           onEditPoints={() => {}}
           points={4}
         />
-      </AppThemeProvider>,
+      </AppSettingsProvider>,
     );
 
     fireEvent.press(screen.getByLabelText('Increase Ava points'));
 
     rerender(
-      <AppThemeProvider
+      <AppSettingsProvider
         initialThemeMode="light"
         storage={createMemoryStorage()}
       >
@@ -117,7 +120,7 @@ describe('ChildPointsRail', () => {
           onEditPoints={() => {}}
           points={11}
         />
-      </AppThemeProvider>,
+      </AppSettingsProvider>,
     );
 
     await waitFor(() => {
@@ -128,7 +131,8 @@ describe('ChildPointsRail', () => {
   it('triggers light haptics only when a point adjustment succeeds', () => {
     const impactAsyncMock = jest.mocked(Haptics.impactAsync);
     const { rerender } = render(
-      <AppThemeProvider
+      <AppSettingsProvider
+        initialHapticsEnabled={true}
         initialThemeMode="light"
         storage={createMemoryStorage()}
       >
@@ -140,7 +144,7 @@ describe('ChildPointsRail', () => {
           onEditPoints={() => {}}
           points={4}
         />
-      </AppThemeProvider>,
+      </AppSettingsProvider>,
     );
 
     fireEvent.press(screen.getByLabelText('Increase Ava points'));
@@ -150,7 +154,8 @@ describe('ChildPointsRail', () => {
     );
 
     rerender(
-      <AppThemeProvider
+      <AppSettingsProvider
+        initialHapticsEnabled={false}
         initialThemeMode="light"
         storage={createMemoryStorage()}
       >
@@ -162,7 +167,7 @@ describe('ChildPointsRail', () => {
           onEditPoints={() => {}}
           points={4}
         />
-      </AppThemeProvider>,
+      </AppSettingsProvider>,
     );
 
     fireEvent.press(screen.getByLabelText('Increase Ava points'));

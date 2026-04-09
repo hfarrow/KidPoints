@@ -107,6 +107,7 @@ describe('store logging', () => {
     });
 
     store.getState().setThemeMode('dark');
+    store.getState().setHapticsEnabled(false);
     store.getState().setLogLevel('error');
     store.getState().setParentPin('2468');
 
@@ -115,6 +116,13 @@ describe('store logging', () => {
       expect.objectContaining({
         action: 'setThemeMode',
         themeMode: 'dark',
+      }),
+    );
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Local settings mutation committed',
+      expect.objectContaining({
+        action: 'setHapticsEnabled',
+        hapticsEnabled: false,
       }),
     );
     expect(mockLogger.debug).toHaveBeenCalledWith(

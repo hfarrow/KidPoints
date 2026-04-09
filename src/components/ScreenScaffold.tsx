@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useParentSession } from '../features/parent/parentSessionContext';
-import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../features/theme/appTheme';
 
 type ScreenScaffoldProps = PropsWithChildren<{
   footer?: ReactNode;

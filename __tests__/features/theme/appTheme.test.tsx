@@ -1,10 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Pressable, Text } from 'react-native';
 
-import {
-  AppThemeProvider,
-  useAppTheme,
-} from '../../../src/features/theme/themeContext';
+import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
+import { useAppTheme } from '../../../src/features/theme/appTheme';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 function ThemeProbe() {
@@ -25,15 +23,15 @@ function ThemeProbe() {
   );
 }
 
-describe('AppThemeProvider', () => {
+describe('useAppTheme', () => {
   it('updates temporary theme mode in memory', () => {
     render(
-      <AppThemeProvider
+      <AppSettingsProvider
         initialThemeMode="system"
         storage={createMemoryStorage()}
       >
         <ThemeProbe />
-      </AppThemeProvider>,
+      </AppSettingsProvider>,
     );
 
     expect(screen.getByText(/resolved:/)).toBeTruthy();

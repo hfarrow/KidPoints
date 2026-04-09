@@ -7,7 +7,7 @@ import {
 } from 'react-native-safe-area-context';
 import { NotificationsProvider } from '../features/notifications/NotificationsProvider';
 import { ParentSessionProvider } from '../features/parent/parentSessionContext';
-import { AppThemeProvider } from '../features/theme/themeContext';
+import { AppSettingsProvider } from '../features/settings/appSettingsContext';
 import {
   createModuleLogger,
   getAppLogLevel,
@@ -95,12 +95,12 @@ export function AppProviders({ children }: PropsWithChildren) {
       <KeyboardProvider>
         <SharedStoreProvider>
           <ParentSessionProvider>
-            <AppThemeProvider>
+            <AppSettingsProvider>
               <NotificationsProvider>
                 <AppLogLevelObserver />
                 {children}
               </NotificationsProvider>
-            </AppThemeProvider>
+            </AppSettingsProvider>
           </ParentSessionProvider>
         </SharedStoreProvider>
       </KeyboardProvider>

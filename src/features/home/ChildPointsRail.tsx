@@ -1,4 +1,3 @@
-import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
@@ -17,18 +16,14 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
+import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import type { SharedCommandResult } from '../../state/sharedTypes';
-import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { triggerLightImpactHaptic } from '../haptics/appHaptics';
+import { type useAppTheme, useThemedStyles } from '../theme/appTheme';
 
-const POINT_TRANSITION_DURATION_MS = 200;
+const POINT_TRANSITION_DURATION_MS = 250;
 const MIN_TRAVEL_DISTANCE_PX = 32;
 const POINT_VALUE_LINE_HEIGHT = 28;
-
-function triggerPointRailHaptic() {
-  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
-    // Haptics are best-effort UI polish; ignore unsupported-device failures.
-  });
-}
 
 type ChildPointsRailProps = {
   childId: string;
@@ -122,6 +117,7 @@ export function ChildPointsRail({
   points,
 }: ChildPointsRailProps) {
   const styles = useThemedStyles(createStyles);
+  const hapticsEnabled = useLocalSettingsStore((state) => state.hapticsEnabled);
   const [centeredPoints, setCenteredPoints] = useState<number | null>(points);
   const [runners, setRunners] = useState<PointRunnerSnapshot[]>([]);
   const expectedPointsRef = useRef(points);
@@ -184,7 +180,7 @@ export function ChildPointsRail({
     const result = onAdjustPoints(delta);
 
     if (result.ok) {
-      triggerPointRailHaptic();
+      triggerLightImpactHaptic(hapticsEnabled);
       const currentPoints = expectedPointsRef.current;
       const nextPoints = currentPoints + delta;
 
@@ -260,14 +256,11 @@ export function ChildPointsRail({
             styles.pointsCore,
             !isParentUnlocked && styles.pointsCoreLocked,
           ]}
+          onLayout={(event) => {
+            coreWidth.value = event.nativeEvent.layout.width;
+          }}
         >
-          <View
-            onLayout={(event) => {
-              coreWidth.value = event.nativeEvent.layout.width;
-            }}
-            pointerEvents="none"
-            style={styles.pointsValueViewport}
-          >
+          <View pointerEvents="none" style={styles.pointsValueViewport}>
             <Text
               accessible={false}
               style={[styles.pointsValue, styles.pointsValueSizer]}
@@ -279,19 +272,6 @@ export function ChildPointsRail({
                 <Text style={styles.pointsValue}>{centeredPoints}</Text>
               </View>
             ) : null}
-            {runners.map((runner) => (
-              <PointRunner
-                coreWidth={coreWidth}
-                delta={runner.delta}
-                key={runner.id}
-                kind={runner.kind}
-                onComplete={handleRunnerComplete}
-                runnerId={runner.id}
-                textStyle={styles.pointsValue}
-                value={runner.value}
-                wrapperStyle={styles.pointsValueLayer}
-              />
-            ))}
           </View>
         </LoggedPressable>
         {isParentUnlocked ? (
@@ -314,6 +294,21 @@ export function ChildPointsRail({
             </Text>
           </LoggedPressable>
         ) : null}
+        <View pointerEvents="none" style={styles.pointsAnimationLayer}>
+          {runners.map((runner) => (
+            <PointRunner
+              coreWidth={coreWidth}
+              delta={runner.delta}
+              key={runner.id}
+              kind={runner.kind}
+              onComplete={handleRunnerComplete}
+              runnerId={runner.id}
+              textStyle={styles.pointsValue}
+              value={runner.value}
+              wrapperStyle={styles.pointsValueLayer}
+            />
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -389,8 +384,16 @@ const createStyles = ({
       alignItems: 'center',
       height: POINT_VALUE_LINE_HEIGHT,
       justifyContent: 'center',
-      overflow: 'hidden',
       width: '100%',
+    },
+    pointsAnimationLayer: {
+      alignItems: 'center',
+      bottom: 0,
+      justifyContent: 'center',
+      left: 0,
+      position: 'absolute',
+      right: 0,
+      top: 0,
     },
     pointsValueLayer: {
       alignItems: 'center',

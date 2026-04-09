@@ -18,6 +18,7 @@ const mockUseNotifications = jest.fn();
 const mockUseParentSession = jest.fn();
 const mockSetRestartCountdownAfterCheckIn = jest.fn();
 const mockKeyboardModalFrame = jest.fn();
+const mockTriggerLightImpactHaptic = jest.fn();
 
 jest.mock('@expo/vector-icons', () => {
   const { Text } = jest.requireActual('react-native');
@@ -101,6 +102,11 @@ jest.mock('../../../src/features/notifications/NotificationsProvider', () => ({
   useNotifications: () => mockUseNotifications(),
 }));
 
+jest.mock('../../../src/features/haptics/appHaptics', () => ({
+  triggerLightImpactHaptic: (...args: unknown[]) =>
+    mockTriggerLightImpactHaptic(...args),
+}));
+
 jest.mock('../../../src/features/parent/parentSessionContext', () => ({
   useParentSession: () => mockUseParentSession(),
 }));
@@ -110,17 +116,19 @@ jest.mock('../../../src/state/localSettingsStore', () => ({
     selector: (state: {
       parentPin: string | null;
       restartCountdownAfterCheckIn: boolean;
+      hapticsEnabled: boolean;
       setRestartCountdownAfterCheckIn: (value: boolean) => void;
     }) => unknown,
   ) =>
     selector({
+      hapticsEnabled: true,
       parentPin: '2468',
       restartCountdownAfterCheckIn: true,
       setRestartCountdownAfterCheckIn: mockSetRestartCountdownAfterCheckIn,
     }),
 }));
 
-jest.mock('../../../src/features/theme/themeContext', () => ({
+jest.mock('../../../src/features/theme/appTheme', () => ({
   useAppTheme: () => ({
     tokens: {
       accent: '#2563eb',
@@ -201,6 +209,7 @@ describe('TimerCheckInModal', () => {
     ).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Award point to Avery'));
+    expect(mockTriggerLightImpactHaptic).toHaveBeenCalledWith(true);
     expect(mockResolveExpiredTimerChild).toHaveBeenCalledWith(
       'child-1',
       'awarded',
@@ -243,6 +252,7 @@ describe('TimerCheckInModal', () => {
 
     fireEvent.press(screen.getByLabelText('Dismiss point for Avery'));
 
+    expect(mockTriggerLightImpactHaptic).toHaveBeenCalledWith(true);
     expect(mockResolveExpiredTimerChild).toHaveBeenCalledWith(
       'child-1',
       'dismissed',

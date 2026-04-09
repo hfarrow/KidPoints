@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text } from 'react-native';
 
-import { useAppTheme, useThemedStyles } from '../features/theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../features/theme/appTheme';
 import { LoggedPressable } from './LoggedPressable';
 
 type ScreenBackFooterProps = {

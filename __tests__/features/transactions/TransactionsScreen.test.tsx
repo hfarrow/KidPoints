@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
-import { AppThemeProvider } from '../../../src/features/theme/themeContext';
+import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import { TransactionsScreen } from '../../../src/features/transactions/TransactionsScreen';
 import {
   createInitialSharedDocument,
@@ -57,12 +57,12 @@ describe('TransactionsScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <TransactionsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -112,12 +112,12 @@ describe('TransactionsScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <TransactionsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -170,12 +170,12 @@ describe('TransactionsScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <TransactionsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -217,12 +217,12 @@ describe('TransactionsScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <TransactionsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -274,12 +274,12 @@ describe('TransactionsScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <TransactionsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -319,12 +319,12 @@ describe('TransactionsScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <TransactionsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -355,12 +355,12 @@ describe('TransactionsScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <TransactionsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -396,12 +396,12 @@ describe('TransactionsScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <TransactionsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );

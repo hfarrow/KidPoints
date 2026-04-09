@@ -35,7 +35,7 @@ jest.mock('../../src/features/parent/parentSessionContext', () => ({
   }),
 }));
 
-jest.mock('../../src/features/theme/themeContext', () => ({
+jest.mock('../../src/features/theme/appTheme', () => ({
   useAppTheme: () => ({
     tokens: {
       border: '#cbd5e1',

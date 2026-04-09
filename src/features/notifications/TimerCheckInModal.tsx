@@ -12,8 +12,9 @@ import { KeyboardModalFrame } from '../../components/KeyboardModalFrame';
 import { LoggedPressable } from '../../components/LoggedPressable';
 import { ActionPill } from '../../components/Skeleton';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
+import { triggerLightImpactHaptic } from '../haptics/appHaptics';
 import { useParentSession } from '../parent/parentSessionContext';
-import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import { useNotifications } from './NotificationsProvider';
 
 function formatTriggeredAt(timestamp: number) {
@@ -66,6 +67,7 @@ export function TimerCheckInModal() {
   const styles = useThemedStyles(createStyles);
   const { width: windowWidth } = useWindowDimensions();
   const parentPin = useLocalSettingsStore((state) => state.parentPin);
+  const hapticsEnabled = useLocalSettingsStore((state) => state.hapticsEnabled);
   const restartCountdownAfterCheckIn = useLocalSettingsStore(
     (state) => state.restartCountdownAfterCheckIn,
   );
@@ -154,15 +156,16 @@ export function TimerCheckInModal() {
                   isActive={childAction.status === 'dismissed'}
                   isDisabled={childAction.status === 'dismissed'}
                   side="left"
-                  onPress={() =>
+                  onPress={() => {
+                    triggerLightImpactHaptic(hapticsEnabled);
                     void resolveExpiredTimerChild(
                       childAction.childId,
                       'dismissed',
                       {
                         restartTimerOnResolve: restartCountdownAfterCheckIn,
                       },
-                    )
-                  }
+                    );
+                  }}
                 />
                 <View style={styles.childRailCore}>
                   <Text style={styles.childName}>{childAction.childName}</Text>
@@ -189,15 +192,16 @@ export function TimerCheckInModal() {
                   isActive={childAction.status === 'awarded'}
                   isDisabled={childAction.status === 'awarded'}
                   side="right"
-                  onPress={() =>
+                  onPress={() => {
+                    triggerLightImpactHaptic(hapticsEnabled);
                     void resolveExpiredTimerChild(
                       childAction.childId,
                       'awarded',
                       {
                         restartTimerOnResolve: restartCountdownAfterCheckIn,
                       },
-                    )
-                  }
+                    );
+                  }}
                 />
               </View>
             ))}

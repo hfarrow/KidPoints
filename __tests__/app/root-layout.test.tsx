@@ -62,7 +62,7 @@ jest.mock('../../src/navigation/StartupNavigationCoordinator', () => ({
   StartupNavigationCoordinator: () => null,
 }));
 
-jest.mock('../../src/features/theme/themeContext', () => ({
+jest.mock('../../src/features/theme/appTheme', () => ({
   useAppTheme: () => ({
     statusBarStyle: 'dark',
   }),

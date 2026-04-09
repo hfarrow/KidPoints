@@ -3,7 +3,7 @@ import { Alert } from 'react-native';
 
 import { ListBrowserScreen } from '../../../src/features/overlays/ListBrowserScreen';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
-import { AppThemeProvider } from '../../../src/features/theme/themeContext';
+import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import {
   createInitialSharedDocument,
   createSharedStore,
@@ -58,12 +58,12 @@ describe('ListBrowserScreen', () => {
         storage={createMemoryStorage()}
       >
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <ListBrowserScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );

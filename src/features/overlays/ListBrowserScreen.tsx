@@ -12,7 +12,7 @@ import {
 import { Tile } from '../../components/Tile';
 import { createModuleLogger } from '../../logging/logger';
 import { useSharedStore } from '../../state/sharedStore';
-import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { type useAppTheme, useThemedStyles } from '../theme/appTheme';
 
 const log = createModuleLogger('list-browser-screen');
 

@@ -15,7 +15,7 @@ import { Tile } from '../../components/Tile';
 import { createModuleLogger } from '../../logging/logger';
 import { deriveTransactionRows, useSharedStore } from '../../state/sharedStore';
 import type { SharedDocument, TransactionRow } from '../../state/sharedTypes';
-import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 
 const log = createModuleLogger('transactions-screen');
 

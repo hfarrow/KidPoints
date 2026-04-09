@@ -1,10 +1,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import {
-  type useAppTheme,
-  useThemedStyles,
-} from '../features/theme/themeContext';
+import { type useAppTheme, useThemedStyles } from '../features/theme/appTheme';
 
 type ScreenHeaderProps = {
   actions?: ReactNode;

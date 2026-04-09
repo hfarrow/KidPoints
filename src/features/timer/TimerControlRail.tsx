@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
-import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { type useAppTheme, useThemedStyles } from '../theme/appTheme';
 
 type TimerControlRailProps = {
   contextLabel: string;

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
+import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import { SettingsScreen } from '../../../src/features/settings/SettingsScreen';
-import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import * as loggerModule from '../../../src/logging/logger';
 import {
   createSharedStore,
@@ -57,13 +57,13 @@ describe('SettingsScreen', () => {
     render(
       <SharedStoreProvider storage={createMemoryStorage()}>
         <ParentSessionProvider initialParentUnlocked={false}>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialParentPin="2468"
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <SettingsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -87,13 +87,13 @@ describe('SettingsScreen', () => {
     render(
       <SharedStoreProvider storage={sharedStorage}>
         <ParentSessionProvider initialParentUnlocked>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialParentPin="2468"
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <SettingsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -117,12 +117,12 @@ describe('SettingsScreen', () => {
     render(
       <SharedStoreProvider storage={createMemoryStorage()}>
         <ParentSessionProvider initialParentUnlocked={false}>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <SettingsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -140,6 +140,29 @@ describe('SettingsScreen', () => {
     expect(screen.getAllByText('error')).toHaveLength(2);
   });
 
+  it('shows and updates the global haptics setting', () => {
+    render(
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppSettingsProvider
+            initialHapticsEnabled={true}
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <SettingsScreen />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(screen.getByText('Touch Feedback')).toBeTruthy();
+    expect(screen.getAllByText('On')).toHaveLength(1);
+
+    fireEvent(screen.getByLabelText('Enable haptics'), 'valueChange', false);
+
+    expect(screen.getAllByText('Off')).toHaveLength(1);
+  });
+
   it('hides the temp option when only production log levels are selectable', () => {
     jest
       .spyOn(loggerModule, 'getSelectableAppLogLevels')
@@ -148,12 +171,12 @@ describe('SettingsScreen', () => {
     render(
       <SharedStoreProvider storage={createMemoryStorage()}>
         <ParentSessionProvider initialParentUnlocked={false}>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <SettingsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
@@ -165,12 +188,12 @@ describe('SettingsScreen', () => {
     render(
       <SharedStoreProvider storage={createMemoryStorage()}>
         <ParentSessionProvider initialParentUnlocked={false}>
-          <AppThemeProvider
+          <AppSettingsProvider
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
             <SettingsScreen />
-          </AppThemeProvider>
+          </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
     );
