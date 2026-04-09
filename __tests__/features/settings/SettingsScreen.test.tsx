@@ -101,7 +101,7 @@ describe('SettingsScreen', () => {
       screen.queryByText('Retro warm neutrals with classic Gruvbox contrast.'),
     ).toBeNull();
 
-    fireEvent.press(screen.getByLabelText('Open theme family menu'));
+    fireEvent.press(screen.getByLabelText('Open theme family picker'));
 
     expect(
       screen.getByText('Retro warm neutrals with classic Gruvbox contrast.'),

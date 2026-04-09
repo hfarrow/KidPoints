@@ -1,6 +1,7 @@
 import { type PropsWithChildren, type ReactNode, useEffect } from 'react';
 import {
   BackHandler,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -65,57 +66,66 @@ export function ListScaffold({
   const hasContent = Boolean(children);
 
   return (
-    <View style={styles.overlayRoot}>
-      <LoggedPressable
-        accessibilityLabel={`Dismiss ${title}`}
-        disableLogging={disableLogging}
-        logLabel={`Dismiss ${title} backdrop`}
-        onPress={onRequestClose}
-        style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}
-      >
-        <View />
-      </LoggedPressable>
-      <View
-        pointerEvents="box-none"
-        style={[
-          styles.frame,
-          {
-            paddingBottom: insets.bottom + 18,
-            paddingTop: insets.top + 18,
-          },
-        ]}
-      >
-        <View style={[styles.card, { width: cardWidth }]}>
-          <View style={styles.headerRow}>
-            <View style={styles.copyBlock}>
-              <Text accessibilityRole="header" style={styles.title}>
-                {title}
-              </Text>
-              {subtitle ? (
-                <Text style={styles.subtitle}>{subtitle}</Text>
-              ) : null}
+    <Modal
+      animationType="fade"
+      onRequestClose={onRequestClose}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      transparent
+      visible={visible}
+    >
+      <View style={styles.overlayRoot}>
+        <LoggedPressable
+          accessibilityLabel={`Dismiss ${title}`}
+          disableLogging={disableLogging}
+          logLabel={`Dismiss ${title} backdrop`}
+          onPress={onRequestClose}
+          style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}
+        >
+          <View />
+        </LoggedPressable>
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.frame,
+            {
+              paddingBottom: insets.bottom + 18,
+              paddingTop: insets.top + 18,
+            },
+          ]}
+        >
+          <View style={[styles.card, { width: cardWidth }]}>
+            <View style={styles.headerRow}>
+              <View style={styles.copyBlock}>
+                <Text accessibilityRole="header" style={styles.title}>
+                  {title}
+                </Text>
+                {subtitle ? (
+                  <Text style={styles.subtitle}>{subtitle}</Text>
+                ) : null}
+              </View>
+              <LoggedPressable
+                accessibilityLabel={`Close ${title}`}
+                disableLogging={disableLogging}
+                logLabel={`Close ${title}`}
+                onPress={onRequestClose}
+                style={styles.closeButton}
+              >
+                <Text style={styles.closeButtonText}>{closeLabel}</Text>
+              </LoggedPressable>
             </View>
-            <LoggedPressable
-              accessibilityLabel={`Close ${title}`}
-              disableLogging={disableLogging}
-              logLabel={`Close ${title}`}
-              onPress={onRequestClose}
-              style={styles.closeButton}
+            <ScrollView
+              contentContainerStyle={styles.contentContainer}
+              showsVerticalScrollIndicator={false}
+              style={styles.scrollView}
             >
-              <Text style={styles.closeButtonText}>{closeLabel}</Text>
-            </LoggedPressable>
+              {hasContent ? children : emptyState}
+            </ScrollView>
+            {footer ? <View style={styles.footer}>{footer}</View> : null}
           </View>
-          <ScrollView
-            contentContainerStyle={styles.contentContainer}
-            showsVerticalScrollIndicator={false}
-            style={styles.scrollView}
-          >
-            {hasContent ? children : emptyState}
-          </ScrollView>
-          {footer ? <View style={styles.footer}>{footer}</View> : null}
         </View>
       </View>
-    </View>
+    </Modal>
   );
 }
 

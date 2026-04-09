@@ -86,7 +86,7 @@ describe('useAppTheme', () => {
     expect(screen.getByText('theme:gruvbox')).toBeTruthy();
     expect(screen.getByText('mode:system')).toBeTruthy();
     expect(screen.getByText('resolved:dark')).toBeTruthy();
-    expect(screen.getByText('surface:#282828')).toBeTruthy();
+    expect(screen.getByText('surface:#3c3836')).toBeTruthy();
     expect(screen.getByText('accent:#fabd2f')).toBeTruthy();
   });
 });

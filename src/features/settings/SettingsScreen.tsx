@@ -7,10 +7,10 @@ import { LoggedPressable } from '../../components/LoggedPressable';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
+import { SingleSelectList } from '../../components/SingleSelectList';
 import {
   ActionPill,
   ActionPillRow,
-  CompactSurface,
   SectionLabel,
   StatusBadge,
 } from '../../components/Skeleton';
@@ -38,7 +38,7 @@ function getThemeDescription(theme: ThemeDefinition) {
 export function SettingsScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
-  const [isThemeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [isThemeListVisible, setThemeListVisible] = useState(false);
   const { isParentUnlocked, lockParentMode } = useParentSession();
   const {
     activeTheme,
@@ -72,24 +72,24 @@ export function SettingsScreen() {
           <SectionLabel>Theme Family</SectionLabel>
           <LoggedPressable
             accessibilityLabel={
-              isThemeMenuOpen
-                ? 'Close theme family menu'
-                : 'Open theme family menu'
+              isThemeListVisible
+                ? 'Close theme family picker'
+                : 'Open theme family picker'
             }
             accessibilityRole="button"
             logContext={{
               activeThemeId,
-              isThemeMenuOpen,
+              isThemeListVisible,
             }}
             logLabel={
-              isThemeMenuOpen
-                ? 'Close theme family menu'
-                : 'Open theme family menu'
+              isThemeListVisible
+                ? 'Close theme family picker'
+                : 'Open theme family picker'
             }
-            onPress={() => setThemeMenuOpen((current) => !current)}
+            onPress={() => setThemeListVisible(true)}
             style={[
               styles.themeMenuTrigger,
-              isThemeMenuOpen && {
+              isThemeListVisible && {
                 backgroundColor: tokens.accentSoft,
                 borderColor: tokens.accent,
               },
@@ -105,53 +105,10 @@ export function SettingsScreen() {
             </View>
             <Feather
               color={tokens.controlText}
-              name={isThemeMenuOpen ? 'chevron-up' : 'chevron-down'}
+              name="chevron-right"
               size={18}
             />
           </LoggedPressable>
-          {isThemeMenuOpen ? (
-            <CompactSurface style={styles.themeMenu}>
-              {availableThemes.map((theme) => {
-                const isActive = theme.id === activeThemeId;
-
-                return (
-                  <LoggedPressable
-                    key={theme.id}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isActive }}
-                    logContext={{
-                      selected: isActive,
-                      themeId: theme.id,
-                    }}
-                    logLabel={`Set theme family to ${theme.label}`}
-                    onPress={() => {
-                      setActiveThemeId(theme.id);
-                      setThemeMenuOpen(false);
-                    }}
-                    style={[
-                      styles.themeMenuOption,
-                      isActive && {
-                        backgroundColor: tokens.accentSoft,
-                        borderColor: tokens.accent,
-                      },
-                    ]}
-                  >
-                    <View style={styles.themeMenuOptionCopy}>
-                      <Text style={styles.themeMenuOptionTitle}>
-                        {theme.label}
-                      </Text>
-                      <Text style={styles.themeMenuOptionDescription}>
-                        {getThemeDescription(theme)}
-                      </Text>
-                    </View>
-                    {isActive ? (
-                      <StatusBadge label="Active" size="mini" />
-                    ) : null}
-                  </LoggedPressable>
-                );
-              })}
-            </CompactSurface>
-          ) : null}
         </View>
 
         <View style={styles.themeSection}>
@@ -186,6 +143,22 @@ export function SettingsScreen() {
           </View>
         </View>
       </Tile>
+      <SingleSelectList
+        closeLabel="Done"
+        getItemDescription={(theme) => getThemeDescription(theme)}
+        getItemLabel={(theme) => theme.label}
+        items={[...availableThemes]}
+        keyExtractor={(theme) => theme.id}
+        onRequestClose={() => setThemeListVisible(false)}
+        onSelect={(theme) => {
+          setActiveThemeId(theme.id);
+          setThemeListVisible(false);
+        }}
+        selectedItemId={activeThemeId}
+        subtitle="Choose the app color family. Appearance mode still controls light, dark, or system behavior."
+        title="Theme Family"
+        visible={isThemeListVisible}
+      />
 
       <Tile
         accessory={
@@ -312,37 +285,6 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       color: tokens.textMuted,
       fontSize: 14,
       lineHeight: 20,
-    },
-    themeMenu: {
-      gap: 8,
-    },
-    themeMenuOption: {
-      alignItems: 'center',
-      backgroundColor: tokens.controlSurface,
-      borderColor: tokens.border,
-      borderRadius: 16,
-      borderWidth: 1,
-      flexDirection: 'row',
-      gap: 12,
-      justifyContent: 'space-between',
-      minHeight: 56,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-    },
-    themeMenuOptionCopy: {
-      flex: 1,
-      gap: 4,
-      minWidth: 0,
-    },
-    themeMenuOptionDescription: {
-      color: tokens.textMuted,
-      fontSize: 12,
-      lineHeight: 17,
-    },
-    themeMenuOptionTitle: {
-      color: tokens.textPrimary,
-      fontSize: 14,
-      fontWeight: '800',
     },
     themeMenuTrigger: {
       alignItems: 'center',
