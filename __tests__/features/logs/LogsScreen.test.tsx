@@ -5,10 +5,14 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react-native';
-import { Alert, StyleSheet } from 'react-native';
+import { Alert, StyleSheet, Text } from 'react-native';
 import type { StateStorage } from 'zustand/middleware';
 
 import { LogsScreen } from '../../../src/features/logs/LogsScreen';
+import {
+  buildLogLevelColorAssignment,
+  buildNamespaceTintedTileBackgroundColor,
+} from '../../../src/features/logs/namespaceColors';
 import { shareBufferedLogsAsync } from '../../../src/features/logs/shareLogs';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
@@ -94,10 +98,40 @@ describe('LogsScreen', () => {
     };
   }
 
-  function getNamespaceBadgeBackgroundColor(entryId: number) {
+  function getLogTileBackgroundColor(entryId: number) {
     return StyleSheet.flatten(
-      screen.getByTestId(`log-namespace-badge-${entryId}`).props.style,
+      screen.getByTestId(`log-tile-${entryId}`).props.style,
     ).backgroundColor;
+  }
+
+  function getLevelBadgeBackgroundColor(entryId: number) {
+    return StyleSheet.flatten(
+      screen.getByTestId(`log-level-badge-${entryId}`).props.style,
+    ).backgroundColor;
+  }
+
+  function getLevelBadgeTextColor(entryId: number) {
+    return StyleSheet.flatten(
+      screen.getByTestId(`log-level-badge-${entryId}`).findByType(Text).props
+        .style,
+    ).color;
+  }
+
+  function getLevelBadgeBorderColor(entryId: number) {
+    return StyleSheet.flatten(
+      screen.getByTestId(`log-level-badge-${entryId}`).props.style,
+    ).borderColor;
+  }
+
+  function getLevelBadgeBorderWidth(entryId: number) {
+    return StyleSheet.flatten(
+      screen.getByTestId(`log-level-badge-${entryId}`).props.style,
+    ).borderWidth;
+  }
+
+  function getLevelBadgeLabel(entryId: number) {
+    return screen.getByTestId(`log-level-badge-${entryId}`).findByType(Text)
+      .props.children;
   }
 
   it('shows an empty state before any logs are buffered', () => {
@@ -331,9 +365,9 @@ describe('LogsScreen', () => {
       alphaLogger.info('Second alpha log');
     });
 
-    const firstAlphaColor = getNamespaceBadgeBackgroundColor(3);
-    const secondAlphaColor = getNamespaceBadgeBackgroundColor(1);
-    const betaColor = getNamespaceBadgeBackgroundColor(2);
+    const firstAlphaColor = getLogTileBackgroundColor(3);
+    const secondAlphaColor = getLogTileBackgroundColor(1);
+    const betaColor = getLogTileBackgroundColor(2);
 
     expect(firstAlphaColor).toBe(secondAlphaColor);
     expect(betaColor).not.toBe(firstAlphaColor);
@@ -348,8 +382,8 @@ describe('LogsScreen', () => {
     });
 
     await waitFor(() => {
-      expect(getNamespaceBadgeBackgroundColor(1)).toBe(firstAlphaColor);
-      expect(getNamespaceBadgeBackgroundColor(2)).toBe(betaColor);
+      expect(getLogTileBackgroundColor(1)).toBe(firstAlphaColor);
+      expect(getLogTileBackgroundColor(2)).toBe(betaColor);
     });
   });
 
@@ -376,15 +410,64 @@ describe('LogsScreen', () => {
     });
 
     await waitFor(() => {
-      expect(getNamespaceBadgeBackgroundColor(1)).toBe('#9333ea');
-      expect(getNamespaceBadgeBackgroundColor(2)).toBe('#2563eb');
+      expect(getLogTileBackgroundColor(1)).toBe(
+        buildNamespaceTintedTileBackgroundColor('#9333ea', '#e3d5fb'),
+      );
+      expect(getLogTileBackgroundColor(2)).toBe(
+        buildNamespaceTintedTileBackgroundColor('#2563eb', '#e3d5fb'),
+      );
     });
 
     fireEvent.press(screen.getByText('Reset Namespace Colors'));
 
     await waitFor(() => {
-      expect(getNamespaceBadgeBackgroundColor(1)).toBe('#2563eb');
-      expect(getNamespaceBadgeBackgroundColor(2)).toBe('#dc2626');
+      expect(getLogTileBackgroundColor(1)).toBe(
+        buildNamespaceTintedTileBackgroundColor('#2563eb', '#e3d5fb'),
+      );
+      expect(getLogTileBackgroundColor(2)).toBe(
+        buildNamespaceTintedTileBackgroundColor('#dc2626', '#e3d5fb'),
+      );
     });
+  });
+
+  it('colors level badges with console-like tones', () => {
+    const logger = createModuleLogger('alpha');
+    setAppLogLevel('temp');
+
+    renderLogsScreen();
+
+    act(() => {
+      logger.temp('Temp log');
+      logger.debug('Debug log');
+      logger.info('Info log');
+      logger.warn('Warn log');
+      logger.error('Error log');
+    });
+
+    expect(getLevelBadgeBackgroundColor(1)).toBe(
+      buildLogLevelColorAssignment('temp').backgroundColor,
+    );
+    expect(getLevelBadgeBackgroundColor(2)).toBe(
+      buildLogLevelColorAssignment('debug').backgroundColor,
+    );
+    expect(getLevelBadgeBackgroundColor(3)).toBe(
+      buildLogLevelColorAssignment('info').backgroundColor,
+    );
+    expect(getLevelBadgeBackgroundColor(4)).toBe(
+      buildLogLevelColorAssignment('warn').backgroundColor,
+    );
+    expect(getLevelBadgeBackgroundColor(5)).toBe(
+      buildLogLevelColorAssignment('error').backgroundColor,
+    );
+    expect(getLevelBadgeLabel(1)).toBe('T');
+    expect(getLevelBadgeLabel(2)).toBe('D');
+    expect(getLevelBadgeLabel(3)).toBe('I');
+    expect(getLevelBadgeLabel(4)).toBe('W');
+    expect(getLevelBadgeLabel(5)).toBe('E');
+    expect(getLevelBadgeBorderColor(3)).toBe('#000000');
+    expect(getLevelBadgeBorderWidth(3)).toBe(StyleSheet.hairlineWidth);
+    expect(getLevelBadgeTextColor(3)).toBe(
+      buildLogLevelColorAssignment('info').textColor,
+    );
   });
 });

@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { type useAppTheme, useThemedStyles } from '../features/theme/appTheme';
 import { ListScaffold } from './ListScaffold';
 import { LoggedPressable } from './LoggedPressable';
-import { StatusBadge } from './Skeleton';
+import { ActionPill, ActionPillRow, StatusBadge } from './Skeleton';
 
 type MultiSelectListProps<T> = {
   closeLabel?: string;
@@ -46,6 +46,31 @@ export function MultiSelectList<T>({
   visible,
 }: MultiSelectListProps<T>) {
   const styles = useThemedStyles(createStyles);
+  const selectedItemIdSet = new Set(selectedItemIds);
+  const hasSelectedItems = selectedItemIds.length > 0;
+  const hasUnselectedItems = items.some(
+    (item, index) => !selectedItemIdSet.has(keyExtractor(item, index)),
+  );
+
+  const handleSelectAll = () => {
+    items.forEach((item, index) => {
+      const itemId = keyExtractor(item, index);
+
+      if (!selectedItemIdSet.has(itemId)) {
+        onToggle(item, index);
+      }
+    });
+  };
+
+  const handleSelectNone = () => {
+    items.forEach((item, index) => {
+      const itemId = keyExtractor(item, index);
+
+      if (selectedItemIdSet.has(itemId)) {
+        onToggle(item, index);
+      }
+    });
+  };
 
   return (
     <ListScaffold
@@ -56,6 +81,22 @@ export function MultiSelectList<T>({
       onRequestClose={onRequestClose}
       subtitle={subtitle}
       title={title}
+      utilityBar={
+        items.length > 0 ? (
+          <ActionPillRow>
+            <ActionPill
+              disableLogging={disableLogging}
+              label="Select None"
+              onPress={hasSelectedItems ? handleSelectNone : undefined}
+            />
+            <ActionPill
+              disableLogging={disableLogging}
+              label="Select All"
+              onPress={hasUnselectedItems ? handleSelectAll : undefined}
+            />
+          </ActionPillRow>
+        ) : undefined
+      }
       visible={visible}
     >
       {items.length > 0 ? (
@@ -92,7 +133,7 @@ export function MultiSelectList<T>({
                   )}
                 </View>
                 {isSelected ? (
-                  <StatusBadge label="Included" size="mini" />
+                  <StatusBadge label="Selected" size="mini" />
                 ) : null}
               </LoggedPressable>
             );

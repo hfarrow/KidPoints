@@ -21,6 +21,7 @@ type ListScaffoldProps = PropsWithChildren<{
   onRequestClose: () => void;
   subtitle?: string;
   title: string;
+  utilityBar?: ReactNode;
   visible: boolean;
 }>;
 
@@ -33,6 +34,7 @@ export function ListScaffold({
   onRequestClose,
   subtitle,
   title,
+  utilityBar,
   visible,
 }: ListScaffoldProps) {
   const styles = useThemedStyles(createStyles);
@@ -114,6 +116,9 @@ export function ListScaffold({
                 <Text style={styles.closeButtonText}>{closeLabel}</Text>
               </LoggedPressable>
             </View>
+            {utilityBar ? (
+              <View style={styles.utilityBar}>{utilityBar}</View>
+            ) : null}
             <ScrollView
               contentContainerStyle={styles.contentContainer}
               showsVerticalScrollIndicator={false}
@@ -188,6 +193,9 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       ...StyleSheet.absoluteFillObject,
       elevation: 1000,
       zIndex: 1000,
+    },
+    utilityBar: {
+      paddingTop: 2,
     },
     scrollView: {
       flexShrink: 1,

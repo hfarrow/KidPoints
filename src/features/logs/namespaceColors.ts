@@ -1,3 +1,5 @@
+import type { AppLogLevel } from '../../logging/logger';
+
 const LOG_NAMESPACE_BASE_COLORS = [
   '#2563eb',
   '#dc2626',
@@ -8,8 +10,34 @@ const LOG_NAMESPACE_BASE_COLORS = [
 ] as const;
 
 const LOG_NAMESPACE_BRIGHTNESS_SHIFT_STEP = 12;
+const LOG_NAMESPACE_TILE_TINT_RATIO = 0.24;
 const MIN_LIGHTNESS = 24;
 const MAX_LIGHTNESS = 76;
+const LOG_LEVEL_COLOR_ASSIGNMENTS: Record<
+  AppLogLevel,
+  LogNamespaceColorAssignment
+> = {
+  debug: {
+    backgroundColor: '#4b5563',
+    textColor: '#f8fafc',
+  },
+  error: {
+    backgroundColor: '#7f1d1d',
+    textColor: '#fee2e2',
+  },
+  info: {
+    backgroundColor: '#d1d5db',
+    textColor: '#111827',
+  },
+  temp: {
+    backgroundColor: '#1d4ed8',
+    textColor: '#dbeafe',
+  },
+  warn: {
+    backgroundColor: '#854d0e',
+    textColor: '#fef3c7',
+  },
+};
 
 export type LogNamespaceColorAssignment = {
   backgroundColor: string;
@@ -47,6 +75,21 @@ export function buildLogNamespaceColorAssignment(backgroundColor: string) {
     backgroundColor,
     textColor: getReadableTextColor(backgroundColor),
   };
+}
+
+export function buildLogLevelColorAssignment(level: AppLogLevel) {
+  return LOG_LEVEL_COLOR_ASSIGNMENTS[level];
+}
+
+export function buildNamespaceTintedTileBackgroundColor(
+  namespaceBackgroundColor: string,
+  tileSurfaceColor: string,
+) {
+  return blendHexColors(
+    tileSurfaceColor,
+    namespaceBackgroundColor,
+    LOG_NAMESPACE_TILE_TINT_RATIO,
+  );
 }
 
 export function buildReservedNamespaceColor(index: number) {
@@ -113,6 +156,23 @@ function getReadableTextColor(hexColor: string) {
     (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
 
   return relativeLuminance > 0.6 ? '#0f172a' : '#f8fafc';
+}
+
+function blendHexColors(
+  baseHexColor: string,
+  tintHexColor: string,
+  tintRatio: number,
+) {
+  const baseColor = hexToRgb(baseHexColor);
+  const tintColor = hexToRgb(tintHexColor);
+  const ratio = clamp(tintRatio, 0, 1);
+  const inverseRatio = 1 - ratio;
+
+  return rgbToHex(
+    Math.round(baseColor.red * inverseRatio + tintColor.red * ratio),
+    Math.round(baseColor.green * inverseRatio + tintColor.green * ratio),
+    Math.round(baseColor.blue * inverseRatio + tintColor.blue * ratio),
+  );
 }
 
 function hexToRgb(hexColor: string) {

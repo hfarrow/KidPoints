@@ -21,10 +21,20 @@ import {
 } from '../../logging/logger';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
-import { buildLogNamespaceColorAssignment } from './namespaceColors';
+import {
+  buildLogLevelColorAssignment,
+  buildNamespaceTintedTileBackgroundColor,
+} from './namespaceColors';
 import { shareBufferedLogsAsync } from './shareLogs';
 
 const ALL_VISIBLE_LOG_LEVEL: AppLogLevel = 'temp';
+const LOG_LEVEL_BADGE_LABELS: Record<AppLogLevel, string> = {
+  debug: 'D',
+  error: 'E',
+  info: 'I',
+  temp: 'T',
+  warn: 'W',
+};
 
 export function LogsScreen() {
   const styles = useThemedStyles(createStyles);
@@ -77,14 +87,17 @@ export function LogsScreen() {
   const areAllLogsVisible =
     selectedLogLevel === ALL_VISIBLE_LOG_LEVEL &&
     activeSelectedNamespaceIds.length === 0;
-  const namespaceBadgeAssignments = useMemo(() => {
+  const namespaceTileBackgroundColors = useMemo(() => {
     return Object.fromEntries(
       Object.entries(logNamespaceColors).map(([namespace, backgroundColor]) => [
         namespace,
-        buildLogNamespaceColorAssignment(backgroundColor),
+        buildNamespaceTintedTileBackgroundColor(
+          backgroundColor,
+          tokens.tileSurface,
+        ),
       ]),
     );
-  }, [logNamespaceColors]);
+  }, [logNamespaceColors, tokens.tileSurface]);
 
   useEffect(() => {
     if (bufferedNamespacesByReservationOrder.length === 0) {
@@ -309,45 +322,43 @@ export function LogsScreen() {
           <View style={styles.logList}>
             {filteredEntries.map((entry, index) => {
               const isExpanded = expandedLogIds.includes(entry.id);
-              const namespaceBadgeAssignment = entry.namespace
-                ? namespaceBadgeAssignments[entry.namespace]
+              const levelBadgeAssignment = buildLogLevelColorAssignment(
+                entry.level,
+              );
+              const tileBackgroundColor = entry.namespace
+                ? namespaceTileBackgroundColors[entry.namespace]
                 : null;
 
               return (
                 <Tile
-                  accessory={
-                    <View style={styles.badgeRow}>
-                      <StatusBadge label={entry.level} size="mini" />
-                      {entry.namespace ? (
-                        <StatusBadge
-                          badgeStyle={
-                            namespaceBadgeAssignment
-                              ? {
-                                  backgroundColor:
-                                    namespaceBadgeAssignment.backgroundColor,
-                                }
-                              : undefined
-                          }
-                          label={entry.namespace}
-                          labelStyle={
-                            namespaceBadgeAssignment
-                              ? {
-                                  color: namespaceBadgeAssignment.textColor,
-                                }
-                              : undefined
-                          }
-                          size="mini"
-                          testID={`log-namespace-badge-${entry.id}`}
-                        />
-                      ) : null}
-                    </View>
-                  }
                   collapsed={!isExpanded}
                   collapsible
                   collapsibleLabel={entry.previewText}
                   density="extraCompact"
                   disableCollapseLogging
                   key={entry.id}
+                  leadingAccessory={
+                    <StatusBadge
+                      badgeStyle={[
+                        styles.levelBadge,
+                        {
+                          backgroundColor: levelBadgeAssignment.backgroundColor,
+                        },
+                      ]}
+                      label={LOG_LEVEL_BADGE_LABELS[entry.level]}
+                      labelStyle={{ color: levelBadgeAssignment.textColor }}
+                      size="mini"
+                      testID={`log-level-badge-${entry.id}`}
+                    />
+                  }
+                  style={
+                    tileBackgroundColor
+                      ? {
+                          backgroundColor: tileBackgroundColor,
+                        }
+                      : undefined
+                  }
+                  testID={`log-tile-${entry.id}`}
                   onCollapsedChange={(isCollapsed) => {
                     setExpandedLogIds((currentIds) =>
                       isCollapsed
@@ -359,6 +370,18 @@ export function LogsScreen() {
                   }}
                   title={
                     <View style={styles.titleBlock}>
+                      {entry.namespace ? (
+                        <View style={styles.logMetaRow}>
+                          <StatusBadge
+                            label={entry.namespace}
+                            size="mini"
+                            testID={`log-namespace-badge-${entry.id}`}
+                          />
+                          <Text style={styles.timestampText}>
+                            {buildLogTimestampLabel(entry.timestampMs)}
+                          </Text>
+                        </View>
+                      ) : null}
                       <Text
                         numberOfLines={2}
                         style={styles.logTitle}
@@ -366,9 +389,11 @@ export function LogsScreen() {
                       >
                         {entry.previewText}
                       </Text>
-                      <Text style={styles.timestampText}>
-                        {buildLogTimestampLabel(entry.timestampMs)}
-                      </Text>
+                      {!entry.namespace ? (
+                        <Text style={styles.timestampText}>
+                          {buildLogTimestampLabel(entry.timestampMs)}
+                        </Text>
+                      ) : null}
                     </View>
                   }
                 >
@@ -480,11 +505,30 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     logList: {
       gap: 4,
     },
+    logMetaRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 8,
+      justifyContent: 'space-between',
+      minWidth: 0,
+    },
     logTitle: {
       color: tokens.textPrimary,
       fontSize: 13,
       fontWeight: '800',
       lineHeight: 18,
+    },
+    levelBadge: {
+      alignItems: 'center',
+      borderColor: '#000000',
+      borderRadius: 999,
+      borderWidth: StyleSheet.hairlineWidth,
+      flexShrink: 0,
+      height: 22,
+      justifyContent: 'center',
+      minWidth: 22,
+      paddingHorizontal: 0,
+      paddingVertical: 0,
     },
     namespaceAction: {
       alignItems: 'center',
@@ -540,5 +584,6 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     },
     titleBlock: {
       gap: 1,
+      minWidth: 0,
     },
   });

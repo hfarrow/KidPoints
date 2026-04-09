@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { ActionList } from '../../src/components/ActionList';
@@ -66,11 +66,51 @@ describe('List mode components', () => {
       />,
     );
 
-    expect(screen.getByText('Included')).toBeTruthy();
+    expect(screen.getByText('Selected')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Milo'));
 
     expect(onToggle).toHaveBeenCalledWith(listItems[1], 1);
+  });
+
+  it('keeps select-all and select-none actions pinned outside the item rows', () => {
+    function MultiSelectHarness() {
+      const [selectedItemIds, setSelectedItemIds] = useState<string[]>(['ava']);
+
+      return (
+        <MultiSelectList
+          getItemDescription={(item) => item.detail}
+          getItemLabel={(item) => item.name}
+          items={listItems}
+          keyExtractor={(item) => item.id}
+          onRequestClose={jest.fn()}
+          onToggle={(item) => {
+            setSelectedItemIds((currentIds) =>
+              currentIds.includes(item.id)
+                ? currentIds.filter((currentId) => currentId !== item.id)
+                : [...currentIds, item.id],
+            );
+          }}
+          selectedItemIds={selectedItemIds}
+          title="Filter Children"
+          visible
+        />
+      );
+    }
+
+    renderWithSettings(<MultiSelectHarness />);
+
+    expect(screen.getByText('Select None')).toBeTruthy();
+    expect(screen.getByText('Select All')).toBeTruthy();
+    expect(screen.getAllByText('Selected')).toHaveLength(1);
+
+    fireEvent.press(screen.getByText('Select All'));
+
+    expect(screen.getAllByText('Selected')).toHaveLength(2);
+
+    fireEvent.press(screen.getByText('Select None'));
+
+    expect(screen.queryByText('Selected')).toBeNull();
   });
 
   it('renders arbitrary custom rows through ActionList', () => {
