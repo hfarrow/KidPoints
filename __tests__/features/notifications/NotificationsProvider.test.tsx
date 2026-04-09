@@ -272,8 +272,11 @@ function NotificationsProbe() {
   const secondActiveChildId = activeChildIds[1] ?? null;
   const pauseTimer = useSharedStore((state) => state.pauseTimer);
   const startTimer = useSharedStore((state) => state.startTimer);
-  const checkInTransactionCount = sharedDocument.transactions.filter(
-    (transaction) => transaction.kind === 'check-in-resolved',
+  const pointAdjustmentCount = sharedDocument.transactions.filter(
+    (transaction) => transaction.kind === 'points-adjusted',
+  ).length;
+  const groupedCheckInCount = sharedDocument.transactions.filter(
+    (transaction) => transaction.groupId != null,
   ).length;
   const pointSnapshot = activeChildIds
     .map((childId) => sharedDocument.head.childrenById[childId]?.points ?? -1)
@@ -297,9 +300,10 @@ function NotificationsProbe() {
         {activeExpiredTimerSession?.intervalId ?? 'none'}
       </Text>
       <Text testID="points-snapshot">{pointSnapshot}</Text>
-      <Text testID="check-in-transaction-count">
-        {String(checkInTransactionCount)}
+      <Text testID="point-adjustment-count">
+        {String(pointAdjustmentCount)}
       </Text>
+      <Text testID="grouped-check-in-count">{String(groupedCheckInCount)}</Text>
       <Text testID="transaction-kinds">{transactionKinds}</Text>
       <Text
         onPress={() => {
@@ -752,9 +756,9 @@ describe('NotificationsProvider', () => {
           '0|0',
         ),
       );
-      expect(
-        screen.getByTestId('check-in-transaction-count').props.children,
-      ).toBe('0');
+      expect(screen.getByTestId('point-adjustment-count').props.children).toBe(
+        '0',
+      );
 
       await act(async () => {
         fireEvent.press(screen.getByText('Dismiss child'));
@@ -765,9 +769,9 @@ describe('NotificationsProvider', () => {
           '0|0',
         ),
       );
-      expect(
-        screen.getByTestId('check-in-transaction-count').props.children,
-      ).toBe('0');
+      expect(screen.getByTestId('point-adjustment-count').props.children).toBe(
+        '0',
+      );
 
       await act(async () => {
         fireEvent.press(screen.getByText('Award child 2'));
@@ -783,11 +787,17 @@ describe('NotificationsProvider', () => {
           '0|1',
         ),
       );
-      expect(
-        screen.getByTestId('check-in-transaction-count').props.children,
-      ).toBe('1');
+      expect(screen.getByTestId('point-adjustment-count').props.children).toBe(
+        '1',
+      );
+      expect(screen.getByTestId('grouped-check-in-count').props.children).toBe(
+        '2',
+      );
       expect(screen.getByTestId('transaction-kinds').props.children).toContain(
-        'check-in-resolved',
+        'points-adjusted',
+      );
+      expect(screen.getByTestId('transaction-kinds').props.children).toContain(
+        'check-in-dismissed',
       );
     } finally {
       jest.useRealTimers();

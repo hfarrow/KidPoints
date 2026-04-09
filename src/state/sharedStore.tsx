@@ -52,7 +52,12 @@ type SharedStoreState = {
   recordParentModeLocked: () => SharedCommandResult;
   recordParentUnlockAttempt: (success: boolean) => SharedCommandResult;
   resetTimer: () => SharedCommandResult;
-  resolveCheckInSession: (awardedChildIds: string[]) => SharedCommandResult;
+  resolveCheckInSession: (
+    childDecisions: {
+      childId: string;
+      status: 'awarded' | 'dismissed';
+    }[],
+  ) => SharedCommandResult;
   restoreChild: (childId: string) => SharedCommandResult;
   restoreTransaction: (transactionId: string) => SharedCommandResult;
   setPoints: (childId: string, points: number) => SharedCommandResult;
@@ -457,6 +462,8 @@ function normalizeTransactionRecord(
     ...transaction,
     affectedChildIds: [...transaction.affectedChildIds],
     eventIds: [...transaction.eventIds],
+    groupId: transaction.groupId,
+    groupLabel: transaction.groupLabel,
     isRestorable: isTransientTimerTransaction
       ? false
       : (transaction.isRestorable ?? true),
@@ -583,6 +590,8 @@ function createTransactionRecord(args: {
   childBefore: ChildSnapshot | null;
   childId: string | null;
   eventIds: string[];
+  groupId?: string;
+  groupLabel?: string;
   isRestorable?: boolean;
   kind: TransactionKind;
   occurredAt: string;
@@ -601,6 +610,8 @@ function createTransactionRecord(args: {
     childBefore,
     childId,
     eventIds,
+    groupId,
+    groupLabel,
     isRestorable = true,
     kind,
     occurredAt,
@@ -619,6 +630,8 @@ function createTransactionRecord(args: {
     childId,
     childName: childAfter?.name ?? childBefore?.name ?? null,
     eventIds,
+    groupId,
+    groupLabel,
     id: transactionId ?? `tx-${eventIds[0] ?? generateId('transaction')}`,
     isRestorable,
     kind,
@@ -982,6 +995,10 @@ function summarizeRestoreTarget(
 
       return 'Resolved Check-In';
     }
+    case 'check-in-dismissed':
+      return targetTransaction.childName
+        ? `${targetTransaction.childName} Check-In Dismissed`
+        : 'Check-In Dismissed';
     case 'points-adjusted': {
       if (
         targetTransaction.childName &&
@@ -1077,6 +1094,10 @@ function summarizeTransactionRow(
 
       return 'Resolved Check-In';
     }
+    case 'check-in-dismissed':
+      return transaction.childName
+        ? `${transaction.childName} Check-In Dismissed`
+        : 'Check-In Dismissed';
     case 'child-created':
       return transaction.childName
         ? `${transaction.childName} Added`
@@ -1189,6 +1210,8 @@ export function deriveTransactionRows(document: SharedDocument) {
       affectedChildIds: transaction.affectedChildIds,
       childId: transaction.childId,
       childName: transaction.childName,
+      groupId: transaction.groupId,
+      groupLabel: transaction.groupLabel,
       id: transaction.id,
       isHead,
       isOrphaned,
@@ -1387,50 +1410,93 @@ function createSharedStoreActions(
 
       return result;
     },
-    resolveCheckInSession(awardedChildIds: string[]): SharedCommandResult {
-      const uniqueAwardedChildIds = [...new Set(awardedChildIds)];
+    resolveCheckInSession(
+      childDecisions: {
+        childId: string;
+        status: 'awarded' | 'dismissed';
+      }[],
+    ): SharedCommandResult {
+      const uniqueChildDecisions = [
+        ...new Map(
+          childDecisions.map((childDecision) => [
+            childDecision.childId,
+            childDecision,
+          ]),
+        ).values(),
+      ];
 
-      if (uniqueAwardedChildIds.length === 0) {
+      if (uniqueChildDecisions.length === 0) {
         return { ok: true };
       }
 
       let result: SharedCommandResult = { ok: true };
 
       set((state) => {
-        const childSnapshotsBefore = new Map<string, ChildSnapshot>();
+        const occurredAt = new Date().toISOString();
+        const builder = createEventBuilder(state.document);
+        const events: SharedEvent[] = [];
+        let nextHead = cloneHead(state.document.head);
+        let parentTransactionId = state.document.currentHeadTransactionId;
+        const awardedCount = uniqueChildDecisions.filter(
+          (childDecision) => childDecision.status === 'awarded',
+        ).length;
+        const dismissedCount = uniqueChildDecisions.filter(
+          (childDecision) => childDecision.status === 'dismissed',
+        ).length;
+        const groupId = generateId('transaction-group');
+        const groupLabel =
+          awardedCount > 0 && dismissedCount > 0
+            ? `Check-In Results +${awardedCount} Point${awardedCount === 1 ? '' : 's'}`
+            : awardedCount > 0
+              ? `Check-In Awards +${awardedCount} Point${awardedCount === 1 ? '' : 's'}`
+              : 'Check-In Results';
+        const transactions: TransactionRecord[] = [];
 
-        for (const childId of uniqueAwardedChildIds) {
-          const child = getChild(state.document.head, childId);
+        for (const childDecision of uniqueChildDecisions) {
+          const childBefore = getChild(nextHead, childDecision.childId);
 
-          if (!child || child.status !== 'active') {
+          if (!childBefore || childBefore.status !== 'active') {
             logRejectedSharedStoreMutation(
               'resolveCheckInSession',
-              'Only active children can receive check-in awards.',
+              'Only active children can be resolved in a check-in session.',
               {
-                awardedChildIds: uniqueAwardedChildIds,
-                childId,
+                childDecisions: uniqueChildDecisions,
+                childId: childDecision.childId,
               },
             );
             result = {
-              error: 'Only active children can receive check-in awards.',
+              error:
+                'Only active children can be resolved in a check-in session.',
               ok: false,
             };
             return state;
           }
 
-          childSnapshotsBefore.set(childId, child);
-        }
+          if (childDecision.status === 'dismissed') {
+            transactions.push(
+              createTransactionRecord({
+                affectedChildIds: [childDecision.childId],
+                childAfter: childBefore,
+                childBefore,
+                childId: childDecision.childId,
+                eventIds: [],
+                groupId,
+                groupLabel,
+                isRestorable: false,
+                kind: 'check-in-dismissed',
+                occurredAt,
+                parentTransactionId,
+                participatesInHistory: false,
+                stateAfter: nextHead,
+              }),
+            );
+            continue;
+          }
 
-        const occurredAt = new Date().toISOString();
-        const builder = createEventBuilder(state.document);
-        const events: SharedEvent[] = [];
-        let nextHead = cloneHead(state.document.head);
-
-        for (const childId of uniqueAwardedChildIds) {
           const event = builder.build(
             'child.pointsAdjusted',
             {
-              childId,
+              childId: childDecision.childId,
               delta: 1,
             },
             occurredAt,
@@ -1438,49 +1504,61 @@ function createSharedStoreActions(
 
           events.push(event);
           nextHead = applySharedEvent(nextHead, event);
+          const childAfter = getChild(nextHead, childDecision.childId);
+          const transaction = createTransactionRecord({
+            affectedChildIds: [childDecision.childId],
+            childAfter,
+            childBefore,
+            childId: childDecision.childId,
+            eventIds: [event.eventId],
+            groupId,
+            groupLabel,
+            kind: 'points-adjusted',
+            occurredAt,
+            parentTransactionId,
+            pointsAfter: childAfter?.points,
+            pointsBefore: childBefore.points,
+            stateAfter: nextHead,
+          });
+
+          parentTransactionId = transaction.id;
+          transactions.push(transaction);
         }
 
-        const primaryChildId =
-          uniqueAwardedChildIds.length === 1 ? uniqueAwardedChildIds[0] : null;
-        const primaryChildBefore = primaryChildId
-          ? (childSnapshotsBefore.get(primaryChildId) ?? null)
-          : null;
-        const primaryChildAfter = primaryChildId
-          ? getChild(nextHead, primaryChildId)
-          : null;
-        const transaction = createTransactionRecord({
-          affectedChildIds: uniqueAwardedChildIds,
-          childAfter: primaryChildAfter,
-          childBefore: primaryChildBefore,
-          childId: primaryChildId,
-          eventIds: events.map((event) => event.eventId),
-          kind: 'check-in-resolved',
-          occurredAt,
-          parentTransactionId: state.document.currentHeadTransactionId,
-          pointsAfter: primaryChildAfter?.points,
-          pointsBefore: primaryChildBefore?.points,
-          stateAfter: nextHead,
+        logSharedStoreMutation('resolveCheckInSession', {
+          childDecisions: uniqueChildDecisions,
+          dismissedCount,
+          eventCount: events.length,
+          groupId,
+          transactionCount: transactions.length,
+          awardedCount,
+        });
+        transactions.forEach((transaction) => {
+          logSharedTransaction(transaction, {
+            eventCount: transaction.eventIds.length,
+            groupId,
+          });
         });
 
-        logSharedStoreMutation('resolveCheckInSession', {
-          awardedChildIds: uniqueAwardedChildIds,
-          eventCount: events.length,
-          transactionId: transaction.id,
-        });
-        logSharedTransaction(transaction, {
-          awardedChildIds: uniqueAwardedChildIds,
-          eventCount: events.length,
-        });
+        const sortedEvents = sortEventsCanonical([
+          ...state.document.events,
+          ...events,
+        ]);
 
         return {
           ...state,
-          document: commitDocumentChange({
-            document: state.document,
-            eventsToAppend: events,
+          document: {
+            ...state.document,
+            currentHeadTransactionId: parentTransactionId,
+            events: sortedEvents,
+            head: cloneHead(nextHead),
             isOrphanedRestoreWindowOpen: false,
-            nextHead,
-            transaction,
-          }),
+            nextSequence: Math.max(
+              state.document.nextSequence,
+              deriveNextSequence(sortedEvents),
+            ),
+            transactions: [...state.document.transactions, ...transactions],
+          },
         };
       });
 

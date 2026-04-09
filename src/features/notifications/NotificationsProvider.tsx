@@ -727,17 +727,26 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       notificationDocumentRef.current = nextDocument;
 
       if (didResolveSession) {
-        const awardedChildIds =
-          childActions
-            ?.filter((childAction) => childAction.status === 'awarded')
-            .map((childAction) => childAction.childId) ?? [];
+        const resolvedChildDecisions =
+          childActions?.flatMap((childAction) =>
+            childAction.status === 'pending'
+              ? []
+              : [
+                  {
+                    childId: childAction.childId,
+                    status: childAction.status,
+                  },
+                ],
+          ) ?? [];
 
-        if (awardedChildIds.length > 0) {
-          const resolveCheckInResult = resolveCheckInSession(awardedChildIds);
+        if (resolvedChildDecisions.length > 0) {
+          const resolveCheckInResult = resolveCheckInSession(
+            resolvedChildDecisions,
+          );
 
           if (!resolveCheckInResult.ok) {
             log.error('Failed to commit resolved check-in session', {
-              awardedChildIds,
+              childDecisions: resolvedChildDecisions,
               error: resolveCheckInResult.error,
               intervalId: activeExpiredTimerSession.intervalId,
             });

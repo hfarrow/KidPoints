@@ -83,6 +83,113 @@ describe('TransactionsScreen', () => {
     expect(screen.getByText('Restore To This Point')).toBeTruthy();
   });
 
+  it('groups mixed check-in results into one expandable tile while keeping dismissal rows audit-only', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'tx-check-in-group',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    expect(store.getState().addChild('Noah').ok).toBe(true);
+    const [avaId, noahId] = store.getState().document.head.activeChildIds;
+
+    if (!avaId || !noahId) {
+      throw new Error('Expected grouped check-in test to create two children');
+    }
+
+    expect(
+      store.getState().resolveCheckInSession([
+        { childId: avaId, status: 'dismissed' },
+        { childId: noahId, status: 'awarded' },
+      ]).ok,
+    ).toBe(true);
+
+    render(
+      <SharedStoreProvider
+        initialDocument={store.getState().document}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <TransactionsScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(screen.getByTestId('transaction-summary-0').props.children).toBe(
+      'Check-In Results +1 Point',
+    );
+    expect(screen.getByText('2 Actions')).toBeTruthy();
+    expect(screen.queryByText('Ava Check-In Dismissed')).toBeNull();
+    expect(screen.queryByText('Ava +1 Points [0 > 1]')).toBeNull();
+    expect(screen.queryByText('Restore To This Point')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Expand Check-In Results +1 Point'));
+    expect(screen.getByText('Ava Check-In Dismissed')).toBeTruthy();
+    expect(screen.getByText('Noah +1 Points [0 > 1]')).toBeTruthy();
+    expect(screen.queryByText('Audit entries cannot be restored.')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Expand Ava Check-In Dismissed'));
+    expect(screen.getByText('Audit entries cannot be restored.')).toBeTruthy();
+    expect(screen.queryByText('Restore To This Point')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Expand Noah +1 Points [0 > 1]'));
+    expect(screen.getAllByText('HEAD')).toHaveLength(2);
+    expect(screen.queryByText('Restore To This Point')).toBeNull();
+  });
+
+  it('shows a parent tile for a single-row check-in session', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'tx-check-in-single',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error('Expected single check-in test to create one child');
+    }
+
+    expect(
+      store.getState().resolveCheckInSession([{ childId, status: 'awarded' }])
+        .ok,
+    ).toBe(true);
+
+    render(
+      <SharedStoreProvider
+        initialDocument={store.getState().document}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <TransactionsScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(screen.getByTestId('transaction-summary-0').props.children).toBe(
+      'Check-In Awards +1 Point',
+    );
+    expect(screen.getByText('1 Actions')).toBeTruthy();
+    expect(screen.queryByText('Ava +1 Points [0 > 1]')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Expand Check-In Awards +1 Point'));
+    expect(screen.getByText('Ava +1 Points [0 > 1]')).toBeTruthy();
+  });
+
   it('shows newest transactions first and hides orphaned rows until enabled', () => {
     const store = createSharedStore({
       initialDocument: createInitialSharedDocument({ deviceId: 'tx-screen' }),

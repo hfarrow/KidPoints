@@ -75,6 +75,32 @@ function buildDisplayItems(rows: TransactionRow[]) {
   while (index < rows.length) {
     const row = rows[index];
 
+    if (row.groupId && row.groupLabel) {
+      const groupedRows = [row];
+      let nextIndex = index + 1;
+
+      while (nextIndex < rows.length) {
+        const nextRow = rows[nextIndex];
+
+        if (nextRow.groupId !== row.groupId) {
+          break;
+        }
+
+        groupedRows.push(nextRow);
+        nextIndex += 1;
+      }
+
+      items.push({
+        id: `group-${row.groupId}`,
+        kind: 'group',
+        rows: groupedRows,
+        summaryText: row.groupLabel,
+        timestampLabel: groupedRows[0].timestampLabel,
+      });
+      index = nextIndex;
+      continue;
+    }
+
     if (isPointAction(row) && row.childId) {
       const groupedRows = [row];
       let nextIndex = index + 1;

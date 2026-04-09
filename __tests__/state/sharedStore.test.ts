@@ -31,7 +31,7 @@ describe('sharedStore transaction graph', () => {
     expect(rows[3]?.summaryText).toBe('Ava Added');
   });
 
-  it('records one check-in transaction when multiple children are awarded together', () => {
+  it('records grouped per-child check-in transactions when children are awarded or dismissed', () => {
     const store = createSharedStore({
       initialDocument: createInitialSharedDocument({
         deviceId: 'device-check-in-batch',
@@ -47,24 +47,39 @@ describe('sharedStore transaction graph', () => {
       throw new Error('Expected check-in batch test to create two children');
     }
 
-    expect(store.getState().resolveCheckInSession([avaId, noahId]).ok).toBe(
-      true,
-    );
+    expect(
+      store.getState().resolveCheckInSession([
+        { childId: avaId, status: 'dismissed' },
+        { childId: noahId, status: 'awarded' },
+      ]).ok,
+    ).toBe(true);
 
     const document = store.getState().document;
     const rows = deriveTransactionRows(document);
 
-    expect(document.head.childrenById[avaId]?.points).toBe(1);
+    expect(document.head.childrenById[avaId]?.points).toBe(0);
     expect(document.head.childrenById[noahId]?.points).toBe(1);
     expect(
       document.events.filter((event) => event.type === 'child.pointsAdjusted'),
-    ).toHaveLength(2);
-    expect(
-      document.transactions.filter(
-        (transaction) => transaction.kind === 'check-in-resolved',
-      ),
     ).toHaveLength(1);
-    expect(rows[0]?.summaryText).toBe('Check-In Awards +2 Points');
+    const pointAdjustmentTransactions = document.transactions.filter(
+      (transaction) => transaction.kind === 'points-adjusted',
+    );
+    const dismissedTransactions = document.transactions.filter(
+      (transaction) => transaction.kind === 'check-in-dismissed',
+    );
+
+    expect(pointAdjustmentTransactions).toHaveLength(1);
+    expect(dismissedTransactions).toHaveLength(1);
+    expect(pointAdjustmentTransactions[0]?.groupId).toBeTruthy();
+    expect(pointAdjustmentTransactions[0]?.groupId).toBe(
+      dismissedTransactions[0]?.groupId,
+    );
+    expect(pointAdjustmentTransactions[0]?.groupLabel).toBe(
+      'Check-In Results +1 Point',
+    );
+    expect(rows[0]?.summaryText).toBe('Noah +1 Points [0 > 1]');
+    expect(rows[1]?.summaryText).toBe('Ava Check-In Dismissed');
   });
 
   it('records restore as its own transaction and restores the exact target state', () => {

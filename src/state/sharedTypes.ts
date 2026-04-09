@@ -110,6 +110,7 @@ export type SharedEvent =
 
 export type TransactionKind =
   | 'check-in-resolved'
+  | 'check-in-dismissed'
   | 'child-archived'
   | 'child-created'
   | 'child-deleted'
@@ -130,6 +131,8 @@ export type TransactionRecord = {
   childId: string | null;
   childName: string | null;
   eventIds: string[];
+  groupId?: string;
+  groupLabel?: string;
   id: string;
   kind: TransactionKind;
   occurredAt: string;
@@ -152,6 +155,8 @@ export type TransactionRow = {
   affectedChildIds: string[];
   childId: string | null;
   childName: string | null;
+  groupId?: string;
+  groupLabel?: string;
   id: string;
   isHead: boolean;
   isOrphaned: boolean;
