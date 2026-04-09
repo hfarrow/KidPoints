@@ -63,6 +63,18 @@ function ResolveChildButton({
 }
 
 export function TimerCheckInModal() {
+  return <TimerCheckInModalContent backdropVariant="modal" />;
+}
+
+export function TimerCheckInLockScreenModal() {
+  return <TimerCheckInModalContent backdropVariant="screen" />;
+}
+
+function TimerCheckInModalContent({
+  backdropVariant,
+}: {
+  backdropVariant: 'modal' | 'screen';
+}) {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { width: windowWidth } = useWindowDimensions();
@@ -77,7 +89,7 @@ export function TimerCheckInModal() {
   const { isParentUnlocked } = useParentSession();
   const { activeExpiredTimerSession, resolveExpiredTimerChild } =
     useNotifications();
-  const { tokens } = useAppTheme();
+  const { getScreenSurface, tokens } = useAppTheme();
 
   const closeModal = useCallback(() => {
     if (router.canGoBack()) {
@@ -101,13 +113,17 @@ export function TimerCheckInModal() {
   }
 
   const cardWidth = Math.min(Math.max(windowWidth - 36, 280), 456);
+  const frameBackgroundColor =
+    backdropVariant === 'screen'
+      ? getScreenSurface(false)
+      : tokens.modalBackdrop;
 
   return (
     <KeyboardModalFrame
       contentTestID="timer-check-in-content"
       hideUntilKeyboardPositioned={false}
       initialVerticalPosition="center"
-      style={{ backgroundColor: tokens.modalBackdrop }}
+      style={{ backgroundColor: frameBackgroundColor }}
       testID="timer-check-in-frame"
     >
       <View

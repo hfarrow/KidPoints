@@ -26,6 +26,10 @@ function RootNavigator() {
           name="timer-check-in"
           options={{ gestureEnabled: false, presentation: 'transparentModal' }}
         />
+        <Stack.Screen
+          name="timer-check-in-lock-screen"
+          options={{ gestureEnabled: false, presentation: 'card' }}
+        />
       </Stack>
       <TextInputModal />
     </>

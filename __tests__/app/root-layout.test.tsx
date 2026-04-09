@@ -78,6 +78,7 @@ describe('RootLayout', () => {
     expect(screen.getByText('transactions:default')).toBeTruthy();
     expect(screen.getByText('parent-unlock:transparentModal')).toBeTruthy();
     expect(screen.getByText('timer-check-in:transparentModal')).toBeTruthy();
+    expect(screen.getByText('timer-check-in-lock-screen:card')).toBeTruthy();
     expect(screen.queryByText('text-input-modal:transparentModal')).toBeNull();
   });
 });

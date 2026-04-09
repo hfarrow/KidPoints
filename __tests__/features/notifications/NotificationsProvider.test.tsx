@@ -729,9 +729,47 @@ describe('NotificationsProvider', () => {
     expect(mockStopExpiredAlarmPlayback).not.toHaveBeenCalled();
     expect(useStartupNavigationStore.getState().requests).toEqual([
       expect.objectContaining({
-        href: '/timer-check-in',
+        href: '/timer-check-in-lock-screen',
         id: 'notifications-check-in',
-        targetPathname: '/timer-check-in',
+        targetPathname: '/timer-check-in-lock-screen',
+      }),
+    ]);
+  });
+
+  it('routes notification launch actions to the temporary check-in screen', async () => {
+    mockConsumePendingNotificationLaunchAction.mockResolvedValue(null);
+
+    renderProvider({
+      initialDocument: sharedFixture.document,
+      initialParentUnlocked: true,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('notifications-ready').props.children).toBe(
+        'ready',
+      ),
+    );
+
+    const launchActionListener =
+      mockAddNotificationLaunchActionListener.mock.calls[0]?.[0];
+
+    await act(async () => {
+      launchActionListener?.({
+        intervalId: 'interval-1',
+        launchSource: 'notification',
+        notificationId: 5001,
+        sessionId: 'session-1',
+        triggeredAt: 100,
+        type: 'check-in',
+      });
+    });
+
+    expect(mockStopExpiredAlarmPlayback).toHaveBeenCalledTimes(1);
+    expect(useStartupNavigationStore.getState().requests).toEqual([
+      expect.objectContaining({
+        href: '/timer-check-in-lock-screen',
+        id: 'notifications-check-in',
+        targetPathname: '/timer-check-in-lock-screen',
       }),
     ]);
   });
@@ -789,6 +827,84 @@ describe('NotificationsProvider', () => {
         launchActionListener?.({
           intervalId: 'interval-1',
           launchSource: 'full-screen-intent',
+          notificationId: 5001,
+          sessionId: 'session-1',
+          triggeredAt: 100,
+          type: 'check-in',
+        });
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'interval-1',
+        ),
+      );
+
+      mockMoveTaskToBack.mockClear();
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Award child'));
+      });
+
+      await waitFor(() => expect(mockMoveTaskToBack).toHaveBeenCalledTimes(1));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('moves the task to the background when a notification check-in flow is completed', async () => {
+    try {
+      const runningFixture = createExpiredRunningSharedDocumentFixture();
+      mockConsumePendingNotificationLaunchAction.mockResolvedValue(null);
+      mockLoadPersistedNotificationDocument.mockResolvedValue(null);
+
+      renderProvider({
+        initialDocument: runningFixture.document,
+        initialParentUnlocked: true,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('notifications-ready').props.children).toBe(
+          'ready',
+        ),
+      );
+
+      const notificationStateListener =
+        mockAddNotificationStateChangeListener.mock.calls[0]?.[0];
+      const launchActionListener =
+        mockAddNotificationLaunchActionListener.mock.calls[0]?.[0];
+
+      await act(async () => {
+        notificationStateListener?.({
+          document: createExpiredNotificationDocument(runningFixture.childId),
+          reason: 'interval-triggered',
+          runtimeStatus: {
+            countdownNotificationChannelImportance: 2,
+            countdownNotificationHasPromotableCharacteristics: true,
+            countdownNotificationIsOngoing: false,
+            countdownNotificationRequestedPromoted: true,
+            countdownNotificationUsesChronometer: true,
+            countdownNotificationWhen: null,
+            exactAlarmPermissionGranted: true,
+            expiredNotificationCategory: 'alarm',
+            expiredNotificationChannelImportance: 4,
+            expiredNotificationHasCustomHeadsUp: true,
+            expiredNotificationHasFullScreenIntent: true,
+            fullScreenIntentPermissionGranted: true,
+            fullScreenIntentSettingsResolvable: true,
+            isAppInForeground: false,
+            isRunning: false,
+            lastTriggeredAt: 100,
+            nextTriggerAt: null,
+            notificationPermissionGranted: true,
+            promotedNotificationPermissionGranted: true,
+            promotedNotificationSettingsResolvable: true,
+            sessionId: 'session-1',
+          },
+        });
+        launchActionListener?.({
+          intervalId: 'interval-1',
+          launchSource: 'notification',
           notificationId: 5001,
           sessionId: 'session-1',
           triggeredAt: 100,

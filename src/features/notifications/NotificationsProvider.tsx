@@ -55,6 +55,7 @@ import {
 } from './notificationsModel';
 
 const CHECK_IN_ROUTE = '/timer-check-in';
+const LOCK_SCREEN_CHECK_IN_ROUTE = '/timer-check-in-lock-screen';
 const CHECK_IN_REQUEST_ID = 'notifications-check-in';
 const PARENT_UNLOCK_REQUEST_ID = 'notifications-parent-unlock';
 const log = createModuleLogger('notifications-provider');
@@ -128,6 +129,23 @@ function createPendingLaunchActionFromExpiredSession(
     triggeredAt: expiredTimerSession.triggeredAt,
     type: 'check-in',
   };
+}
+
+function getCheckInRouteForLaunchAction(
+  launchAction: PendingNotificationLaunchAction | null | undefined,
+) {
+  return isTemporaryCheckInLaunchAction(launchAction)
+    ? LOCK_SCREEN_CHECK_IN_ROUTE
+    : CHECK_IN_ROUTE;
+}
+
+function isTemporaryCheckInLaunchAction(
+  launchAction: PendingNotificationLaunchAction | null | undefined,
+) {
+  return (
+    launchAction?.launchSource === 'notification' ||
+    launchAction?.launchSource === 'full-screen-intent'
+  );
 }
 
 export function NotificationsProvider({ children }: PropsWithChildren) {
@@ -286,9 +304,9 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     return nextRuntimeStatus;
   }, []);
 
-  const completeFullScreenLaunchIfNeeded = useCallback(
+  const completeTemporaryLaunchIfNeeded = useCallback(
     (launchAction: PendingNotificationLaunchAction | null | undefined) => {
-      if (launchAction?.launchSource !== 'full-screen-intent') {
+      if (!isTemporaryCheckInLaunchAction(launchAction)) {
         return;
       }
 
@@ -389,9 +407,9 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       resetSharedTimer: true,
     });
     resetSharedTimer();
-    completeFullScreenLaunchIfNeeded(launchAction);
+    completeTemporaryLaunchIfNeeded(launchAction);
   }, [
-    completeFullScreenLaunchIfNeeded,
+    completeTemporaryLaunchIfNeeded,
     removeStartupNavigationRequest,
     resetSharedTimer,
   ]);
@@ -711,13 +729,14 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       return;
     }
 
+    const checkInRoute = getCheckInRouteForLaunchAction(pendingLaunchAction);
     removeStartupNavigationRequest(PARENT_UNLOCK_REQUEST_ID);
     queueStartupNavigationRequest({
-      href: CHECK_IN_ROUTE,
+      href: checkInRoute,
       id: CHECK_IN_REQUEST_ID,
       priority: 1,
       source: 'notifications',
-      targetPathname: CHECK_IN_ROUTE,
+      targetPathname: checkInRoute,
     });
   }, [
     isParentUnlocked,
@@ -818,7 +837,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         } else {
           resetSharedTimer();
         }
-        completeFullScreenLaunchIfNeeded(launchAction);
+        completeTemporaryLaunchIfNeeded(launchAction);
         return;
       }
 
@@ -827,7 +846,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     [
       isParentUnlocked,
       parentPin,
-      completeFullScreenLaunchIfNeeded,
+      completeTemporaryLaunchIfNeeded,
       queueStartupNavigationRequest,
       removeStartupNavigationRequest,
       resetSharedTimer,
