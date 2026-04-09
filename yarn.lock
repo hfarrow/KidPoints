@@ -5493,6 +5493,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-haptics@npm:^55.0.13":
+  version: 55.0.13
+  resolution: "expo-haptics@npm:55.0.13"
+  peerDependencies:
+    expo: "*"
+  checksum: 10c0/cf93341bb21d7b9a43d550c32d80f98ae93698e15abf52e1ef81243901c81976ed1b1967be518459243e6ea2a4ac4aebdefd44471d19cbb3eaea5fddf05ca235
+  languageName: node
+  linkType: hard
+
 "expo-keep-awake@npm:~15.0.8":
   version: 15.0.8
   resolution: "expo-keep-awake@npm:15.0.8"
@@ -7588,6 +7597,7 @@ __metadata:
     eslint-config-expo: "npm:~10.0.0"
     expo: "npm:~54.0.33"
     expo-constants: "npm:~18.0.13"
+    expo-haptics: "npm:^55.0.13"
     expo-linking: "npm:~8.0.11"
     expo-router: "npm:~6.0.23"
     expo-status-bar: "npm:~3.0.9"

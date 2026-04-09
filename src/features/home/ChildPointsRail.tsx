@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
@@ -22,6 +23,12 @@ import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
 const POINT_TRANSITION_DURATION_MS = 200;
 const MIN_TRAVEL_DISTANCE_PX = 32;
 const POINT_VALUE_LINE_HEIGHT = 28;
+
+function triggerPointRailHaptic() {
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {
+    // Haptics are best-effort UI polish; ignore unsupported-device failures.
+  });
+}
 
 type ChildPointsRailProps = {
   childId: string;
@@ -177,6 +184,7 @@ export function ChildPointsRail({
     const result = onAdjustPoints(delta);
 
     if (result.ok) {
+      triggerPointRailHaptic();
       const currentPoints = expectedPointsRef.current;
       const nextPoints = currentPoints + delta;
 

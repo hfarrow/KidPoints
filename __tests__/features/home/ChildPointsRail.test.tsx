@@ -4,12 +4,20 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react-native';
+import * as Haptics from 'expo-haptics';
 import { useState } from 'react';
 
 import { ChildPointsRail } from '../../../src/features/home/ChildPointsRail';
 import { AppThemeProvider } from '../../../src/features/theme/themeContext';
 import type { SharedCommandResult } from '../../../src/state/sharedTypes';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
+
+jest.mock('expo-haptics', () => ({
+  ImpactFeedbackStyle: {
+    Light: 'light',
+  },
+  impactAsync: jest.fn(() => Promise.resolve()),
+}));
 
 type ChildPointsRailHarnessProps = {
   childName?: string;
@@ -40,6 +48,10 @@ function ChildPointsRailHarness({
 }
 
 describe('ChildPointsRail', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('settles on the next total after incrementing', async () => {
     render(<ChildPointsRailHarness initialPoints={4} />);
 
@@ -111,5 +123,50 @@ describe('ChildPointsRail', () => {
     await waitFor(() => {
       expect(screen.getAllByText('11').length).toBeGreaterThan(0);
     });
+  });
+
+  it('triggers light haptics only when a point adjustment succeeds', () => {
+    const impactAsyncMock = jest.mocked(Haptics.impactAsync);
+    const { rerender } = render(
+      <AppThemeProvider
+        initialThemeMode="light"
+        storage={createMemoryStorage()}
+      >
+        <ChildPointsRail
+          childId="child-ava"
+          childName="Ava"
+          isParentUnlocked
+          onAdjustPoints={() => ({ ok: true })}
+          onEditPoints={() => {}}
+          points={4}
+        />
+      </AppThemeProvider>,
+    );
+
+    fireEvent.press(screen.getByLabelText('Increase Ava points'));
+
+    expect(impactAsyncMock).toHaveBeenCalledWith(
+      Haptics.ImpactFeedbackStyle.Light,
+    );
+
+    rerender(
+      <AppThemeProvider
+        initialThemeMode="light"
+        storage={createMemoryStorage()}
+      >
+        <ChildPointsRail
+          childId="child-ava"
+          childName="Ava"
+          isParentUnlocked
+          onAdjustPoints={() => ({ error: 'Nope', ok: false })}
+          onEditPoints={() => {}}
+          points={4}
+        />
+      </AppThemeProvider>,
+    );
+
+    fireEvent.press(screen.getByLabelText('Increase Ava points'));
+
+    expect(impactAsyncMock).toHaveBeenCalledTimes(1);
   });
 });
