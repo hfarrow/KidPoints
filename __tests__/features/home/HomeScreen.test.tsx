@@ -82,8 +82,10 @@ describe('HomeScreen', () => {
     );
 
     expect(screen.getByText('Home')).toBeTruthy();
-    expect(screen.getByText('Check-In')).toBeTruthy();
+    expect(screen.getByText('Countdown')).toBeTruthy();
     expect(screen.getByText('15:00')).toBeTruthy();
+    expect(screen.queryByText('15m cadence')).toBeNull();
+    expect(screen.queryByText('20s alarm')).toBeNull();
     expect(screen.getAllByText('Add Child')).toHaveLength(2);
     expect(screen.getByText('Add a child to get started!')).toBeTruthy();
     expect(screen.getByText('Parent')).toBeTruthy();

@@ -20,6 +20,7 @@ import { normalizeTimerConfig } from '../../state/sharedTimer';
 import { NotificationSettingsTile } from '../notifications/NotificationSettingsTile';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { CountdownTileSummary } from '../timer/CountdownTileSummary';
 import { TimerControlRail } from '../timer/TimerControlRail';
 import { useSharedTimerViewModel } from '../timer/useSharedTimerViewModel';
 
@@ -125,23 +126,13 @@ export function AlarmScreen() {
           />
         }
         summary={
-          <View style={styles.timerSummary}>
-            <View style={styles.timerSummaryCopy}>
-              <Text style={styles.primaryMetric}>
-                {timerViewModel.remainingLabel}
-              </Text>
-              <View style={styles.timerMetaRow}>
-                <Text style={styles.timerMeta}>
-                  {timerViewModel.cadenceLabel}
-                </Text>
-                <Text style={styles.timerMeta}>
-                  {timerViewModel.alarmDurationLabel}
-                </Text>
-              </View>
-            </View>
-          </View>
+          <CountdownTileSummary
+            remainingLabel={timerViewModel.remainingLabel}
+            statusLabel={timerViewModel.statusLabel}
+            statusTone={timerViewModel.statusTone}
+          />
         }
-        title="Timer"
+        title="Countdown"
       >
         {isParentUnlocked ? (
           <TimerControlRail
@@ -230,31 +221,6 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       color: tokens.textMuted,
       fontSize: 13,
       lineHeight: 18,
-    },
-    timerSummary: {
-      flex: 1,
-      minWidth: 0,
-    },
-    timerSummaryCopy: {
-      gap: 4,
-      minWidth: 0,
-    },
-    primaryMetric: {
-      color: tokens.textPrimary,
-      fontSize: 32,
-      fontWeight: '900',
-      fontVariant: ['tabular-nums'],
-      letterSpacing: -0.7,
-    },
-    timerMetaRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 6,
-    },
-    timerMeta: {
-      color: tokens.textMuted,
-      fontSize: 12,
-      fontWeight: '800',
     },
     settingsRow: {
       flexDirection: 'row',

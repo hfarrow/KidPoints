@@ -18,6 +18,7 @@ import { useSharedStore } from '../../state/sharedStore';
 import { presentTextInputModal } from '../overlays/textInputModalStore';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/themeContext';
+import { CountdownTileSummary } from '../timer/CountdownTileSummary';
 import { TimerControlRail } from '../timer/TimerControlRail';
 import { useSharedTimerViewModel } from '../timer/useSharedTimerViewModel';
 
@@ -113,42 +114,32 @@ export function HomeScreen() {
           />
         }
         summary={
-          <View style={styles.timerSummary}>
-            <View style={styles.timerSummaryCopy}>
-              <View style={styles.timerValueWrap}>
-                <Text style={styles.primaryMetric}>
-                  {timerViewModel.remainingLabel}
-                </Text>
-              </View>
-              <View style={styles.timerMetaRow}>
-                <Text style={styles.timerMeta}>
-                  {timerViewModel.cadenceLabel}
-                </Text>
-                <Text style={styles.timerMeta}>
-                  {timerViewModel.alarmDurationLabel}
-                </Text>
-              </View>
-            </View>
-            <LoggedPressable
-              accessibilityLabel={
-                isParentUnlocked
-                  ? 'Open alarm settings'
-                  : 'Unlock parent mode for alarm settings'
-              }
-              logContext={{ isParentUnlocked }}
-              logLabel={
-                isParentUnlocked
-                  ? 'Open alarm settings'
-                  : 'Unlock parent mode for alarm settings'
-              }
-              onPress={openAlarmScreen}
-              style={styles.summaryIconAction}
-            >
-              <Feather color={tokens.controlText} name="clock" size={16} />
-            </LoggedPressable>
-          </View>
+          <CountdownTileSummary
+            remainingLabel={timerViewModel.remainingLabel}
+            statusLabel={timerViewModel.statusLabel}
+            statusTone={timerViewModel.statusTone}
+            trailingAction={
+              <LoggedPressable
+                accessibilityLabel={
+                  isParentUnlocked
+                    ? 'Open alarm settings'
+                    : 'Unlock parent mode for alarm settings'
+                }
+                logContext={{ isParentUnlocked }}
+                logLabel={
+                  isParentUnlocked
+                    ? 'Open alarm settings'
+                    : 'Unlock parent mode for alarm settings'
+                }
+                onPress={openAlarmScreen}
+                style={styles.summaryIconAction}
+              >
+                <Feather color={tokens.controlText} name="clock" size={16} />
+              </LoggedPressable>
+            }
+          />
         }
-        title="Check-In"
+        title="Countdown"
       >
         {isParentUnlocked ? (
           <TimerControlRail
@@ -357,37 +348,6 @@ const createStyles = ({
       fontSize: 13,
       fontWeight: '600',
       lineHeight: 18,
-    },
-    timerSummary: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      gap: 10,
-      minWidth: 0,
-    },
-    timerSummaryCopy: {
-      flex: 1,
-      gap: 4,
-      minWidth: 0,
-    },
-    timerValueWrap: {
-      flexShrink: 0,
-    },
-    primaryMetric: {
-      color: tokens.textPrimary,
-      fontSize: 28,
-      fontWeight: '900',
-      fontVariant: ['tabular-nums'],
-      letterSpacing: -0.6,
-    },
-    timerMetaRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 6,
-    },
-    timerMeta: {
-      color: tokens.textMuted,
-      fontSize: 12,
-      fontWeight: '800',
     },
     summaryIconAction: {
       alignItems: 'center',

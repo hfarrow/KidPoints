@@ -100,7 +100,9 @@ describe('AlarmScreen', () => {
 
     expect(screen.getByText('Alarm')).toBeTruthy();
     expect(screen.getByText('Unlock Required')).toBeTruthy();
-    expect(screen.getByText('Timer')).toBeTruthy();
+    expect(screen.getByText('Countdown')).toBeTruthy();
+    expect(screen.queryByText('15m cadence')).toBeNull();
+    expect(screen.queryByText('20s alarm')).toBeNull();
     expect(screen.getByText('Device Notifications')).toBeTruthy();
     expect(screen.queryByText('Readiness')).toBeNull();
 
@@ -128,6 +130,9 @@ describe('AlarmScreen', () => {
     );
 
     expect(screen.getByText('Settings')).toBeTruthy();
+    expect(screen.getByText('Countdown')).toBeTruthy();
+    expect(screen.queryByText('15m cadence')).toBeNull();
+    expect(screen.queryByText('20s alarm')).toBeNull();
     expect(screen.getByLabelText('Alarm start timer')).toBeTruthy();
     expect(screen.getByText('Device Notifications')).toBeTruthy();
     expect(screen.queryByText('Runtime')).toBeNull();
