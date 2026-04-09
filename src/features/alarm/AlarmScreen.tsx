@@ -195,9 +195,9 @@ export function AlarmScreen() {
             <CompactSurface style={styles.settingsSurface}>
               <SectionLabel>Alarm</SectionLabel>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Duration Sec</Text>
+                <Text style={styles.inputLabel}>Mute After Sec</Text>
                 <TextInput
-                  accessibilityLabel="Alarm duration seconds"
+                  accessibilityLabel="Mute after seconds"
                   keyboardType="number-pad"
                   onBlur={commitAlarmDurationInput}
                   onChangeText={setAlarmDurationInput}

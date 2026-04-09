@@ -3,6 +3,7 @@ import {
   type StyleProp,
   StyleSheet,
   Text,
+  type TextStyle,
   View,
   type ViewStyle,
 } from 'react-native';
@@ -86,10 +87,12 @@ export function ActionPillRow({ children }: PropsWithChildren) {
 
 export function StatusBadge({
   label,
+  labelStyle,
   size = 'default',
   tone = 'neutral',
 }: {
   label: string;
+  labelStyle?: StyleProp<TextStyle>;
   size?: 'default' | 'mini';
   tone?: 'good' | 'neutral' | 'warning';
 }) {
@@ -100,12 +103,25 @@ export function StatusBadge({
       : tone === 'warning'
         ? styles.warningBadge
         : styles.neutralBadge;
+  const toneTextStyle =
+    tone === 'good'
+      ? styles.goodBadgeText
+      : tone === 'warning'
+        ? styles.warningBadgeText
+        : styles.neutralBadgeText;
 
   return (
     <View
       style={[styles.badge, size === 'mini' && styles.badgeMini, toneStyle]}
     >
-      <Text style={[styles.badgeText, size === 'mini' && styles.badgeTextMini]}>
+      <Text
+        style={[
+          styles.badgeText,
+          toneTextStyle,
+          size === 'mini' && styles.badgeTextMini,
+          labelStyle,
+        ]}
+      >
         {label}
       </Text>
     </View>
@@ -183,6 +199,7 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       paddingVertical: 4,
     },
     badgeText: {
+      color: tokens.controlText,
       fontSize: 11,
       fontWeight: '800',
       letterSpacing: 0.4,
@@ -195,11 +212,20 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     goodBadge: {
       backgroundColor: tokens.successSurface,
     },
+    goodBadgeText: {
+      color: tokens.successText,
+    },
     neutralBadge: {
       backgroundColor: tokens.controlSurface,
     },
+    neutralBadgeText: {
+      color: tokens.controlText,
+    },
     warningBadge: {
       backgroundColor: tokens.floatingLabelSurface,
+    },
+    warningBadgeText: {
+      color: tokens.warningText,
     },
     sectionLabel: {
       color: tokens.textMuted,

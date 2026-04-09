@@ -51,7 +51,7 @@ export type NotificationTimerConfig = {
   alarmDurationSeconds: number;
   intervalMinutes: number;
   intervalSeconds: number;
-  notificationsEnabled: boolean;
+  liveCountdownNotificationsEnabled: boolean;
 };
 
 export type NotificationTimerState = {
@@ -131,7 +131,7 @@ export function createEmptyNotificationDocument(): NotificationDocument {
         alarmDurationSeconds: 20,
         intervalMinutes: 15,
         intervalSeconds: 0,
-        notificationsEnabled: true,
+        liveCountdownNotificationsEnabled: true,
       },
       timerRuntimeState: createEmptyNotificationTimerRuntimeState(),
       timerState: {
@@ -278,6 +278,20 @@ function parseNotificationTimerConfig(
   timerConfig: Partial<NotificationTimerConfig> | null | undefined,
 ): NotificationTimerConfig {
   const fallback = createEmptyNotificationDocument().head.timerConfig;
+  const legacyNotificationsEnabled =
+    typeof (timerConfig as { notificationsEnabled?: boolean } | null)
+      ?.notificationsEnabled === 'boolean'
+      ? (
+          timerConfig as {
+            notificationsEnabled?: boolean;
+          }
+        ).notificationsEnabled
+      : undefined;
+  const liveCountdownNotificationsEnabled =
+    typeof timerConfig?.liveCountdownNotificationsEnabled === 'boolean'
+      ? timerConfig.liveCountdownNotificationsEnabled
+      : (legacyNotificationsEnabled ??
+        fallback.liveCountdownNotificationsEnabled);
 
   return {
     alarmDurationSeconds:
@@ -292,10 +306,7 @@ function parseNotificationTimerConfig(
       typeof timerConfig?.intervalSeconds === 'number'
         ? timerConfig.intervalSeconds
         : fallback.intervalSeconds,
-    notificationsEnabled:
-      typeof timerConfig?.notificationsEnabled === 'boolean'
-        ? timerConfig.notificationsEnabled
-        : fallback.notificationsEnabled,
+    liveCountdownNotificationsEnabled,
   };
 }
 
@@ -365,13 +376,13 @@ function hasStaleExpiredNotificationState(
 
 function buildNotificationTimerConfig(
   timerConfig: SharedTimerConfig,
-  notificationsEnabled: boolean,
+  liveCountdownNotificationsEnabled: boolean,
 ): NotificationTimerConfig {
   return {
     alarmDurationSeconds: timerConfig.alarmDurationSeconds,
     intervalMinutes: timerConfig.intervalMinutes,
     intervalSeconds: timerConfig.intervalSeconds,
-    notificationsEnabled,
+    liveCountdownNotificationsEnabled,
   };
 }
 
@@ -379,38 +390,30 @@ export function deriveNotificationDocument(
   sharedDocument: SharedDocument,
   options: {
     existingDocument?: NotificationDocument | null;
-    notificationsEnabled: boolean;
+    liveCountdownNotificationsEnabled: boolean;
   },
 ): NotificationDocument {
-  const { existingDocument, notificationsEnabled } = options;
+  const { existingDocument, liveCountdownNotificationsEnabled } = options;
   const currentDocument = cloneNotificationDocument(existingDocument);
-  const timerSnapshot = notificationsEnabled
-    ? computeSharedTimerSnapshot(
-        sharedDocument.head.timerConfig,
-        sharedDocument.head.timerState,
-        Date.now(),
-      )
-    : null;
-  const shouldClearExpiredNotificationState =
-    notificationsEnabled &&
-    timerSnapshot != null &&
-    hasStaleExpiredNotificationState(timerSnapshot.status, currentDocument);
-  const timerRuntimeState = !notificationsEnabled
+  const timerSnapshot = computeSharedTimerSnapshot(
+    sharedDocument.head.timerConfig,
+    sharedDocument.head.timerState,
+    Date.now(),
+  );
+  const shouldClearExpiredNotificationState = hasStaleExpiredNotificationState(
+    timerSnapshot.status,
+    currentDocument,
+  );
+  const timerRuntimeState = shouldClearExpiredNotificationState
     ? createEmptyNotificationTimerRuntimeState()
-    : shouldClearExpiredNotificationState
-      ? createEmptyNotificationTimerRuntimeState()
-      : currentDocument.head.timerRuntimeState;
-  const timerState =
-    notificationsEnabled && timerSnapshot
-      ? buildNotificationTimerState(
-          sharedDocument.head.timerConfig,
-          sharedDocument.head.timerState,
-        )
-      : createEmptyNotificationDocument().head.timerState;
-  const expiredIntervals =
-    notificationsEnabled && !shouldClearExpiredNotificationState
-      ? currentDocument.head.expiredIntervals
-      : [];
+    : currentDocument.head.timerRuntimeState;
+  const timerState = buildNotificationTimerState(
+    sharedDocument.head.timerConfig,
+    sharedDocument.head.timerState,
+  );
+  const expiredIntervals = shouldClearExpiredNotificationState
+    ? []
+    : currentDocument.head.expiredIntervals;
 
   return {
     head: {
@@ -425,7 +428,7 @@ export function deriveNotificationDocument(
       expiredIntervals,
       timerConfig: buildNotificationTimerConfig(
         sharedDocument.head.timerConfig,
-        notificationsEnabled,
+        liveCountdownNotificationsEnabled,
       ),
       timerRuntimeState,
       timerState,

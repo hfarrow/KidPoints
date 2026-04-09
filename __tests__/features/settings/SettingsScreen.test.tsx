@@ -72,6 +72,9 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('Theme')).toBeTruthy();
     expect(screen.getByLabelText('Go Back')).toBeTruthy();
     expect(screen.getByText('Unlock')).toBeTruthy();
+    expect(
+      screen.queryByText(/Parent Mode stays local to this device/i),
+    ).toBeNull();
     expect(screen.queryByText('Archived Children')).toBeNull();
 
     fireEvent.press(screen.getByText('Unlock'));
@@ -147,7 +150,7 @@ describe('SettingsScreen', () => {
     expect(transactions.at(-1)?.kind).toBe('parent-mode-locked');
   });
 
-  it('shows and updates the active app log level', () => {
+  it('shows and updates the active app log level from the picker modal', () => {
     render(
       <SharedStoreProvider storage={createMemoryStorage()}>
         <ParentSessionProvider initialParentUnlocked={false}>
@@ -161,17 +164,28 @@ describe('SettingsScreen', () => {
       </SharedStoreProvider>,
     );
 
-    expect(screen.getByText('Debug')).toBeTruthy();
-    expect(screen.getAllByText('debug')).toHaveLength(2);
-    expect(screen.getByText('temp')).toBeTruthy();
+    expect(screen.getByText('Log Level')).toBeTruthy();
+    expect(screen.getAllByText('debug').length).toBeGreaterThan(0);
+    expect(
+      screen.queryByText(
+        /This setting stays available in release builds so we can raise or reduce logging without a rebuild\./i,
+      ),
+    ).toBeNull();
 
-    fireEvent.press(screen.getByText('temp'));
+    fireEvent.press(screen.getByLabelText('Open log level picker'));
 
-    expect(screen.getAllByText('temp')).toHaveLength(2);
+    expect(
+      screen.getByText('Temporary debugging detail for active investigation.'),
+    ).toBeTruthy();
 
     fireEvent.press(screen.getByText('error'));
 
-    expect(screen.getAllByText('error')).toHaveLength(2);
+    expect(screen.getAllByText('error').length).toBeGreaterThan(0);
+    expect(
+      screen.queryByText(
+        'Temporary debugging detail for active investigation.',
+      ),
+    ).toBeNull();
   });
 
   it('shows and updates the global haptics setting', () => {

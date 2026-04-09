@@ -45,7 +45,7 @@ describe('AlarmScreen', () => {
       dismissCheckInFlow: jest.fn(),
       engineAvailable: true,
       isReady: true,
-      notificationsEnabled: true,
+      liveCountdownNotificationsEnabled: true,
       openExactAlarmSettings: jest.fn(),
       openFullScreenIntentSettings: jest.fn(),
       openNotificationSettings: jest.fn(),
@@ -75,7 +75,7 @@ describe('AlarmScreen', () => {
         promotedNotificationSettingsResolvable: true,
         sessionId: null,
       },
-      setNotificationsEnabled: jest.fn(),
+      setLiveCountdownNotificationsEnabled: jest.fn(),
     });
   });
 
@@ -103,7 +103,7 @@ describe('AlarmScreen', () => {
     expect(screen.getByText('Countdown')).toBeTruthy();
     expect(screen.queryByText('15m cadence')).toBeNull();
     expect(screen.queryByText('20s alarm')).toBeNull();
-    expect(screen.getByText('Device Notifications')).toBeTruthy();
+    expect(screen.getByText('Live Countdown')).toBeTruthy();
     expect(screen.queryByText('Readiness')).toBeNull();
 
     fireEvent.press(screen.getByText('Unlock with PIN'));
@@ -134,7 +134,7 @@ describe('AlarmScreen', () => {
     expect(screen.queryByText('15m cadence')).toBeNull();
     expect(screen.queryByText('20s alarm')).toBeNull();
     expect(screen.getByLabelText('Alarm start timer')).toBeTruthy();
-    expect(screen.getByText('Device Notifications')).toBeTruthy();
+    expect(screen.getByText('Live Countdown')).toBeTruthy();
     expect(screen.queryByText('Runtime')).toBeNull();
 
     fireEvent.press(screen.getByLabelText('Expand Notifications'));
@@ -150,7 +150,7 @@ describe('AlarmScreen', () => {
 
     const intervalMinutesInput = screen.getByLabelText('Interval minutes');
     const intervalSecondsInput = screen.getByLabelText('Interval seconds');
-    const alarmDurationInput = screen.getByLabelText('Alarm duration seconds');
+    const alarmDurationInput = screen.getByLabelText('Mute after seconds');
 
     fireEvent.changeText(intervalMinutesInput, '0');
     fireEvent.changeText(intervalSecondsInput, '0');
@@ -162,9 +162,7 @@ describe('AlarmScreen', () => {
     fireEvent.changeText(alarmDurationInput, '0');
     fireEvent(alarmDurationInput, 'blur');
 
-    expect(screen.getByLabelText('Alarm duration seconds').props.value).toBe(
-      '1',
-    );
+    expect(screen.getByLabelText('Mute after seconds').props.value).toBe('1');
   });
 
   it('does not flash a longer countdown when resuming from pause', () => {

@@ -198,7 +198,7 @@ describe('TimerCheckInModal', () => {
   it('shows child actions and resolves awards when the parent session is unlocked', () => {
     mockUseParentSession.mockReturnValue({ isParentUnlocked: true });
 
-    render(<TimerCheckInModal />);
+    const view = render(<TimerCheckInModal />);
 
     expect(screen.getByText('Parent Check-In')).toBeTruthy();
     expect(screen.getByText('Avery')).toBeTruthy();
@@ -207,6 +207,10 @@ describe('TimerCheckInModal', () => {
     expect(
       screen.getByLabelText('Restart countdown automatically'),
     ).toBeTruthy();
+    const renderedTree = JSON.stringify(view.toJSON());
+    expect(renderedTree.indexOf('Restart Countdown')).toBeLessThan(
+      renderedTree.indexOf('Avery'),
+    );
 
     fireEvent.press(screen.getByLabelText('Award point to Avery'));
     expect(mockTriggerLightImpactHaptic).toHaveBeenCalledWith(true);

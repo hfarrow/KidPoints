@@ -73,17 +73,17 @@ describe('localSettingsStore', () => {
     expect(secondStore.getState().activeThemeId).toBe('gruvbox');
   });
 
-  it('rehydrates the persisted notifications enabled state', async () => {
+  it('rehydrates the persisted live countdown notification state', async () => {
     const storage = createMemoryStorage();
     const firstStore = createLocalSettingsStore({
-      initialNotificationsEnabled: true,
+      initialLiveCountdownNotificationsEnabled: true,
       storage,
     });
 
-    firstStore.getState().setNotificationsEnabled(false);
+    firstStore.getState().setLiveCountdownNotificationsEnabled(false);
 
     const secondStore = createLocalSettingsStore({
-      initialNotificationsEnabled: true,
+      initialLiveCountdownNotificationsEnabled: true,
       storage,
     });
 
@@ -93,7 +93,32 @@ describe('localSettingsStore', () => {
       }
     ).persist.rehydrate();
 
-    expect(secondStore.getState().notificationsEnabled).toBe(false);
+    expect(secondStore.getState().liveCountdownNotificationsEnabled).toBe(
+      false,
+    );
+  });
+
+  it('migrates the legacy notificationsEnabled setting into the live countdown toggle', async () => {
+    const storage = createMemoryStorage({
+      'kidpoints.local-settings.v1': JSON.stringify({
+        state: {
+          notificationsEnabled: false,
+        },
+        version: 0,
+      }),
+    });
+    const store = createLocalSettingsStore({
+      initialLiveCountdownNotificationsEnabled: true,
+      storage,
+    });
+
+    await (
+      store as typeof store & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(store.getState().liveCountdownNotificationsEnabled).toBe(false);
   });
 
   it('rehydrates the persisted haptics enabled state', async () => {

@@ -35,9 +35,27 @@ function getThemeDescription(theme: ThemeDefinition) {
   return 'Playful violet and berry-blue accents.';
 }
 
+function getLogLevelDescription(logLevel: string) {
+  switch (logLevel) {
+    case 'temp':
+      return 'Temporary debugging detail for active investigation.';
+    case 'debug':
+      return 'Developer-focused detail for local troubleshooting.';
+    case 'info':
+      return 'Important lifecycle and recovery events.';
+    case 'warn':
+      return 'Recoverable issues that need attention.';
+    case 'error':
+      return 'Failures and broken flows.';
+    default:
+      return null;
+  }
+}
+
 export function SettingsScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
+  const [isLogLevelListVisible, setLogLevelListVisible] = useState(false);
   const [isThemeListVisible, setThemeListVisible] = useState(false);
   const { isParentUnlocked, lockParentMode } = useParentSession();
   const {
@@ -175,10 +193,6 @@ export function SettingsScreen() {
         }
         title="Parent Session"
       >
-        <Text style={styles.body}>
-          Parent Mode stays local to this device. Use the parent PIN to unlock
-          protected controls, and change it here whenever you need to.
-        </Text>
         <ActionPillRow>
           <ActionPill
             label={
@@ -233,40 +247,40 @@ export function SettingsScreen() {
         </View>
       </Tile>
 
-      <Tile accessory={<StatusBadge label={logLevel} />} title="Debug">
-        <Text style={styles.body}>
-          Choose the active app log level. This setting stays available in
-          release builds so we can raise or reduce logging without a rebuild.
-        </Text>
-        <View style={styles.logLevelOptionRow}>
-          {selectableAppLogLevels.map((option) => {
-            const isActive = logLevel === option;
-
-            return (
-              <LoggedPressable
-                key={option}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isActive }}
-                logContext={{
-                  logLevel: option,
-                  selected: isActive,
-                }}
-                logLabel={`Set log level to ${option}`}
-                onPress={() => setLogLevel(option)}
-                style={[
-                  styles.option,
-                  styles.logLevelOption,
-                  isActive && {
-                    backgroundColor: tokens.accentSoft,
-                    borderColor: tokens.accent,
-                  },
-                ]}
-              >
-                <Text style={styles.optionTitle}>{option}</Text>
-              </LoggedPressable>
-            );
-          })}
-        </View>
+      <Tile accessory={<StatusBadge label={logLevel} />} title="Log Level">
+        <LoggedPressable
+          accessibilityLabel={
+            isLogLevelListVisible
+              ? 'Close log level picker'
+              : 'Open log level picker'
+          }
+          accessibilityRole="button"
+          logContext={{
+            isLogLevelListVisible,
+            logLevel,
+          }}
+          logLabel={
+            isLogLevelListVisible
+              ? 'Close log level picker'
+              : 'Open log level picker'
+          }
+          onPress={() => setLogLevelListVisible(true)}
+          style={[
+            styles.themeMenuTrigger,
+            isLogLevelListVisible && {
+              backgroundColor: tokens.accentSoft,
+              borderColor: tokens.accent,
+            },
+          ]}
+        >
+          <View style={styles.themeMenuTriggerCopy}>
+            <Text style={styles.themeMenuTriggerLabel}>{logLevel}</Text>
+            <Text style={styles.themeMenuTriggerHelper}>
+              Choose the active app log level.
+            </Text>
+          </View>
+          <Feather color={tokens.controlText} name="chevron-right" size={18} />
+        </LoggedPressable>
         <ActionPillRow>
           <ActionPill
             label="View Logs"
@@ -275,17 +289,28 @@ export function SettingsScreen() {
           />
         </ActionPillRow>
       </Tile>
+      <SingleSelectList
+        closeLabel="Done"
+        getItemDescription={(option) => getLogLevelDescription(option)}
+        getItemLabel={(option) => option}
+        items={selectableAppLogLevels}
+        keyExtractor={(option) => option}
+        onRequestClose={() => setLogLevelListVisible(false)}
+        onSelect={(option) => {
+          setLogLevel(option);
+          setLogLevelListVisible(false);
+        }}
+        selectedItemId={logLevel}
+        subtitle="Choose the active app log level for device diagnostics."
+        title="Log Level"
+        visible={isLogLevelListVisible}
+      />
     </ScreenScaffold>
   );
 }
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
-    body: {
-      color: tokens.textMuted,
-      fontSize: 14,
-      lineHeight: 20,
-    },
     themeMenuTrigger: {
       alignItems: 'center',
       backgroundColor: tokens.controlSurface,
@@ -319,15 +344,6 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     },
     optionRow: {
       flexDirection: 'row',
-      gap: 8,
-    },
-    logLevelOption: {
-      flexBasis: '48%',
-      flexGrow: 1,
-    },
-    logLevelOptionRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
       gap: 8,
     },
     option: {

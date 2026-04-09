@@ -31,15 +31,17 @@ type LocalSettingsState = {
   activeThemeId: ThemeId;
   hasHydrated: boolean;
   hapticsEnabled: boolean;
+  liveCountdownNotificationsEnabled: boolean;
   logLevel: AppLogLevel;
   markHydrated: () => void;
-  notificationsEnabled: boolean;
   parentPin: string | null;
   restartCountdownAfterCheckIn: boolean;
   setActiveThemeId: (themeId: ThemeId) => void;
   setHapticsEnabled: (hapticsEnabled: boolean) => void;
+  setLiveCountdownNotificationsEnabled: (
+    liveCountdownNotificationsEnabled: boolean,
+  ) => void;
   setLogLevel: (logLevel: AppLogLevel) => void;
-  setNotificationsEnabled: (notificationsEnabled: boolean) => void;
   setParentPin: (parentPin: string) => void;
   setRestartCountdownAfterCheckIn: (
     restartCountdownAfterCheckIn: boolean,
@@ -77,8 +79,8 @@ type LocalSettingsStoreProviderProps = PropsWithChildren<{
   initialActiveThemeId?: ThemeId;
   allowTemporaryLogLevel?: boolean;
   initialHapticsEnabled?: boolean;
+  initialLiveCountdownNotificationsEnabled?: boolean;
   initialLogLevel?: AppLogLevel;
-  initialNotificationsEnabled?: boolean;
   initialParentPin?: string | null;
   initialRestartCountdownAfterCheckIn?: boolean;
   initialThemeMode?: ThemeMode;
@@ -89,8 +91,8 @@ export function createLocalSettingsStore({
   initialActiveThemeId = DEFAULT_THEME_ID,
   allowTemporaryLogLevel,
   initialHapticsEnabled = true,
+  initialLiveCountdownNotificationsEnabled = true,
   initialLogLevel = getDefaultAppLogLevel(),
-  initialNotificationsEnabled = true,
   initialParentPin = null,
   initialRestartCountdownAfterCheckIn = true,
   initialThemeMode = 'system',
@@ -99,8 +101,8 @@ export function createLocalSettingsStore({
   initialActiveThemeId?: ThemeId;
   allowTemporaryLogLevel?: boolean;
   initialHapticsEnabled?: boolean;
+  initialLiveCountdownNotificationsEnabled?: boolean;
   initialLogLevel?: AppLogLevel;
-  initialNotificationsEnabled?: boolean;
   initialParentPin?: string | null;
   initialRestartCountdownAfterCheckIn?: boolean;
   initialThemeMode?: ThemeMode;
@@ -110,6 +112,8 @@ export function createLocalSettingsStore({
   const normalizedInitialLogLevel = normalizeAppLogLevel(initialLogLevel, {
     allowTemporaryLogLevel,
   });
+  const normalizedInitialLiveCountdownNotificationsEnabled =
+    initialLiveCountdownNotificationsEnabled;
 
   return createStore<LocalSettingsState>()(
     persist(
@@ -117,11 +121,12 @@ export function createLocalSettingsStore({
         activeThemeId: normalizedInitialActiveThemeId,
         hasHydrated: false,
         hapticsEnabled: initialHapticsEnabled,
+        liveCountdownNotificationsEnabled:
+          normalizedInitialLiveCountdownNotificationsEnabled,
         logLevel: normalizedInitialLogLevel,
         markHydrated: () => {
           set({ hasHydrated: true });
         },
-        notificationsEnabled: initialNotificationsEnabled,
         parentPin: initialParentPin,
         restartCountdownAfterCheckIn: initialRestartCountdownAfterCheckIn,
         setActiveThemeId: (activeThemeId) => {
@@ -138,6 +143,15 @@ export function createLocalSettingsStore({
           });
           set({ hapticsEnabled });
         },
+        setLiveCountdownNotificationsEnabled: (
+          liveCountdownNotificationsEnabled,
+        ) => {
+          logLocalSettingsMutation({
+            action: 'setLiveCountdownNotificationsEnabled',
+            liveCountdownNotificationsEnabled,
+          });
+          set({ liveCountdownNotificationsEnabled });
+        },
         setLogLevel: (logLevel) => {
           const normalizedLogLevel = normalizeAppLogLevel(logLevel, {
             allowTemporaryLogLevel,
@@ -150,13 +164,6 @@ export function createLocalSettingsStore({
             requestedLogLevel: logLevel,
           });
           set({ logLevel: normalizedLogLevel });
-        },
-        setNotificationsEnabled: (notificationsEnabled) => {
-          logLocalSettingsMutation({
-            action: 'setNotificationsEnabled',
-            notificationsEnabled,
-          });
-          set({ notificationsEnabled });
         },
         setParentPin: (parentPin) => {
           logLocalSettingsMutation({
@@ -184,8 +191,21 @@ export function createLocalSettingsStore({
       }),
       {
         merge: (persistedState, currentState) => {
-          const persistedSettings =
-            (persistedState as Partial<LocalSettingsState> | undefined) ?? {};
+          const persistedSettings = ((persistedState as
+            | (Partial<LocalSettingsState> & {
+                notificationsEnabled?: boolean;
+              })
+            | undefined) ?? {}) as Partial<LocalSettingsState> & {
+            notificationsEnabled?: boolean;
+          };
+          const legacyNotificationsEnabled =
+            typeof persistedSettings.notificationsEnabled === 'boolean'
+              ? persistedSettings.notificationsEnabled
+              : undefined;
+          const liveCountdownNotificationsEnabled =
+            persistedSettings.liveCountdownNotificationsEnabled ??
+            legacyNotificationsEnabled ??
+            normalizedInitialLiveCountdownNotificationsEnabled;
 
           return {
             ...currentState,
@@ -196,13 +216,11 @@ export function createLocalSettingsStore({
                 : normalizeThemeId(persistedSettings.activeThemeId),
             hapticsEnabled:
               persistedSettings.hapticsEnabled ?? initialHapticsEnabled,
+            liveCountdownNotificationsEnabled,
             logLevel: normalizeAppLogLevel(persistedSettings.logLevel, {
               allowTemporaryLogLevel,
               fallbackLogLevel: normalizedInitialLogLevel,
             }),
-            notificationsEnabled:
-              persistedSettings.notificationsEnabled ??
-              initialNotificationsEnabled,
             restartCountdownAfterCheckIn:
               persistedSettings.restartCountdownAfterCheckIn ??
               initialRestartCountdownAfterCheckIn,
@@ -219,10 +237,11 @@ export function createLocalSettingsStore({
               activeThemeId:
                 state?.activeThemeId ?? normalizedInitialActiveThemeId,
               hapticsEnabled: state?.hapticsEnabled ?? initialHapticsEnabled,
+              liveCountdownNotificationsEnabled:
+                state?.liveCountdownNotificationsEnabled ??
+                normalizedInitialLiveCountdownNotificationsEnabled,
               hasParentPin: Boolean(state?.parentPin),
               logLevel: state?.logLevel ?? normalizedInitialLogLevel,
-              notificationsEnabled:
-                state?.notificationsEnabled ?? initialNotificationsEnabled,
               restartCountdownAfterCheckIn:
                 state?.restartCountdownAfterCheckIn ??
                 initialRestartCountdownAfterCheckIn,
@@ -235,16 +254,16 @@ export function createLocalSettingsStore({
         partialize: ({
           activeThemeId,
           hapticsEnabled,
+          liveCountdownNotificationsEnabled,
           logLevel,
-          notificationsEnabled,
           parentPin,
           restartCountdownAfterCheckIn,
           themeMode,
         }) => ({
           activeThemeId,
           hapticsEnabled,
+          liveCountdownNotificationsEnabled,
           logLevel,
-          notificationsEnabled,
           parentPin,
           restartCountdownAfterCheckIn,
           themeMode,
@@ -260,8 +279,8 @@ export function LocalSettingsStoreProvider({
   allowTemporaryLogLevel,
   children,
   initialHapticsEnabled = true,
+  initialLiveCountdownNotificationsEnabled = true,
   initialLogLevel = getDefaultAppLogLevel(),
-  initialNotificationsEnabled = true,
   initialParentPin = null,
   initialRestartCountdownAfterCheckIn = true,
   initialThemeMode = 'system',
@@ -273,8 +292,8 @@ export function LocalSettingsStoreProvider({
         initialActiveThemeId,
         allowTemporaryLogLevel,
         initialHapticsEnabled,
+        initialLiveCountdownNotificationsEnabled,
         initialLogLevel,
-        initialNotificationsEnabled,
         initialParentPin,
         initialRestartCountdownAfterCheckIn,
         initialThemeMode,
@@ -289,8 +308,8 @@ export function LocalSettingsStoreProvider({
     log.info('Local settings store provider initialized', {
       initialActiveThemeId,
       initialHapticsEnabled,
+      initialLiveCountdownNotificationsEnabled,
       initialLogLevel,
-      initialNotificationsEnabled,
       initialParentPinConfigured: Boolean(initialParentPin),
       initialRestartCountdownAfterCheckIn,
       initialThemeMode,
@@ -299,7 +318,7 @@ export function LocalSettingsStoreProvider({
     initialActiveThemeId,
     initialLogLevel,
     initialHapticsEnabled,
-    initialNotificationsEnabled,
+    initialLiveCountdownNotificationsEnabled,
     initialParentPin,
     initialRestartCountdownAfterCheckIn,
     initialThemeMode,

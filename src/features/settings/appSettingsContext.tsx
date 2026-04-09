@@ -12,8 +12,8 @@ type AppSettingsProviderProps = PropsWithChildren<{
   allowTemporaryLogLevel?: boolean;
   initialActiveThemeId?: ThemeId;
   initialHapticsEnabled?: boolean;
+  initialLiveCountdownNotificationsEnabled?: boolean;
   initialLogLevel?: AppLogLevel;
-  initialNotificationsEnabled?: boolean;
   initialParentPin?: string | null;
   initialRestartCountdownAfterCheckIn?: boolean;
   initialThemeMode?: ThemeMode;
@@ -25,8 +25,8 @@ export function AppSettingsProvider({
   children,
   initialActiveThemeId = DEFAULT_THEME_ID,
   initialHapticsEnabled,
+  initialLiveCountdownNotificationsEnabled,
   initialLogLevel,
-  initialNotificationsEnabled,
   initialParentPin,
   initialRestartCountdownAfterCheckIn,
   initialThemeMode = 'system',
@@ -44,8 +44,10 @@ export function AppSettingsProvider({
       allowTemporaryLogLevel={allowTemporaryLogLevel}
       initialActiveThemeId={initialActiveThemeId}
       initialHapticsEnabled={initialHapticsEnabled}
+      initialLiveCountdownNotificationsEnabled={
+        initialLiveCountdownNotificationsEnabled
+      }
       initialLogLevel={initialLogLevel}
-      initialNotificationsEnabled={initialNotificationsEnabled}
       initialParentPin={initialParentPin}
       initialRestartCountdownAfterCheckIn={initialRestartCountdownAfterCheckIn}
       initialThemeMode={initialThemeMode}

@@ -76,7 +76,7 @@ type NotificationsContextValue = {
   dismissCheckInFlow: () => void;
   engineAvailable: boolean;
   isReady: boolean;
-  notificationsEnabled: boolean;
+  liveCountdownNotificationsEnabled: boolean;
   openExactAlarmSettings: () => Promise<void>;
   openFullScreenIntentSettings: () => Promise<void>;
   openNotificationSettings: () => Promise<void>;
@@ -90,7 +90,9 @@ type NotificationsContextValue = {
     },
   ) => Promise<void>;
   runtimeStatus: NotificationRuntimeStatus;
-  setNotificationsEnabled: (notificationsEnabled: boolean) => void;
+  setLiveCountdownNotificationsEnabled: (
+    liveCountdownNotificationsEnabled: boolean,
+  ) => void;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(
@@ -144,12 +146,12 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     (state) => state.resolveCheckInSession,
   );
   const startSharedTimer = useSharedStore((state) => state.startTimer);
-  const notificationsEnabled = useLocalSettingsStore(
-    (state) => state.notificationsEnabled,
+  const liveCountdownNotificationsEnabled = useLocalSettingsStore(
+    (state) => state.liveCountdownNotificationsEnabled,
   );
   const parentPin = useLocalSettingsStore((state) => state.parentPin);
-  const setNotificationsEnabled = useLocalSettingsStore(
-    (state) => state.setNotificationsEnabled,
+  const setLiveCountdownNotificationsEnabled = useLocalSettingsStore(
+    (state) => state.setLiveCountdownNotificationsEnabled,
   );
   const hasLocalSettingsHydrated = useLocalSettingsStore(
     (state) => state.hasHydrated,
@@ -180,7 +182,9 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   const skipNextResumeConsumeRef = useRef(false);
   const lastSyncedDocumentRef = useRef<NotificationDocument | null>(null);
   const lastSeenNativeLogSequenceRef = useRef(-1);
-  const notificationsEnabledRef = useRef(notificationsEnabled);
+  const liveCountdownNotificationsEnabledRef = useRef(
+    liveCountdownNotificationsEnabled,
+  );
   const didEvaluateStartupNotificationPermissionRef = useRef(false);
   const isReady = hasLocalSettingsHydrated && hasSharedStoreHydrated;
 
@@ -199,8 +203,9 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   }, [document]);
 
   useEffect(() => {
-    notificationsEnabledRef.current = notificationsEnabled;
-  }, [notificationsEnabled]);
+    liveCountdownNotificationsEnabledRef.current =
+      liveCountdownNotificationsEnabled;
+  }, [liveCountdownNotificationsEnabled]);
 
   const forwardNotificationNativeLog = useCallback(
     (entry: NotificationNativeLogEntry) => {
@@ -334,14 +339,6 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         return runtimeStatus;
       }
 
-      if (!notificationsEnabled) {
-        log.debug('Skipped notification permission request', {
-          reason: 'notifications-disabled',
-          source,
-        });
-        return runtimeStatus;
-      }
-
       if (runtimeStatus.notificationPermissionGranted) {
         log.debug('Skipped notification permission request', {
           reason: 'already-granted',
@@ -356,7 +353,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       await requestNotificationPermission();
       return refreshRuntimeStatus();
     },
-    [engineAvailable, notificationsEnabled, refreshRuntimeStatus],
+    [engineAvailable, refreshRuntimeStatus],
   );
 
   const syncResolvedDocument = useCallback(
@@ -500,7 +497,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
         : null;
       let nextDocument = deriveNotificationDocument(document, {
         existingDocument: persistedDocument,
-        notificationsEnabled,
+        liveCountdownNotificationsEnabled,
       });
 
       if (engineAvailable && !persistedDocument) {
@@ -536,7 +533,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     hasInitialized,
     isReady,
     maybeRequestStartupNotificationPermission,
-    notificationsEnabled,
+    liveCountdownNotificationsEnabled,
     refreshRuntimeStatus,
   ]);
 
@@ -547,7 +544,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
 
     const nextDocument = deriveNotificationDocument(document, {
       existingDocument: notificationDocumentRef.current,
-      notificationsEnabled,
+      liveCountdownNotificationsEnabled,
     });
     const previousDocument =
       lastSyncedDocumentRef.current ?? notificationDocumentRef.current;
@@ -580,9 +577,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     void (async () => {
       let bridgeDocumentJson: string | null = null;
 
-      if (!notificationsEnabled) {
-        bridgeDocumentJson = await resetNotificationTimer(nextDocument);
-      } else if (!previousDocument) {
+      if (!previousDocument) {
         bridgeDocumentJson = await syncNotificationDocument(nextDocument);
       } else if (
         previousDocument.head.timerState.isRunning !==
@@ -611,7 +606,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     engineAvailable,
     hasInitialized,
     isReady,
-    notificationsEnabled,
+    liveCountdownNotificationsEnabled,
     refreshRuntimeStatus,
   ]);
 
@@ -653,7 +648,8 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
           sharedDocumentRef.current,
           {
             existingDocument: nextDocument,
-            notificationsEnabled: notificationsEnabledRef.current,
+            liveCountdownNotificationsEnabled:
+              liveCountdownNotificationsEnabledRef.current,
           },
         );
 
@@ -889,7 +885,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       dismissCheckInFlow,
       engineAvailable,
       isReady: isReady && hasInitialized,
-      notificationsEnabled,
+      liveCountdownNotificationsEnabled,
       openExactAlarmSettings,
       openFullScreenIntentSettings,
       openNotificationSettings,
@@ -897,7 +893,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       refreshRuntimeStatus,
       resolveExpiredTimerChild,
       runtimeStatus,
-      setNotificationsEnabled,
+      setLiveCountdownNotificationsEnabled,
     }),
     [
       activeExpiredTimerSession,
@@ -905,11 +901,11 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       engineAvailable,
       hasInitialized,
       isReady,
-      notificationsEnabled,
+      liveCountdownNotificationsEnabled,
       refreshRuntimeStatus,
       resolveExpiredTimerChild,
       runtimeStatus,
-      setNotificationsEnabled,
+      setLiveCountdownNotificationsEnabled,
     ],
   );
 

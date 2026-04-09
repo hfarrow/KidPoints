@@ -170,7 +170,7 @@ function createExpiredNotificationDocument(
         alarmDurationSeconds: 20,
         intervalMinutes: 15,
         intervalSeconds: 0,
-        notificationsEnabled: true,
+        liveCountdownNotificationsEnabled: true,
       },
       timerRuntimeState: {
         lastTriggeredAt: 100,
@@ -215,7 +215,7 @@ function createExpiredNotificationDocumentForChildren(
         alarmDurationSeconds: 20,
         intervalMinutes: 15,
         intervalSeconds: 0,
-        notificationsEnabled: true,
+        liveCountdownNotificationsEnabled: true,
       },
       timerRuntimeState: {
         lastTriggeredAt: 100,
@@ -392,9 +392,11 @@ function NotificationsProbe() {
 
 function renderProvider({
   initialDocument,
+  initialLiveCountdownNotificationsEnabled = true,
   initialParentUnlocked = true,
 }: {
   initialDocument: ReturnType<typeof createSharedDocumentFixture>['document'];
+  initialLiveCountdownNotificationsEnabled?: boolean;
   initialParentUnlocked?: boolean;
 }) {
   return render(
@@ -404,6 +406,9 @@ function renderProvider({
     >
       <ParentSessionProvider initialParentUnlocked={initialParentUnlocked}>
         <AppSettingsProvider
+          initialLiveCountdownNotificationsEnabled={
+            initialLiveCountdownNotificationsEnabled
+          }
           initialThemeMode="light"
           storage={createMemoryStorage()}
         >
@@ -1435,31 +1440,34 @@ describe('NotificationsProvider', () => {
     );
   });
 
-  it('does not request notification permission at startup when notifications are disabled in local settings', async () => {
-    render(
-      <SharedStoreProvider
-        initialDocument={sharedFixture.document}
-        storage={createMemoryStorage()}
-      >
-        <ParentSessionProvider initialParentUnlocked>
-          <AppSettingsProvider
-            initialNotificationsEnabled={false}
-            initialThemeMode="light"
-            storage={createMemoryStorage()}
-          >
-            <NotificationsProvider>
-              <NotificationsProbe />
-            </NotificationsProvider>
-          </AppSettingsProvider>
-        </ParentSessionProvider>
-      </SharedStoreProvider>,
-    );
+  it('keeps expiry scheduling active when live countdown notifications are disabled', async () => {
+    renderProvider({
+      initialDocument: sharedFixture.document,
+      initialLiveCountdownNotificationsEnabled: false,
+      initialParentUnlocked: true,
+    });
 
     await waitFor(() =>
       expect(screen.getByTestId('notifications-ready').props.children).toBe(
         'ready',
       ),
     );
-    expect(mockRequestNotificationPermission).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Start timer'));
+    });
+
+    await waitFor(() =>
+      expect(mockStartNotificationTimer).toHaveBeenCalledTimes(1),
+    );
+    expect(mockStartNotificationTimer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        head: expect.objectContaining({
+          timerConfig: expect.objectContaining({
+            liveCountdownNotificationsEnabled: false,
+          }),
+        }),
+      }),
+    );
   });
 });

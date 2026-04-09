@@ -139,7 +139,8 @@ export async function saveNotificationDocument(document: NotificationDocument) {
   log.debug('Saving notification document', {
     expiredIntervals: document.head.expiredIntervals.length,
     isRunning: document.head.timerState.isRunning,
-    notificationsEnabled: document.head.timerConfig.notificationsEnabled,
+    liveCountdownNotificationsEnabled:
+      document.head.timerConfig.liveCountdownNotificationsEnabled,
   });
   return nativeModuleRef.saveDocument(JSON.stringify(document));
 }
@@ -164,7 +165,8 @@ export async function syncNotificationDocument(document: NotificationDocument) {
   log.debug('Syncing notification document', {
     expiredIntervals: document.head.expiredIntervals.length,
     isRunning: document.head.timerState.isRunning,
-    notificationsEnabled: document.head.timerConfig.notificationsEnabled,
+    liveCountdownNotificationsEnabled:
+      document.head.timerConfig.liveCountdownNotificationsEnabled,
   });
   return nativeModuleRef.syncDocument(JSON.stringify(document));
 }

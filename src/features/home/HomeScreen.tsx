@@ -143,7 +143,11 @@ export function HomeScreen() {
                   onPress={openAlarmScreen}
                   style={styles.summaryIconAction}
                 >
-                  <Feather color={tokens.controlText} name="clock" size={16} />
+                  <Feather
+                    color={tokens.controlText}
+                    name="settings"
+                    size={16}
+                  />
                 </LoggedPressable>
               }
             />

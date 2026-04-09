@@ -11,13 +11,25 @@ import { Tile } from '../../components/Tile';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import { useNotifications } from './NotificationsProvider';
 
-function StatusRow({ label, value }: { label: string; value: string }) {
+function StatusRow({
+  attention = false,
+  label,
+  value,
+}: {
+  attention?: boolean;
+  label: string;
+  value: string;
+}) {
   const styles = useThemedStyles(createStyles);
 
   return (
     <View style={styles.statusRow}>
       <Text style={styles.statusLabel}>{label}</Text>
-      <Text style={styles.statusValue}>{value}</Text>
+      <Text
+        style={[styles.statusValue, attention && styles.statusValueAttention]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -39,14 +51,14 @@ export function NotificationSettingsTile() {
   const {
     activeExpiredTimerSession,
     engineAvailable,
-    notificationsEnabled,
+    liveCountdownNotificationsEnabled,
     openExactAlarmSettings,
     openFullScreenIntentSettings,
     openNotificationSettings,
     openPromotedNotificationSettings,
     refreshRuntimeStatus,
     runtimeStatus,
-    setNotificationsEnabled,
+    setLiveCountdownNotificationsEnabled,
   } = useNotifications();
   const readiness = useMemo(() => {
     if (!engineAvailable) {
@@ -56,17 +68,13 @@ export function NotificationSettingsTile() {
       };
     }
 
-    if (!notificationsEnabled) {
-      return {
-        label: 'Off',
-        tone: 'warning' as const,
-      };
-    }
-
     if (
       !runtimeStatus.notificationPermissionGranted ||
       !runtimeStatus.exactAlarmPermissionGranted ||
-      !runtimeStatus.fullScreenIntentPermissionGranted
+      !runtimeStatus.fullScreenIntentPermissionGranted ||
+      (liveCountdownNotificationsEnabled &&
+        runtimeStatus.promotedNotificationSettingsResolvable &&
+        !runtimeStatus.promotedNotificationPermissionGranted)
     ) {
       return {
         label: 'Action Needed',
@@ -74,11 +82,18 @@ export function NotificationSettingsTile() {
       };
     }
 
+    if (runtimeStatus.isRunning) {
+      return {
+        label: liveCountdownNotificationsEnabled ? 'Live' : 'Scheduled',
+        tone: 'good' as const,
+      };
+    }
+
     return {
-      label: runtimeStatus.isRunning ? 'Live' : 'Ready',
-      tone: runtimeStatus.isRunning ? ('good' as const) : ('neutral' as const),
+      label: 'Ready',
+      tone: 'neutral' as const,
     };
-  }, [engineAvailable, notificationsEnabled, runtimeStatus]);
+  }, [engineAvailable, liveCountdownNotificationsEnabled, runtimeStatus]);
 
   return (
     <Tile
@@ -88,23 +103,27 @@ export function NotificationSettingsTile() {
       initiallyCollapsed
       summary={
         <CompactSurface>
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleCopy}>
-              <SectionLabel>Device Notifications</SectionLabel>
-              <Text style={styles.helper}>
-                Keep the native countdown live update, timer expiry alerts, and
-                lock-screen popup access in sync with this device.
-              </Text>
+          <View style={styles.summaryColumn}>
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleCopy}>
+                <SectionLabel>Live Countdown</SectionLabel>
+                <Text style={styles.helper}>
+                  Keep the ongoing countdown notification visible while the
+                  timer is running. Timer expiry alerts and check-ins still rely
+                  on device notifications being allowed in system settings.
+                </Text>
+              </View>
+              <Switch
+                accessibilityLabel="Enable live countdown notifications"
+                onValueChange={setLiveCountdownNotificationsEnabled}
+                thumbColor="#f8fafc"
+                trackColor={{
+                  false: tokens.controlTrackOff,
+                  true: tokens.accent,
+                }}
+                value={liveCountdownNotificationsEnabled}
+              />
             </View>
-            <Switch
-              onValueChange={setNotificationsEnabled}
-              thumbColor="#f8fafc"
-              trackColor={{
-                false: tokens.controlTrackOff,
-                true: tokens.accent,
-              }}
-              value={notificationsEnabled}
-            />
           </View>
         </CompactSurface>
       }
@@ -122,47 +141,49 @@ export function NotificationSettingsTile() {
             value={engineAvailable ? 'Connected' : 'Unavailable'}
           />
           <StatusRow
+            attention={!runtimeStatus.notificationPermissionGranted}
             label="Notifications"
             value={
-              notificationsEnabled
-                ? runtimeStatus.notificationPermissionGranted
-                  ? 'Allowed'
-                  : 'Permission Needed'
-                : 'Disabled'
+              runtimeStatus.notificationPermissionGranted
+                ? 'Allowed'
+                : 'Permission Needed'
             }
           />
           <StatusRow
+            attention={!runtimeStatus.exactAlarmPermissionGranted}
             label="Exact Alarms"
             value={
-              notificationsEnabled
-                ? runtimeStatus.exactAlarmPermissionGranted
-                  ? 'Allowed'
-                  : 'Needs Setting'
-                : 'Disabled'
+              runtimeStatus.exactAlarmPermissionGranted
+                ? 'Allowed'
+                : 'Needs Setting'
             }
           />
           <StatusRow
+            attention={!runtimeStatus.fullScreenIntentPermissionGranted}
             label="Lock Screen Popup"
             value={
-              notificationsEnabled
-                ? runtimeStatus.fullScreenIntentPermissionGranted
-                  ? 'Allowed'
-                  : runtimeStatus.fullScreenIntentSettingsResolvable
-                    ? 'Needs Setting'
-                    : 'Unavailable'
-                : 'Disabled'
+              runtimeStatus.fullScreenIntentPermissionGranted
+                ? 'Allowed'
+                : runtimeStatus.fullScreenIntentSettingsResolvable
+                  ? 'Needs Setting'
+                  : 'Unavailable'
             }
           />
           <StatusRow
+            attention={
+              liveCountdownNotificationsEnabled &&
+              runtimeStatus.promotedNotificationSettingsResolvable &&
+              !runtimeStatus.promotedNotificationPermissionGranted
+            }
             label="Live Updates"
             value={
-              notificationsEnabled
+              liveCountdownNotificationsEnabled
                 ? runtimeStatus.promotedNotificationPermissionGranted
                   ? 'Allowed'
                   : runtimeStatus.promotedNotificationSettingsResolvable
                     ? 'Needs Setting'
                     : 'Unavailable'
-                : 'Disabled'
+                : 'Off'
             }
           />
         </Tile>
@@ -235,11 +256,9 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       gap: 10,
     },
     statusLabel: {
-      color: tokens.textMuted,
-      fontSize: 11,
-      fontWeight: '800',
-      letterSpacing: 0.4,
-      textTransform: 'uppercase',
+      color: tokens.textPrimary,
+      fontSize: 14,
+      fontWeight: '700',
     },
     statusRow: {
       gap: 4,
@@ -249,9 +268,17 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       minWidth: 160,
     },
     statusValue: {
-      color: tokens.textPrimary,
-      fontSize: 14,
-      fontWeight: '700',
+      color: tokens.textMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.4,
+      textTransform: 'uppercase',
+    },
+    statusValueAttention: {
+      color: tokens.warningText,
+    },
+    summaryColumn: {
+      gap: 12,
     },
     toggleCopy: {
       flex: 1,

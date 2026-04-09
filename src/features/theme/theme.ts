@@ -43,6 +43,7 @@ export type ThemeTokens = {
   tileBorder: string;
   tileMutedSurface: string;
   tileSurface: string;
+  warningText: string;
 };
 
 export type ThemeDefinition = {
@@ -97,6 +98,7 @@ const themesById: Record<ThemeId, ThemeDefinition> = {
       tileBorder: '#8778ba',
       tileMutedSurface: '#31295a',
       tileSurface: '#3d336d',
+      warningText: '#facc15',
     },
     id: 'default',
     label: 'KidPoints',
@@ -141,6 +143,7 @@ const themesById: Record<ThemeId, ThemeDefinition> = {
       tileBorder: '#c9b8ea',
       tileMutedSurface: '#d9cdf3',
       tileSurface: '#e3d5fb',
+      warningText: '#a16207',
     },
   },
   gruvbox: {
@@ -185,6 +188,7 @@ const themesById: Record<ThemeId, ThemeDefinition> = {
       tileBorder: '#a89984',
       tileMutedSurface: '#504945',
       tileSurface: '#5a524c',
+      warningText: '#fabd2f',
     },
     id: 'gruvbox',
     label: 'Gruvbox',
@@ -229,6 +233,7 @@ const themesById: Record<ThemeId, ThemeDefinition> = {
       tileBorder: '#a89984',
       tileMutedSurface: '#e2cca9',
       tileSurface: '#ebdbb2',
+      warningText: '#b57614',
     },
   },
 };

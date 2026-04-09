@@ -150,14 +150,43 @@ object KidPointsNotificationsEngine {
   }
 
   fun syncDocument(context: Context, documentJson: String): String {
-    persistDocument(context, documentJson)
-    return documentJson
+    val document = JSONObject(documentJson)
+    val head = getHead(document)
+    val timerConfig = getOrCreateObject(head, "timerConfig")
+    val timerRuntimeState = getOrCreateObject(head, "timerRuntimeState")
+    val timerState = getOrCreateObject(head, "timerState")
+    val liveCountdownNotificationsEnabled =
+      isLiveCountdownNotificationsEnabled(timerConfig)
+    val nextTriggerAt = timerRuntimeState.optLongOrNull("nextTriggerAt")
+    val isRunning = timerState.optBoolean("isRunning", false)
+
+    persistDocument(context, document.toString())
+
+    if (!isRunning || nextTriggerAt == null) {
+      cancelExactTrigger(context)
+      NotificationManagerCompat.from(context).cancel(COUNTDOWN_NOTIFICATION_ID)
+      stopForegroundService(context)
+      return document.toString()
+    }
+
+    ensureChannels(context)
+    scheduleExactTrigger(context, nextTriggerAt)
+
+    if (liveCountdownNotificationsEnabled) {
+      startForegroundService(context, ACTION_REFRESH)
+    } else {
+      NotificationManagerCompat.from(context).cancel(COUNTDOWN_NOTIFICATION_ID)
+      stopForegroundService(context)
+    }
+
+    return document.toString()
   }
 
   fun startTimer(context: Context, documentJson: String): String {
     stopExpiredAlarmPlayback()
     val document = JSONObject(documentJson)
     val head = getHead(document)
+    val timerConfig = getOrCreateObject(head, "timerConfig")
     val timerState = getOrCreateObject(head, "timerState")
     val timerRuntimeState = getOrCreateObject(head, "timerRuntimeState")
     val activeIntervalMs = getIntervalMs(head)
@@ -179,7 +208,12 @@ object KidPointsNotificationsEngine {
     persistDocument(context, document.toString())
     ensureChannels(context)
     scheduleExactTrigger(context, nextTriggerAt)
-    startForegroundService(context, ACTION_REFRESH)
+    if (isLiveCountdownNotificationsEnabled(timerConfig)) {
+      startForegroundService(context, ACTION_REFRESH)
+    } else {
+      NotificationManagerCompat.from(context).cancel(COUNTDOWN_NOTIFICATION_ID)
+      stopForegroundService(context)
+    }
     logDebug(
       "Started timer",
       createLogContext(
@@ -344,7 +378,7 @@ object KidPointsNotificationsEngine {
     NotificationManagerCompat.from(context).cancel(COUNTDOWN_NOTIFICATION_ID)
     stopForegroundService(context)
     ensureChannels(context)
-    val shouldPlayAlarm = timerConfig.optBoolean("notificationsEnabled", true)
+    val shouldPlayAlarm = isExpirationNotificationsEnabled(timerConfig)
     val alarmDurationSeconds = max(timerConfig.optInt("alarmDurationSeconds", 20), 1)
 
     logDebug(
@@ -370,7 +404,7 @@ object KidPointsNotificationsEngine {
       shouldPostExpiredNotification(
         canPostExpiredNotification =
           expiredInterval != null &&
-            timerConfig.optBoolean("notificationsEnabled", true) &&
+            isExpirationNotificationsEnabled(timerConfig) &&
             isNotificationPermissionGranted(context) &&
             notificationId != null,
         isAppInForeground = isAppInForeground,
@@ -423,12 +457,15 @@ object KidPointsNotificationsEngine {
   fun restoreAfterBoot(context: Context) {
     val rawDocument = getStoredDocument(context) ?: return
     val document = JSONObject(rawDocument)
-    val nextTriggerAt =
-      getOrCreateObject(getHead(document), "timerRuntimeState").optLongOrNull("nextTriggerAt")
+    val head = getHead(document)
+    val timerConfig = getOrCreateObject(head, "timerConfig")
+    val nextTriggerAt = getOrCreateObject(head, "timerRuntimeState").optLongOrNull("nextTriggerAt")
 
-    if (nextTriggerAt != null) {
+    if (nextTriggerAt != null && isExpirationNotificationsEnabled(timerConfig)) {
       scheduleExactTrigger(context, nextTriggerAt)
-      startForegroundService(context, ACTION_REFRESH)
+      if (isLiveCountdownNotificationsEnabled(timerConfig)) {
+        startForegroundService(context, ACTION_REFRESH)
+      }
       logService(
         "Restored after boot",
         createLogContext("nextTriggerAt" to nextTriggerAt),
@@ -440,10 +477,16 @@ object KidPointsNotificationsEngine {
     val rawDocument = getStoredDocument(context)
     val document = rawDocument?.let { JSONObject(it) }
     val head = document?.let { getHead(it) }
+    val timerConfig = head?.optJSONObject("timerConfig")
     val runtime = head?.optJSONObject("timerRuntimeState")
     val timerState = head?.optJSONObject("timerState")
     val nextTriggerAt = runtime?.optLongOrNull("nextTriggerAt")
-    val countdownNotification = buildCountdownNotification(context, nextTriggerAt ?: System.currentTimeMillis())
+    val countdownNotification =
+      if (timerConfig?.let(::isLiveCountdownNotificationsEnabled) != false) {
+        buildCountdownNotification(context, nextTriggerAt ?: System.currentTimeMillis())
+      } else {
+        null
+      }
     val countdownChannel = getCountdownChannel(context)
     val canPostExpiredNotification =
       head
@@ -476,14 +519,16 @@ object KidPointsNotificationsEngine {
     return NotificationRuntimeStatusPayload(
       countdownNotificationChannelImportance = countdownChannel?.importance,
       countdownNotificationHasPromotableCharacteristics =
-        NotificationCompat.hasPromotableCharacteristics(countdownNotification),
+        countdownNotification?.let(NotificationCompat::hasPromotableCharacteristics) ?: false,
       countdownNotificationIsOngoing =
-        (countdownNotification.flags and Notification.FLAG_ONGOING_EVENT) != 0,
+        countdownNotification?.let {
+          (it.flags and Notification.FLAG_ONGOING_EVENT) != 0
+        } ?: false,
       countdownNotificationRequestedPromoted =
-        NotificationCompat.isRequestPromotedOngoing(countdownNotification),
+        countdownNotification?.let(NotificationCompat::isRequestPromotedOngoing) ?: false,
       countdownNotificationUsesChronometer =
-        countdownNotification.extras?.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false) == true,
-      countdownNotificationWhen = countdownNotification.`when`.takeIf { it > 0L },
+        countdownNotification?.extras?.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false) == true,
+      countdownNotificationWhen = countdownNotification?.`when`?.takeIf { it > 0L },
       exactAlarmPermissionGranted = canScheduleExactAlarms(context),
       expiredNotificationCategory = expiredNotification?.category,
       expiredNotificationChannelImportance = expiredChannel?.importance,
@@ -507,6 +552,7 @@ object KidPointsNotificationsEngine {
 
     val document = JSONObject(getStoredDocument(context) ?: "{}")
     val head = getHead(document)
+    val timerConfig = getOrCreateObject(head, "timerConfig")
     val runtime = getOrCreateObject(head, "timerRuntimeState")
     val nextTriggerAt = runtime.optLongOrNull("nextTriggerAt") ?: System.currentTimeMillis()
     val notification = buildCountdownNotification(context, nextTriggerAt)
@@ -520,6 +566,8 @@ object KidPointsNotificationsEngine {
         "hasPromotableCharacteristics" to
           NotificationCompat.hasPromotableCharacteristics(notification),
         "isOngoing" to ((notification.flags and Notification.FLAG_ONGOING_EVENT) != 0),
+        "liveCountdownNotificationsEnabled" to
+          isLiveCountdownNotificationsEnabled(timerConfig),
         "nextTriggerAt" to nextTriggerAt,
         "requestedPromoted" to NotificationCompat.isRequestPromotedOngoing(notification),
         "sessionId" to runtime.optStringOrNull("sessionId"),
@@ -1047,6 +1095,20 @@ object KidPointsNotificationsEngine {
     val created = JSONObject()
     parent.put(key, created)
     return created
+  }
+
+  private fun isExpirationNotificationsEnabled(timerConfig: JSONObject): Boolean = true
+
+  private fun isLiveCountdownNotificationsEnabled(timerConfig: JSONObject): Boolean {
+    if (!isExpirationNotificationsEnabled(timerConfig)) {
+      return false
+    }
+
+    return if (timerConfig.has("liveCountdownNotificationsEnabled")) {
+      timerConfig.optBoolean("liveCountdownNotificationsEnabled", true)
+    } else {
+      timerConfig.optBoolean("notificationsEnabled", true)
+    }
   }
 
   private fun getIntervalMs(head: JSONObject): Long {

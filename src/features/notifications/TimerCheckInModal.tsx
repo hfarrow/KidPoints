@@ -154,79 +154,83 @@ function TimerCheckInModalContent({
             />
           </View>
         ) : (
-          <View style={styles.childList}>
-            {activeExpiredTimerSession.childActions.map((childAction) => (
-              <View key={childAction.childId} style={styles.childRail}>
-                <ResolveChildButton
-                  accessibilityLabel={`Dismiss point for ${childAction.childName}`}
-                  color={tokens.resolveDismissText}
-                  iconName="thumbs-down"
-                  isActive={childAction.status === 'dismissed'}
-                  isDisabled={childAction.status === 'dismissed'}
-                  side="left"
-                  onPress={() => {
-                    triggerLightImpactHaptic(hapticsEnabled);
-                    void resolveExpiredTimerChild(
-                      childAction.childId,
-                      'dismissed',
-                      {
-                        restartTimerOnResolve: restartCountdownAfterCheckIn,
-                      },
-                    );
-                  }}
-                />
-                <View style={styles.childRailCore}>
-                  <Text style={styles.childName}>{childAction.childName}</Text>
-                  <Text style={styles.childStatus}>
-                    {childAction.status === 'pending'
-                      ? 'Pending'
-                      : childAction.status === 'awarded'
-                        ? 'Awarded +1'
-                        : 'Dismissed'}
-                  </Text>
-                </View>
-                <ResolveChildButton
-                  accessibilityLabel={`Award point to ${childAction.childName}`}
-                  color={tokens.resolveAwardText}
-                  iconName="thumbs-up"
-                  isActive={childAction.status === 'awarded'}
-                  isDisabled={childAction.status === 'awarded'}
-                  side="right"
-                  onPress={() => {
-                    triggerLightImpactHaptic(hapticsEnabled);
-                    void resolveExpiredTimerChild(
-                      childAction.childId,
-                      'awarded',
-                      {
-                        restartTimerOnResolve: restartCountdownAfterCheckIn,
-                      },
-                    );
-                  }}
-                />
+          <>
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleCopy}>
+                <Text style={styles.toggleLabel}>Restart Countdown</Text>
+                <Text style={styles.toggleHelper}>
+                  Start the next cadence automatically after every child has
+                  been checked in.
+                </Text>
               </View>
-            ))}
-          </View>
-        )}
+              <Switch
+                accessibilityLabel="Restart countdown automatically"
+                onValueChange={setRestartCountdownAfterCheckIn}
+                thumbColor="#f8fafc"
+                trackColor={{
+                  false: tokens.controlTrackOff,
+                  true: tokens.accent,
+                }}
+                value={restartCountdownAfterCheckIn}
+              />
+            </View>
 
-        <View style={styles.toggleRow}>
-          <View style={styles.toggleCopy}>
-            <Text style={styles.toggleLabel}>Restart Countdown</Text>
-            <Text style={styles.toggleHelper}>
-              Start the next cadence automatically after every child has been
-              checked in.
-            </Text>
-          </View>
-          <Switch
-            accessibilityLabel="Restart countdown automatically"
-            onValueChange={setRestartCountdownAfterCheckIn}
-            thumbColor="#f8fafc"
-            trackColor={{
-              false: tokens.controlTrackOff,
-              true: tokens.accent,
-            }}
-            value={restartCountdownAfterCheckIn}
-          />
-        </View>
+            <View style={styles.childList}>
+              {activeExpiredTimerSession.childActions.map((childAction) => (
+                <View key={childAction.childId} style={styles.childRail}>
+                  <ResolveChildButton
+                    accessibilityLabel={`Dismiss point for ${childAction.childName}`}
+                    color={tokens.resolveDismissText}
+                    iconName="thumbs-down"
+                    isActive={childAction.status === 'dismissed'}
+                    isDisabled={childAction.status === 'dismissed'}
+                    side="left"
+                    onPress={() => {
+                      triggerLightImpactHaptic(hapticsEnabled);
+                      void resolveExpiredTimerChild(
+                        childAction.childId,
+                        'dismissed',
+                        {
+                          restartTimerOnResolve: restartCountdownAfterCheckIn,
+                        },
+                      );
+                    }}
+                  />
+                  <View style={styles.childRailCore}>
+                    <Text style={styles.childName}>
+                      {childAction.childName}
+                    </Text>
+                    <Text style={styles.childStatus}>
+                      {childAction.status === 'pending'
+                        ? 'Pending'
+                        : childAction.status === 'awarded'
+                          ? 'Awarded +1'
+                          : 'Dismissed'}
+                    </Text>
+                  </View>
+                  <ResolveChildButton
+                    accessibilityLabel={`Award point to ${childAction.childName}`}
+                    color={tokens.resolveAwardText}
+                    iconName="thumbs-up"
+                    isActive={childAction.status === 'awarded'}
+                    isDisabled={childAction.status === 'awarded'}
+                    side="right"
+                    onPress={() => {
+                      triggerLightImpactHaptic(hapticsEnabled);
+                      void resolveExpiredTimerChild(
+                        childAction.childId,
+                        'awarded',
+                        {
+                          restartTimerOnResolve: restartCountdownAfterCheckIn,
+                        },
+                      );
+                    }}
+                  />
+                </View>
+              ))}
+            </View>
+          </>
+        )}
       </View>
     </KeyboardModalFrame>
   );
