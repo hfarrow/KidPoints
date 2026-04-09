@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  StyleSheet,
+  Text,
+  type TextStyle,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import Animated, {
   Easing,
   runOnJS,
+  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -12,7 +19,7 @@ import { LoggedPressable } from '../../components/LoggedPressable';
 import type { SharedCommandResult } from '../../state/sharedTypes';
 import { type useAppTheme, useThemedStyles } from '../theme/themeContext';
 
-const POINT_TRANSITION_DURATION_MS = 170;
+const POINT_TRANSITION_DURATION_MS = 200;
 const MIN_TRAVEL_DISTANCE_PX = 32;
 const POINT_VALUE_LINE_HEIGHT = 28;
 
@@ -25,12 +32,79 @@ type ChildPointsRailProps = {
   points: number;
 };
 
-type ActivePointTransition = {
+type PointRunnerSnapshot = {
   delta: -1 | 1;
-  from: number;
-  key: number;
-  to: number;
+  id: number;
+  kind: 'incoming' | 'outgoing';
+  value: number;
 };
+
+type PointRunnerProps = {
+  coreWidth: SharedValue<number>;
+  delta: -1 | 1;
+  kind: 'incoming' | 'outgoing';
+  onComplete: (id: number) => void;
+  runnerId: number;
+  textStyle: TextStyle;
+  value: number;
+  wrapperStyle: ViewStyle;
+};
+
+function PointRunner({
+  coreWidth,
+  delta,
+  kind,
+  onComplete,
+  runnerId,
+  textStyle,
+  value,
+  wrapperStyle,
+}: PointRunnerProps) {
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = 0;
+    progress.value = withTiming(
+      1,
+      {
+        duration: POINT_TRANSITION_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(onComplete)(runnerId);
+        }
+      },
+    );
+  }, [onComplete, progress, runnerId]);
+
+  const runnerStyle = useAnimatedStyle(() => {
+    const distance = Math.max(coreWidth.value / 2, MIN_TRAVEL_DISTANCE_PX);
+    const opacity =
+      kind === 'incoming'
+        ? Easing.out(Easing.cubic)(progress.value)
+        : 1 - Easing.in(Easing.cubic)(progress.value);
+    const translateX =
+      kind === 'incoming'
+        ? (1 - progress.value) * distance * delta
+        : progress.value * distance * -delta;
+
+    return {
+      opacity,
+      transform: [
+        {
+          translateX,
+        },
+      ],
+    };
+  });
+
+  return (
+    <Animated.View style={[wrapperStyle, runnerStyle]}>
+      <Text style={textStyle}>{value}</Text>
+    </Animated.View>
+  );
+}
 
 export function ChildPointsRail({
   childId,
@@ -41,24 +115,19 @@ export function ChildPointsRail({
   points,
 }: ChildPointsRailProps) {
   const styles = useThemedStyles(createStyles);
-  const [settledPoints, setSettledPoints] = useState(points);
-  const [pendingSteps, setPendingSteps] = useState<(-1 | 1)[]>([]);
-  const [activeTransition, setActiveTransition] =
-    useState<ActivePointTransition | null>(null);
-  const activeTransitionRef = useRef<ActivePointTransition | null>(null);
+  const [centeredPoints, setCenteredPoints] = useState<number | null>(points);
+  const [runners, setRunners] = useState<PointRunnerSnapshot[]>([]);
+  const expectedPointsRef = useRef(points);
   const previousPointsRef = useRef(points);
-  const transitionKeyRef = useRef(0);
-  const progress = useSharedValue(0);
+  const runnerIdRef = useRef(0);
+  const runnersRef = useRef<PointRunnerSnapshot[]>([]);
   const coreWidth = useSharedValue(0);
-  const pendingOffset = useMemo(
-    () => pendingSteps.reduce((total, step) => total + step, 0),
-    [pendingSteps],
-  );
-  const layoutValue = activeTransition ? activeTransition.to : settledPoints;
+  const layoutValue =
+    runners.length > 0 ? expectedPointsRef.current : (centeredPoints ?? points);
 
   useEffect(() => {
-    activeTransitionRef.current = activeTransition;
-  }, [activeTransition]);
+    runnersRef.current = runners;
+  }, [runners]);
 
   useEffect(() => {
     if (previousPointsRef.current === points) {
@@ -66,112 +135,78 @@ export function ChildPointsRail({
     }
 
     previousPointsRef.current = points;
-    const expectedPoints = settledPoints + pendingOffset;
 
-    if (points === expectedPoints) {
-      return;
+    if (points !== expectedPointsRef.current) {
+      expectedPointsRef.current = points;
+      setRunners([]);
+      setCenteredPoints(points);
     }
+  }, [points]);
 
-    setPendingSteps([]);
-    setActiveTransition(null);
-    setSettledPoints(points);
-    progress.value = 0;
-  }, [pendingOffset, points, progress, settledPoints]);
+  const handleRunnerComplete = useCallback((runnerId: number) => {
+    const completedRunner =
+      runnersRef.current.find((runner) => runner.id === runnerId) ?? null;
 
-  useEffect(() => {
-    if (activeTransition || pendingSteps.length === 0) {
-      return;
-    }
-
-    const delta = pendingSteps[0];
-
-    setActiveTransition({
-      delta,
-      from: settledPoints,
-      key: transitionKeyRef.current + 1,
-      to: settledPoints + delta,
-    });
-    transitionKeyRef.current += 1;
-  }, [activeTransition, pendingSteps, settledPoints]);
-
-  const completeTransition = useCallback((key: number) => {
-    const completedTransition = activeTransitionRef.current;
-
-    if (!completedTransition || completedTransition.key !== key) {
-      return;
-    }
-
-    activeTransitionRef.current = null;
-    setActiveTransition(null);
-    setSettledPoints(completedTransition.to);
-    setPendingSteps((currentSteps) => currentSteps.slice(1));
-  }, []);
-
-  useEffect(() => {
-    if (!activeTransition) {
-      return;
-    }
-
-    progress.value = 0;
-    progress.value = withTiming(
-      1,
-      {
-        duration: POINT_TRANSITION_DURATION_MS,
-        easing: Easing.out(Easing.cubic),
-      },
-      (finished) => {
-        if (finished) {
-          runOnJS(completeTransition)(activeTransition.key);
-        }
-      },
+    setRunners((currentRunners) =>
+      currentRunners.filter((runner) => runner.id !== runnerId),
     );
-  }, [activeTransition, completeTransition, progress]);
 
-  const outgoingValueStyle = useAnimatedStyle(() => {
-    if (!activeTransition) {
-      return {
-        opacity: 1,
-        transform: [{ translateX: 0 }],
-      };
+    if (!completedRunner || completedRunner.kind === 'outgoing') {
+      return;
     }
 
-    const distance = Math.max(coreWidth.value / 2, MIN_TRAVEL_DISTANCE_PX);
-
-    return {
-      opacity: 1 - progress.value,
-      transform: [
-        {
-          translateX: progress.value * distance * -activeTransition.delta,
-        },
-      ],
-    };
-  });
-
-  const incomingValueStyle = useAnimatedStyle(() => {
-    if (!activeTransition) {
-      return {
-        opacity: 0,
-        transform: [{ translateX: 0 }],
-      };
+    if (completedRunner.value === expectedPointsRef.current) {
+      setCenteredPoints(completedRunner.value);
+      return;
     }
 
-    const distance = Math.max(coreWidth.value / 2, MIN_TRAVEL_DISTANCE_PX);
-
-    return {
-      opacity: progress.value,
-      transform: [
-        {
-          translateX: (1 - progress.value) * distance * activeTransition.delta,
-        },
-      ],
-    };
-  });
+    const outgoingRunnerId = runnerIdRef.current + 1;
+    runnerIdRef.current = outgoingRunnerId;
+    setRunners((currentRunners) => [
+      ...currentRunners,
+      {
+        delta: completedRunner.delta,
+        id: outgoingRunnerId,
+        kind: 'outgoing',
+        value: completedRunner.value,
+      },
+    ]);
+  }, []);
 
   const handleAdjustPoints = (delta: -1 | 1) => {
     const result = onAdjustPoints(delta);
 
     if (result.ok) {
-      setPendingSteps((currentSteps) => [...currentSteps, delta]);
+      const currentPoints = expectedPointsRef.current;
+      const nextPoints = currentPoints + delta;
+
+      if (centeredPoints === currentPoints) {
+        const outgoingRunnerId = runnerIdRef.current + 1;
+        runnerIdRef.current = outgoingRunnerId;
+        setCenteredPoints(null);
+        setRunners((currentRunners) => [
+          ...currentRunners,
+          {
+            delta,
+            id: outgoingRunnerId,
+            kind: 'outgoing',
+            value: currentPoints,
+          },
+        ]);
+      }
+
+      expectedPointsRef.current = nextPoints;
+      const incomingRunnerId = runnerIdRef.current + 1;
+      runnerIdRef.current = incomingRunnerId;
+      setRunners((currentRunners) => [
+        ...currentRunners,
+        {
+          delta,
+          id: incomingRunnerId,
+          kind: 'incoming',
+          value: nextPoints,
+        },
+      ]);
     }
   };
 
@@ -231,26 +266,24 @@ export function ChildPointsRail({
             >
               {layoutValue}
             </Text>
-            {activeTransition ? (
-              <>
-                <Animated.View
-                  style={[styles.pointsValueLayer, outgoingValueStyle]}
-                >
-                  <Text style={styles.pointsValue}>
-                    {activeTransition.from}
-                  </Text>
-                </Animated.View>
-                <Animated.View
-                  style={[styles.pointsValueLayer, incomingValueStyle]}
-                >
-                  <Text style={styles.pointsValue}>{activeTransition.to}</Text>
-                </Animated.View>
-              </>
-            ) : (
+            {centeredPoints != null ? (
               <View style={styles.pointsValueLayer}>
-                <Text style={styles.pointsValue}>{settledPoints}</Text>
+                <Text style={styles.pointsValue}>{centeredPoints}</Text>
               </View>
-            )}
+            ) : null}
+            {runners.map((runner) => (
+              <PointRunner
+                coreWidth={coreWidth}
+                delta={runner.delta}
+                key={runner.id}
+                kind={runner.kind}
+                onComplete={handleRunnerComplete}
+                runnerId={runner.id}
+                textStyle={styles.pointsValue}
+                value={runner.value}
+                wrapperStyle={styles.pointsValueLayer}
+              />
+            ))}
           </View>
         </LoggedPressable>
         {isParentUnlocked ? (
