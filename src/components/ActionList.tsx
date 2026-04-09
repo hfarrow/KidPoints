@@ -6,6 +6,7 @@ import { ListScaffold } from './ListScaffold';
 
 type ActionListProps<T> = {
   closeLabel?: string;
+  disableLogging?: boolean;
   emptyState?: ReactNode;
   footer?: ReactNode;
   items: T[];
@@ -19,6 +20,7 @@ type ActionListProps<T> = {
 
 export function ActionList<T>({
   closeLabel,
+  disableLogging = false,
   emptyState,
   footer,
   items,
@@ -34,6 +36,7 @@ export function ActionList<T>({
   return (
     <ListScaffold
       closeLabel={closeLabel}
+      disableLogging={disableLogging}
       emptyState={emptyState}
       footer={footer}
       onRequestClose={onRequestClose}

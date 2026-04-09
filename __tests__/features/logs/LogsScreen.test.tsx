@@ -9,8 +9,6 @@ import { Alert } from 'react-native';
 
 import { LogsScreen } from '../../../src/features/logs/LogsScreen';
 import { shareBufferedLogsAsync } from '../../../src/features/logs/shareLogs';
-import { ListPickerModal } from '../../../src/features/overlays/ListPickerModal';
-import { clearListPickerModal } from '../../../src/features/overlays/listPickerModalStore';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import {
@@ -25,7 +23,6 @@ import { SharedStoreProvider } from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockBack = jest.fn();
-let mockPathname = '/';
 
 jest.mock('@expo/vector-icons', () => {
   const mockReactNative = jest.requireActual('react-native');
@@ -41,7 +38,6 @@ jest.mock('@expo/vector-icons', () => {
 });
 
 jest.mock('expo-router', () => ({
-  usePathname: () => mockPathname,
   useRouter: () => ({
     back: mockBack,
   }),
@@ -53,11 +49,9 @@ jest.mock('../../../src/features/logs/shareLogs', () => ({
 
 describe('LogsScreen', () => {
   beforeEach(() => {
-    clearListPickerModal();
     resetAppLogBuffer();
     setAppLogLevel('debug');
     mockBack.mockReset();
-    mockPathname = '/';
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'info').mockImplementation(() => {});
@@ -67,7 +61,6 @@ describe('LogsScreen', () => {
   });
 
   afterEach(() => {
-    clearListPickerModal();
     resetAppLogBuffer();
     jest.restoreAllMocks();
   });
@@ -81,7 +74,6 @@ describe('LogsScreen', () => {
             storage={createMemoryStorage()}
           >
             <LogsScreen />
-            <ListPickerModal />
           </AppSettingsProvider>
         </ParentSessionProvider>
       </SharedStoreProvider>,
@@ -152,7 +144,7 @@ describe('LogsScreen', () => {
     fireEvent.press(screen.getByLabelText('Filter logs at info and above'));
     fireEvent.press(screen.getByLabelText('Choose namespace filter'));
     fireEvent.press(screen.getByLabelText('Select alpha'));
-    fireEvent.press(screen.getByText('Close'));
+    fireEvent.press(screen.getByLabelText('Close Filter Namespaces'));
 
     expect(getAppBufferedLogEntries()).toHaveLength(logCountBeforeInteractions);
   });
@@ -177,9 +169,16 @@ describe('LogsScreen', () => {
 
     fireEvent.press(screen.getByLabelText('Choose namespace filter'));
     expect(screen.getByText('Filter Namespaces')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Choose which logger namespaces stay visible in the log viewer.',
+      ),
+    ).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Select alpha'));
-    fireEvent.press(screen.getByText('Close'));
+    expect(screen.getByLabelText('Selected alpha')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Dismiss Filter Namespaces'));
 
     expect(screen.getByText('Alpha error log')).toBeTruthy();
     expect(screen.queryByText('Beta warn log')).toBeNull();
@@ -199,7 +198,7 @@ describe('LogsScreen', () => {
 
     fireEvent.press(screen.getByLabelText('Choose namespace filter'));
     fireEvent.press(screen.getByLabelText('Select alpha'));
-    fireEvent.press(screen.getByText('Close'));
+    fireEvent.press(screen.getByLabelText('Close Filter Namespaces'));
     fireEvent.press(screen.getByText('Share Visible Logs'));
 
     await waitFor(() => {
@@ -238,5 +237,18 @@ describe('LogsScreen', () => {
         'This device does not currently support sharing exported log files.',
       );
     });
+  });
+
+  it('shows an empty namespace overlay state before any namespaced logs are buffered', () => {
+    renderLogsScreen();
+
+    fireEvent.press(screen.getByLabelText('Choose namespace filter'));
+
+    expect(screen.getByText('Filter Namespaces')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Namespace filters will appear here after logs with namespaces have been buffered in this app session.',
+      ),
+    ).toBeTruthy();
   });
 });

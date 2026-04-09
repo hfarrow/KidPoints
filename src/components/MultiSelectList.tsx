@@ -8,6 +8,7 @@ import { StatusBadge } from './Skeleton';
 
 type MultiSelectListProps<T> = {
   closeLabel?: string;
+  disableLogging?: boolean;
   emptyState?: ReactNode;
   footer?: ReactNode;
   getItemDescription?: (item: T, index: number) => string | null | undefined;
@@ -29,6 +30,7 @@ type MultiSelectListProps<T> = {
 
 export function MultiSelectList<T>({
   closeLabel,
+  disableLogging = false,
   emptyState,
   footer,
   getItemDescription,
@@ -48,6 +50,7 @@ export function MultiSelectList<T>({
   return (
     <ListScaffold
       closeLabel={closeLabel}
+      disableLogging={disableLogging}
       emptyState={emptyState}
       footer={footer}
       onRequestClose={onRequestClose}
@@ -62,11 +65,14 @@ export function MultiSelectList<T>({
             const isSelected = selectedItemIds.includes(itemId);
             const label = getItemLabel(item, index);
             const description = getItemDescription?.(item, index);
+            const accessibilityLabel = `${isSelected ? 'Selected' : 'Select'} ${label}`;
 
             return (
               <LoggedPressable
+                accessibilityLabel={accessibilityLabel}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSelected }}
+                disableLogging={disableLogging}
                 key={itemId}
                 logContext={{ itemId, selected: isSelected, title }}
                 logLabel={`Toggle ${label}`}

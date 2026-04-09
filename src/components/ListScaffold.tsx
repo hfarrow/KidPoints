@@ -14,6 +14,7 @@ import { LoggedPressable } from './LoggedPressable';
 
 type ListScaffoldProps = PropsWithChildren<{
   closeLabel?: string;
+  disableLogging?: boolean;
   emptyState?: ReactNode;
   footer?: ReactNode;
   onRequestClose: () => void;
@@ -25,6 +26,7 @@ type ListScaffoldProps = PropsWithChildren<{
 export function ListScaffold({
   children,
   closeLabel = 'Close',
+  disableLogging = false,
   emptyState,
   footer,
   onRequestClose,
@@ -66,6 +68,7 @@ export function ListScaffold({
     <View style={styles.overlayRoot}>
       <LoggedPressable
         accessibilityLabel={`Dismiss ${title}`}
+        disableLogging={disableLogging}
         logLabel={`Dismiss ${title} backdrop`}
         onPress={onRequestClose}
         style={[styles.backdrop, { backgroundColor: tokens.modalBackdrop }]}
@@ -94,6 +97,7 @@ export function ListScaffold({
             </View>
             <LoggedPressable
               accessibilityLabel={`Close ${title}`}
+              disableLogging={disableLogging}
               logLabel={`Close ${title}`}
               onPress={onRequestClose}
               style={styles.closeButton}

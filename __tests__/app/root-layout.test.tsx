@@ -50,10 +50,6 @@ jest.mock('../../src/features/overlays/TextInputModal', () => ({
   TextInputModal: () => null,
 }));
 
-jest.mock('../../src/features/overlays/ListPickerModal', () => ({
-  ListPickerModal: () => null,
-}));
-
 jest.mock('../../src/features/parent/ParentPinSetupGate', () => ({
   ParentPinSetupGate: () => null,
 }));

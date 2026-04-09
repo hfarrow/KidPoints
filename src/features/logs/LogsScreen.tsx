@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
+import { MultiSelectList } from '../../components/MultiSelectList';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
@@ -18,7 +19,6 @@ import {
   isAppLogLevelAtLeast,
   SUPPORTED_APP_LOG_LEVELS,
 } from '../../logging/logger';
-import { presentListPickerModal } from '../overlays/listPickerModalStore';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import { shareBufferedLogsAsync } from './shareLogs';
 
@@ -42,6 +42,8 @@ export function LogsScreen() {
   const [selectedNamespaceIds, setSelectedNamespaceIds] = useState<string[]>(
     [],
   );
+  const [isNamespaceFilterVisible, setIsNamespaceFilterVisible] =
+    useState(false);
   const [isSharingLogs, setIsSharingLogs] = useState(false);
 
   const availableNamespaces = useMemo(() => {
@@ -80,24 +82,12 @@ export function LogsScreen() {
     });
   }, [activeSelectedNamespaceIds, entries, selectedLogLevel]);
 
-  const openNamespacePicker = () => {
-    presentListPickerModal({
-      closeLabel: 'Close',
-      items: availableNamespaces.map((namespace) => ({
-        id: namespace,
-        label: namespace,
-      })),
-      onSelect: (itemId) => {
-        setSelectedNamespaceIds((currentIds) =>
-          currentIds.includes(itemId)
-            ? currentIds.filter((currentId) => currentId !== itemId)
-            : [...currentIds, itemId],
-        );
-      },
-      selectedItemIds: activeSelectedNamespaceIds,
-      selectionMode: 'multiple',
-      title: 'Filter Namespaces',
-    });
+  const toggleNamespaceFilter = (itemId: string) => {
+    setSelectedNamespaceIds((currentIds) =>
+      currentIds.includes(itemId)
+        ? currentIds.filter((currentId) => currentId !== itemId)
+        : [...currentIds, itemId],
+    );
   };
 
   const handleShareLogs = async () => {
@@ -139,163 +129,195 @@ export function LogsScreen() {
   };
 
   return (
-    <ScreenScaffold footer={<ScreenBackFooter disableLogging />}>
-      <ScreenHeader title="Logs" />
+    <View style={styles.screenRoot}>
+      <ScreenScaffold footer={<ScreenBackFooter disableLogging />}>
+        <ScreenHeader title="Logs" />
 
-      <Tile density="extraCompact" title="Filters">
-        <View style={styles.filterSection}>
-          <View style={styles.filterRow}>
-            {LOG_LEVEL_FILTER_OPTIONS.map((option) => {
-              const isSelected = selectedLogLevel === option;
+        <Tile density="extraCompact" title="Filters">
+          <View style={styles.filterSection}>
+            <View style={styles.filterRow}>
+              {LOG_LEVEL_FILTER_OPTIONS.map((option) => {
+                const isSelected = selectedLogLevel === option;
 
-              return (
-                <LoggedPressable
-                  accessibilityLabel={`Filter logs at ${option} and above`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                  disableLogging
-                  key={option}
-                  logContext={{
-                    logLevel: option,
-                    selected: isSelected,
-                  }}
-                  logLabel={`Set log level filter to ${option}`}
-                  onPress={() => {
-                    setSelectedLogLevel(option);
-                  }}
-                  style={[
-                    styles.filterToggle,
-                    isSelected && styles.filterToggleSelected,
-                  ]}
-                >
-                  <Text
+                return (
+                  <LoggedPressable
+                    accessibilityLabel={`Filter logs at ${option} and above`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    disableLogging
+                    key={option}
+                    logContext={{
+                      logLevel: option,
+                      selected: isSelected,
+                    }}
+                    logLabel={`Set log level filter to ${option}`}
+                    onPress={() => {
+                      setSelectedLogLevel(option);
+                    }}
                     style={[
-                      styles.filterToggleText,
-                      isSelected && styles.filterToggleTextSelected,
+                      styles.filterToggle,
+                      isSelected && styles.filterToggleSelected,
                     ]}
                   >
-                    {option}
+                    <Text
+                      style={[
+                        styles.filterToggleText,
+                        isSelected && styles.filterToggleTextSelected,
+                      ]}
+                    >
+                      {option}
+                    </Text>
+                  </LoggedPressable>
+                );
+              })}
+            </View>
+
+            <LoggedPressable
+              accessibilityLabel="Choose namespace filter"
+              accessibilityRole="button"
+              disableLogging
+              logContext={{
+                namespaceCount: activeSelectedNamespaceIds.length,
+              }}
+              logLabel="Choose namespace filter"
+              onPress={() => {
+                setIsNamespaceFilterVisible(true);
+              }}
+              style={styles.namespacePickerButton}
+            >
+              <View style={styles.namespaceCopy}>
+                <Text style={styles.namespaceLabel}>Namespace</Text>
+                <Text style={styles.namespaceValue}>
+                  {formatNamespaceSummary(activeSelectedNamespaceIds)}
+                </Text>
+              </View>
+              <View style={styles.namespaceAction}>
+                {activeSelectedNamespaceIds.length > 0 ? (
+                  <StatusBadge
+                    label={`${activeSelectedNamespaceIds.length} On`}
+                    size="mini"
+                    tone="good"
+                  />
+                ) : null}
+                <View style={styles.namespaceChevron}>
+                  <Feather
+                    color={tokens.controlText}
+                    name="chevron-down"
+                    size={16}
+                  />
+                </View>
+              </View>
+            </LoggedPressable>
+
+            <ActionPillRow>
+              <ActionPill
+                disableLogging
+                label={isSharingLogs ? 'Sharing...' : 'Share Visible Logs'}
+                onPress={() => {
+                  void handleShareLogs();
+                }}
+                tone="primary"
+              />
+            </ActionPillRow>
+          </View>
+        </Tile>
+
+        {filteredEntries.length === 0 ? (
+          <Tile
+            density="extraCompact"
+            title={entries.length === 0 ? 'No Logs Yet' : 'No Matching Logs'}
+          >
+            <Text style={styles.emptyCopy}>
+              {entries.length === 0
+                ? 'Logs written through the shared app logger will appear here during this app session.'
+                : 'Try a broader log level or namespace filter to see more entries.'}
+            </Text>
+          </Tile>
+        ) : (
+          <View style={styles.logList}>
+            {filteredEntries.map((entry, index) => {
+              const isExpanded = expandedLogIds.includes(entry.id);
+
+              return (
+                <Tile
+                  accessory={
+                    <View style={styles.badgeRow}>
+                      <StatusBadge label={entry.level} size="mini" />
+                      {entry.namespace ? (
+                        <StatusBadge
+                          label={entry.namespace}
+                          size="mini"
+                          tone="good"
+                        />
+                      ) : null}
+                    </View>
+                  }
+                  collapsed={!isExpanded}
+                  collapsible
+                  collapsibleLabel={entry.previewText}
+                  density="extraCompact"
+                  disableCollapseLogging
+                  key={entry.id}
+                  onCollapsedChange={(isCollapsed) => {
+                    setExpandedLogIds((currentIds) =>
+                      isCollapsed
+                        ? currentIds.filter(
+                            (currentId) => currentId !== entry.id,
+                          )
+                        : [...currentIds, entry.id],
+                    );
+                  }}
+                  title={
+                    <View style={styles.titleBlock}>
+                      <Text
+                        numberOfLines={2}
+                        style={styles.logTitle}
+                        testID={`log-summary-${index}`}
+                      >
+                        {entry.previewText}
+                      </Text>
+                      <Text style={styles.timestampText}>
+                        {buildLogTimestampLabel(entry.timestampMs)}
+                      </Text>
+                    </View>
+                  }
+                >
+                  <Text selectable style={styles.fullText}>
+                    {entry.fullText}
                   </Text>
-                </LoggedPressable>
+                </Tile>
               );
             })}
           </View>
-
-          <LoggedPressable
-            accessibilityLabel="Choose namespace filter"
-            accessibilityRole="button"
-            disableLogging
-            logContext={{
-              namespaceCount: activeSelectedNamespaceIds.length,
-            }}
-            logLabel="Choose namespace filter"
-            onPress={openNamespacePicker}
-            style={styles.namespacePickerButton}
-          >
-            <View style={styles.namespaceCopy}>
-              <Text style={styles.namespaceLabel}>Namespace</Text>
-              <Text style={styles.namespaceValue}>
-                {formatNamespaceSummary(activeSelectedNamespaceIds)}
-              </Text>
-            </View>
-            <View style={styles.namespaceAction}>
-              {activeSelectedNamespaceIds.length > 0 ? (
-                <StatusBadge
-                  label={`${activeSelectedNamespaceIds.length} On`}
-                  size="mini"
-                  tone="good"
-                />
-              ) : null}
-              <View style={styles.namespaceChevron}>
-                <Feather
-                  color={tokens.controlText}
-                  name="chevron-down"
-                  size={16}
-                />
-              </View>
-            </View>
-          </LoggedPressable>
-
-          <ActionPillRow>
-            <ActionPill
-              disableLogging
-              label={isSharingLogs ? 'Sharing...' : 'Share Visible Logs'}
-              onPress={() => {
-                void handleShareLogs();
-              }}
-              tone="primary"
-            />
-          </ActionPillRow>
-        </View>
-      </Tile>
-
-      {filteredEntries.length === 0 ? (
-        <Tile
-          density="extraCompact"
-          title={entries.length === 0 ? 'No Logs Yet' : 'No Matching Logs'}
-        >
+        )}
+      </ScreenScaffold>
+      <MultiSelectList
+        closeLabel="Close"
+        disableLogging
+        emptyState={
           <Text style={styles.emptyCopy}>
-            {entries.length === 0
-              ? 'Logs written through the shared app logger will appear here during this app session.'
-              : 'Try a broader log level or namespace filter to see more entries.'}
+            Namespace filters will appear here after logs with namespaces have
+            been buffered in this app session.
           </Text>
-        </Tile>
-      ) : (
-        <View style={styles.logList}>
-          {filteredEntries.map((entry, index) => {
-            const isExpanded = expandedLogIds.includes(entry.id);
-
-            return (
-              <Tile
-                accessory={
-                  <View style={styles.badgeRow}>
-                    <StatusBadge label={entry.level} size="mini" />
-                    {entry.namespace ? (
-                      <StatusBadge
-                        label={entry.namespace}
-                        size="mini"
-                        tone="good"
-                      />
-                    ) : null}
-                  </View>
-                }
-                collapsed={!isExpanded}
-                collapsible
-                collapsibleLabel={entry.previewText}
-                density="extraCompact"
-                disableCollapseLogging
-                key={entry.id}
-                onCollapsedChange={(isCollapsed) => {
-                  setExpandedLogIds((currentIds) =>
-                    isCollapsed
-                      ? currentIds.filter((currentId) => currentId !== entry.id)
-                      : [...currentIds, entry.id],
-                  );
-                }}
-                title={
-                  <View style={styles.titleBlock}>
-                    <Text
-                      numberOfLines={2}
-                      style={styles.logTitle}
-                      testID={`log-summary-${index}`}
-                    >
-                      {entry.previewText}
-                    </Text>
-                    <Text style={styles.timestampText}>
-                      {buildLogTimestampLabel(entry.timestampMs)}
-                    </Text>
-                  </View>
-                }
-              >
-                <Text selectable style={styles.fullText}>
-                  {entry.fullText}
-                </Text>
-              </Tile>
-            );
-          })}
-        </View>
-      )}
-    </ScreenScaffold>
+        }
+        getItemLabel={(item) => item.label}
+        items={availableNamespaces.map((namespace) => ({
+          id: namespace,
+          label: namespace,
+        }))}
+        keyExtractor={(item) => item.id}
+        onRequestClose={() => {
+          setIsNamespaceFilterVisible(false);
+        }}
+        onToggle={(item) => {
+          toggleNamespaceFilter(item.id);
+        }}
+        selectedItemIds={activeSelectedNamespaceIds}
+        subtitle="Choose which logger namespaces stay visible in the log viewer."
+        title="Filter Namespaces"
+        visible={isNamespaceFilterVisible}
+      />
+    </View>
   );
 }
 
@@ -417,6 +439,9 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       color: tokens.textPrimary,
       fontSize: 13,
       fontWeight: '800',
+    },
+    screenRoot: {
+      flex: 1,
     },
     timestampText: {
       color: tokens.textMuted,

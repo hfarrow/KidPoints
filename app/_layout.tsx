@@ -1,6 +1,5 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ListPickerModal } from '../src/features/overlays/ListPickerModal';
 import { TextInputModal } from '../src/features/overlays/TextInputModal';
 import { ParentPinSetupGate } from '../src/features/parent/ParentPinSetupGate';
 import { useAppTheme } from '../src/features/theme/appTheme';
@@ -28,7 +27,6 @@ function RootNavigator() {
           options={{ gestureEnabled: false, presentation: 'transparentModal' }}
         />
       </Stack>
-      <ListPickerModal />
       <TextInputModal />
     </>
   );
