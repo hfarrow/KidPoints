@@ -5,7 +5,9 @@ import {
 } from '../../src/state/sharedStore';
 import {
   deriveSyncProjection,
+  resolveCommonSyncBase,
   serializeSyncProjection,
+  validateSyncProjection,
 } from '../../src/state/sharedSync';
 import { createMemoryStorage } from '../testUtils/memoryStorage';
 
@@ -166,5 +168,159 @@ describe('sharedSync phase 1 projection', () => {
     expect(setEntry?.pointsBefore).toBe(1);
     expect(setEntry?.pointsAfter).toBe(7);
     expect(projection.headHash).toBe(setEntry?.hash);
+  });
+});
+
+describe('sharedSync phase 2 common base detection', () => {
+  it('finds the latest shared sync base after the devices diverge', () => {
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-base-seed',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(seedStore.getState().document);
+    expect(seedStore.getState().adjustPoints(childId, 1).ok).toBe(true);
+
+    const leftStore = createSharedStore({
+      initialDocument: cloneSharedDocument(seedStore.getState().document),
+      storage: createMemoryStorage(),
+    });
+    const rightStore = createSharedStore({
+      initialDocument: cloneSharedDocument(seedStore.getState().document),
+      storage: createMemoryStorage(),
+    });
+
+    expect(leftStore.getState().setPoints(childId, 4).ok).toBe(true);
+    expect(rightStore.getState().adjustPoints(childId, 2).ok).toBe(true);
+
+    const leftProjection = deriveSyncProjection(leftStore.getState().document);
+    const rightProjection = deriveSyncProjection(
+      rightStore.getState().document,
+    );
+    const result = resolveCommonSyncBase({
+      leftProjection,
+      rightProjection,
+    });
+
+    expect(result).toMatchObject({
+      commonBaseHash: leftProjection.entries[1]?.hash,
+      leftBaseIndex: 1,
+      mode: 'shared-base',
+      ok: true,
+      rightBaseIndex: 1,
+    });
+    if (!result.ok || result.mode !== 'shared-base') {
+      throw new Error('Expected a shared-base common sync result.');
+    }
+    expect(result.commonBaseEntry?.kind).toBe('points-adjusted');
+    expect(result.commonBaseEntry?.pointsAfter).toBe(1);
+  });
+
+  it('allows bootstrap from a populated device into an empty device', () => {
+    const populatedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-bootstrap-source',
+      }),
+      storage: createMemoryStorage(),
+    });
+    const emptyStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-bootstrap-target',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(populatedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(populatedStore.getState().document);
+    expect(populatedStore.getState().adjustPoints(childId, 3).ok).toBe(true);
+
+    const result = resolveCommonSyncBase({
+      leftProjection: deriveSyncProjection(populatedStore.getState().document),
+      rightProjection: deriveSyncProjection(emptyStore.getState().document),
+    });
+
+    expect(result).toEqual({
+      commonBaseHash: null,
+      mode: 'bootstrap-left-to-right',
+      ok: true,
+    });
+  });
+
+  it('rejects independent initialized histories that do not share a base', () => {
+    const leftStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-independent-left',
+      }),
+      storage: createMemoryStorage(),
+    });
+    const rightStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-independent-right',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(leftStore.getState().addChild('Ava').ok).toBe(true);
+    expect(rightStore.getState().addChild('Noah').ok).toBe(true);
+
+    const result = resolveCommonSyncBase({
+      leftProjection: deriveSyncProjection(leftStore.getState().document),
+      rightProjection: deriveSyncProjection(rightStore.getState().document),
+    });
+
+    expect(result).toEqual({
+      code: 'independent-lineages',
+      message:
+        'The devices do not share a common sync base and cannot bootstrap over existing ledger history.',
+      ok: false,
+    });
+  });
+
+  it('rejects projections whose hash chain has been tampered with', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-invalid-chain',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(store.getState().document);
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+
+    const validProjection = deriveSyncProjection(store.getState().document);
+    const invalidProjection = {
+      ...validProjection,
+      entries: validProjection.entries.map((entry, index) =>
+        index === 1
+          ? {
+              ...entry,
+              parentHash: 'sync-tampered-parent',
+            }
+          : entry,
+      ),
+    };
+
+    expect(validateSyncProjection(invalidProjection)).toEqual({
+      code: 'entry-parent-hash-mismatch',
+      entryHash: invalidProjection.entries[1]?.hash,
+      entryIndex: 1,
+      message: 'Sync entry 1 has an unexpected parent hash.',
+      ok: false,
+    });
+
+    expect(
+      resolveCommonSyncBase({
+        leftProjection: invalidProjection,
+        rightProjection: validProjection,
+      }),
+    ).toEqual({
+      code: 'invalid-left-projection',
+      message: 'Sync entry 1 has an unexpected parent hash.',
+      ok: false,
+    });
   });
 });

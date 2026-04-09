@@ -54,6 +54,56 @@ export type SyncProjection = {
   syncSchemaVersion: 1;
 };
 
+export type SyncProjectionValidationErrorCode =
+  | 'entry-hash-mismatch'
+  | 'entry-parent-hash-mismatch'
+  | 'entry-state-hash-mismatch'
+  | 'head-hash-mismatch'
+  | 'head-sync-hash-mismatch'
+  | 'scope-mismatch'
+  | 'sync-schema-version-mismatch';
+
+export type ValidateSyncProjectionResult =
+  | {
+      ok: true;
+    }
+  | {
+      code: SyncProjectionValidationErrorCode;
+      entryHash?: string;
+      entryIndex?: number;
+      message: string;
+      ok: false;
+    };
+
+export type ResolveCommonSyncBaseResult =
+  | {
+      commonBaseEntry: SyncEntry | null;
+      commonBaseHash: string | null;
+      leftBaseIndex: number | null;
+      mode: 'shared-base';
+      ok: true;
+      rightBaseIndex: number | null;
+    }
+  | {
+      commonBaseHash: null;
+      mode: 'bootstrap-left-to-right';
+      ok: true;
+    }
+  | {
+      commonBaseHash: null;
+      mode: 'bootstrap-right-to-left';
+      ok: true;
+    }
+  | {
+      code:
+        | 'independent-lineages'
+        | 'invalid-left-projection'
+        | 'invalid-right-projection'
+        | 'invalid-bootstrap-target';
+      message: string;
+      ok: false;
+    };
+
 const SYNC_PROJECTION_SCOPE = 'child-ledger' satisfies SyncProjectionScope;
 const SYNC_SCHEMA_VERSION = 1 as const;
 const SYNCABLE_TRANSACTION_KINDS = new Set<TransactionKind>([
@@ -279,6 +329,230 @@ export function deriveSyncProjection(document: SharedDocument): SyncProjection {
     headSyncHash,
     scope: SYNC_PROJECTION_SCOPE,
     syncSchemaVersion: SYNC_SCHEMA_VERSION,
+  };
+}
+
+function isEmptySyncProjectionHead(head: SyncProjectionHead) {
+  return (
+    head.activeChildIds.length === 0 &&
+    head.archivedChildIds.length === 0 &&
+    Object.keys(head.childrenById).length === 0
+  );
+}
+
+function validateProjectionEntryChain(
+  projection: SyncProjection,
+): ValidateSyncProjectionResult {
+  let expectedParentHash: string | null = null;
+
+  for (const [entryIndex, entry] of projection.entries.entries()) {
+    const expectedStateHash = hashSyncValue(entry.stateAfter);
+
+    if (entry.stateHash !== expectedStateHash) {
+      return {
+        code: 'entry-state-hash-mismatch',
+        entryHash: entry.hash,
+        entryIndex,
+        message: `Sync entry ${entryIndex} has an invalid state hash.`,
+        ok: false,
+      };
+    }
+
+    if (entry.parentHash !== expectedParentHash) {
+      return {
+        code: 'entry-parent-hash-mismatch',
+        entryHash: entry.hash,
+        entryIndex,
+        message: `Sync entry ${entryIndex} has an unexpected parent hash.`,
+        ok: false,
+      };
+    }
+
+    const expectedEntryHash = buildSyncEntryHash({
+      affectedChildIds: entry.affectedChildIds,
+      childId: entry.childId,
+      childName: entry.childName,
+      kind: entry.kind,
+      parentHash: entry.parentHash,
+      pointsAfter: entry.pointsAfter,
+      pointsBefore: entry.pointsBefore,
+      stateHash: entry.stateHash,
+    });
+
+    if (entry.hash !== expectedEntryHash) {
+      return {
+        code: 'entry-hash-mismatch',
+        entryHash: entry.hash,
+        entryIndex,
+        message: `Sync entry ${entryIndex} hash does not match its content.`,
+        ok: false,
+      };
+    }
+
+    expectedParentHash = entry.hash;
+  }
+
+  return { ok: true };
+}
+
+export function validateSyncProjection(
+  projection: SyncProjection,
+): ValidateSyncProjectionResult {
+  if (projection.scope !== SYNC_PROJECTION_SCOPE) {
+    return {
+      code: 'scope-mismatch',
+      message: `Unsupported sync projection scope: ${projection.scope}.`,
+      ok: false,
+    };
+  }
+
+  if (projection.syncSchemaVersion !== SYNC_SCHEMA_VERSION) {
+    return {
+      code: 'sync-schema-version-mismatch',
+      message: `Unsupported sync schema version: ${projection.syncSchemaVersion}.`,
+      ok: false,
+    };
+  }
+
+  const entryValidation = validateProjectionEntryChain(projection);
+
+  if (!entryValidation.ok) {
+    return entryValidation;
+  }
+
+  const expectedHeadSyncHash = hashSyncValue(projection.head);
+
+  if (projection.headSyncHash !== expectedHeadSyncHash) {
+    return {
+      code: 'head-sync-hash-mismatch',
+      message: 'Sync projection head hash does not match the projected head.',
+      ok: false,
+    };
+  }
+
+  const expectedHeadHash =
+    projection.entries.at(-1)?.hash ?? projection.headSyncHash;
+
+  if (projection.headHash !== expectedHeadHash) {
+    return {
+      code: 'head-hash-mismatch',
+      message:
+        'Sync projection head lineage hash does not match the active chain.',
+      ok: false,
+    };
+  }
+
+  return { ok: true };
+}
+
+export function resolveCommonSyncBase(args: {
+  leftProjection: SyncProjection;
+  rightProjection: SyncProjection;
+}): ResolveCommonSyncBaseResult {
+  const { leftProjection, rightProjection } = args;
+  const leftValidation = validateSyncProjection(leftProjection);
+
+  if (!leftValidation.ok) {
+    return {
+      code: 'invalid-left-projection',
+      message: leftValidation.message,
+      ok: false,
+    };
+  }
+
+  const rightValidation = validateSyncProjection(rightProjection);
+
+  if (!rightValidation.ok) {
+    return {
+      code: 'invalid-right-projection',
+      message: rightValidation.message,
+      ok: false,
+    };
+  }
+
+  const rightIndexByHash = new Map(
+    rightProjection.entries.map((entry, index) => [entry.hash, index] as const),
+  );
+
+  for (
+    let leftIndex = leftProjection.entries.length - 1;
+    leftIndex >= 0;
+    leftIndex -= 1
+  ) {
+    const leftEntry = leftProjection.entries[leftIndex];
+
+    if (!leftEntry) {
+      continue;
+    }
+
+    const rightIndex = rightIndexByHash.get(leftEntry.hash);
+
+    if (rightIndex == null) {
+      continue;
+    }
+
+    return {
+      commonBaseEntry: leftEntry,
+      commonBaseHash: leftEntry.hash,
+      leftBaseIndex: leftIndex,
+      mode: 'shared-base',
+      ok: true,
+      rightBaseIndex: rightIndex,
+    };
+  }
+
+  if (
+    leftProjection.entries.length === 0 &&
+    rightProjection.entries.length === 0 &&
+    leftProjection.headSyncHash === rightProjection.headSyncHash
+  ) {
+    return {
+      commonBaseEntry: null,
+      commonBaseHash: null,
+      leftBaseIndex: null,
+      mode: 'shared-base',
+      ok: true,
+      rightBaseIndex: null,
+    };
+  }
+
+  const leftIsEmpty =
+    leftProjection.entries.length === 0 &&
+    isEmptySyncProjectionHead(leftProjection.head);
+  const rightIsEmpty =
+    rightProjection.entries.length === 0 &&
+    isEmptySyncProjectionHead(rightProjection.head);
+
+  if (leftIsEmpty && rightIsEmpty) {
+    return {
+      code: 'invalid-bootstrap-target',
+      message:
+        'Both sync projections are empty, so there is nothing to bootstrap.',
+      ok: false,
+    };
+  }
+
+  if (leftIsEmpty) {
+    return {
+      commonBaseHash: null,
+      mode: 'bootstrap-right-to-left',
+      ok: true,
+    };
+  }
+
+  if (rightIsEmpty) {
+    return {
+      commonBaseHash: null,
+      mode: 'bootstrap-left-to-right',
+      ok: true,
+    };
+  }
+
+  return {
+    code: 'independent-lineages',
+    message:
+      'The devices do not share a common sync base and cannot bootstrap over existing ledger history.',
+    ok: false,
   };
 }
 
