@@ -31,7 +31,7 @@ export function buildShareableLogText({
   const lines = [
     'KidPoints Logs',
     `Exported: ${exportedAt.toISOString()}`,
-    `Visible Log Count: ${entries.length}`,
+    `Exported Log Count: ${entries.length}`,
     `Log Level Filter: ${levelLabel}`,
     `Namespace Filter: ${namespaceLabel}`,
     '',

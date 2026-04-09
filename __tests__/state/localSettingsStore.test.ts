@@ -190,6 +190,52 @@ describe('localSettingsStore', () => {
     expect(secondStore.getState().logLevel).toBe('error');
   });
 
+  it('rehydrates persisted namespace color assignments', async () => {
+    const storage = createMemoryStorage();
+    const firstStore = createLocalSettingsStore({
+      storage,
+    });
+
+    firstStore.getState().ensureLogNamespaceColors(['alpha', 'beta']);
+
+    const secondStore = createLocalSettingsStore({
+      storage,
+    });
+
+    await (
+      secondStore as typeof secondStore & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(secondStore.getState().logNamespaceColors).toEqual({
+      alpha: '#2563eb',
+      beta: '#dc2626',
+    });
+  });
+
+  it('resets persisted namespace color assignments', async () => {
+    const storage = createMemoryStorage();
+    const firstStore = createLocalSettingsStore({
+      storage,
+    });
+
+    firstStore.getState().ensureLogNamespaceColors(['alpha', 'beta']);
+    firstStore.getState().resetLogNamespaceColors();
+
+    const secondStore = createLocalSettingsStore({
+      storage,
+    });
+
+    await (
+      secondStore as typeof secondStore & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(secondStore.getState().logNamespaceColors).toEqual({});
+  });
+
   it('normalizes persisted temp log levels outside development mode', async () => {
     const storage = createMemoryStorage();
     const firstStore = createLocalSettingsStore({
@@ -239,6 +285,32 @@ describe('localSettingsStore', () => {
     ).persist.rehydrate();
 
     expect(store.getState().logLevel).toBe('info');
+  });
+
+  it('falls back to empty namespace colors when persisted values are invalid', async () => {
+    const storage = createMemoryStorage({
+      'kidpoints.local-settings.v1': JSON.stringify({
+        state: {
+          logNamespaceColors: {
+            alpha: '#2563eb',
+            beta: 'blue',
+            gamma: 42,
+          },
+        },
+        version: 0,
+      }),
+    });
+    const store = createLocalSettingsStore({
+      storage,
+    });
+
+    await (
+      store as typeof store & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(store.getState().logNamespaceColors).toEqual({});
   });
 
   it('falls back to the default theme when persisted theme ids are invalid', async () => {

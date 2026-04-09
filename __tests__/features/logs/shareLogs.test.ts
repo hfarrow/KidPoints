@@ -60,11 +60,23 @@ describe('shareBufferedLogsAsync', () => {
     });
 
     expect(content).toContain('KidPoints Logs');
-    expect(content).toContain('Visible Log Count: 2');
+    expect(content).toContain('Exported Log Count: 2');
     expect(content).toContain('Log Level Filter: WARN and above');
     expect(content).toContain('Namespace Filter: alpha, beta');
     expect(content).toContain('[INFO ] [09:00:00.000] [alpha]: First log');
     expect(content).toContain('[WARN ] [09:01:00.000] [beta]: Second log');
+  });
+
+  it('labels unfiltered exports as all levels and all namespaces', () => {
+    const content = buildShareableLogText({
+      entries: [],
+      selectedLogLevel: 'all',
+      selectedNamespaceIds: [],
+    });
+
+    expect(content).toContain('Exported Log Count: 0');
+    expect(content).toContain('Log Level Filter: All Levels');
+    expect(content).toContain('Namespace Filter: All Namespaces');
   });
 
   it('writes a temp file and opens the system share sheet', async () => {

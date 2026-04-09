@@ -109,7 +109,9 @@ describe('store logging', () => {
     store.getState().setThemeMode('dark');
     store.getState().setHapticsEnabled(false);
     store.getState().setLogLevel('error');
+    store.getState().ensureLogNamespaceColors(['alpha']);
     store.getState().setParentPin('2468');
+    store.getState().resetLogNamespaceColors();
 
     expect(mockLogger.debug).toHaveBeenCalledWith(
       'Local settings mutation committed',
@@ -138,6 +140,12 @@ describe('store logging', () => {
         action: 'setParentPin',
         hasParentPin: true,
         pinLength: 4,
+      }),
+    );
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Local settings mutation committed',
+      expect.objectContaining({
+        action: 'resetLogNamespaceColors',
       }),
     );
   });

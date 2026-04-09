@@ -86,14 +86,18 @@ export function ActionPillRow({ children }: PropsWithChildren) {
 }
 
 export function StatusBadge({
+  badgeStyle,
   label,
   labelStyle,
   size = 'default',
+  testID,
   tone = 'neutral',
 }: {
+  badgeStyle?: StyleProp<ViewStyle>;
   label: string;
   labelStyle?: StyleProp<TextStyle>;
   size?: 'default' | 'mini';
+  testID?: string;
   tone?: 'good' | 'neutral' | 'warning';
 }) {
   const styles = useThemedStyles(createStyles);
@@ -112,7 +116,13 @@ export function StatusBadge({
 
   return (
     <View
-      style={[styles.badge, size === 'mini' && styles.badgeMini, toneStyle]}
+      style={[
+        styles.badge,
+        size === 'mini' && styles.badgeMini,
+        toneStyle,
+        badgeStyle,
+      ]}
+      testID={testID}
     >
       <Text
         style={[

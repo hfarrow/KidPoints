@@ -13,6 +13,10 @@ import {
 } from 'zustand/middleware';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import {
+  assignMissingLogNamespaceColors,
+  normalizeLogNamespaceColors,
+} from '../features/logs/namespaceColors';
+import {
   DEFAULT_THEME_ID,
   normalizeThemeId,
   type ThemeId,
@@ -29,12 +33,15 @@ import { useStableStoreReference } from './useStableStoreReference';
 
 type LocalSettingsState = {
   activeThemeId: ThemeId;
+  ensureLogNamespaceColors: (namespaces: string[]) => void;
   hasHydrated: boolean;
   hapticsEnabled: boolean;
   liveCountdownNotificationsEnabled: boolean;
+  logNamespaceColors: Record<string, string>;
   logLevel: AppLogLevel;
   markHydrated: () => void;
   parentPin: string | null;
+  resetLogNamespaceColors: () => void;
   restartCountdownAfterCheckIn: boolean;
   setActiveThemeId: (themeId: ThemeId) => void;
   setHapticsEnabled: (hapticsEnabled: boolean) => void;
@@ -64,6 +71,11 @@ const logLocalSettingsRehydrateFailed = createStructuredLog(
   log,
   'error',
   'Local settings rehydrate failed',
+);
+const logLocalSettingsPersistedNamespaceColorsInvalid = createStructuredLog(
+  log,
+  'error',
+  'Local settings rehydrate skipped invalid namespace colors',
 );
 const logLocalSettingsRehydrated = createStructuredLog(
   log,
@@ -119,15 +131,38 @@ export function createLocalSettingsStore({
     persist(
       (set) => ({
         activeThemeId: normalizedInitialActiveThemeId,
+        ensureLogNamespaceColors: (namespaces) => {
+          set((state) => {
+            const nextColors = assignMissingLogNamespaceColors(
+              state.logNamespaceColors,
+              namespaces,
+            );
+
+            if (!nextColors.didChange) {
+              return {};
+            }
+
+            return {
+              logNamespaceColors: nextColors.colors,
+            };
+          });
+        },
         hasHydrated: false,
         hapticsEnabled: initialHapticsEnabled,
         liveCountdownNotificationsEnabled:
           normalizedInitialLiveCountdownNotificationsEnabled,
+        logNamespaceColors: {},
         logLevel: normalizedInitialLogLevel,
         markHydrated: () => {
           set({ hasHydrated: true });
         },
         parentPin: initialParentPin,
+        resetLogNamespaceColors: () => {
+          logLocalSettingsMutation({
+            action: 'resetLogNamespaceColors',
+          });
+          set({ logNamespaceColors: {} });
+        },
         restartCountdownAfterCheckIn: initialRestartCountdownAfterCheckIn,
         setActiveThemeId: (activeThemeId) => {
           logLocalSettingsMutation({
@@ -206,6 +241,15 @@ export function createLocalSettingsStore({
             persistedSettings.liveCountdownNotificationsEnabled ??
             legacyNotificationsEnabled ??
             normalizedInitialLiveCountdownNotificationsEnabled;
+          const normalizedLogNamespaceColors = normalizeLogNamespaceColors(
+            persistedSettings.logNamespaceColors,
+          );
+
+          if (normalizedLogNamespaceColors.hadInvalidEntries) {
+            logLocalSettingsPersistedNamespaceColorsInvalid({
+              action: 'rehydrateLogNamespaceColors',
+            });
+          }
 
           return {
             ...currentState,
@@ -217,6 +261,7 @@ export function createLocalSettingsStore({
             hapticsEnabled:
               persistedSettings.hapticsEnabled ?? initialHapticsEnabled,
             liveCountdownNotificationsEnabled,
+            logNamespaceColors: normalizedLogNamespaceColors.colors,
             logLevel: normalizeAppLogLevel(persistedSettings.logLevel, {
               allowTemporaryLogLevel,
               fallbackLogLevel: normalizedInitialLogLevel,
@@ -240,6 +285,9 @@ export function createLocalSettingsStore({
               liveCountdownNotificationsEnabled:
                 state?.liveCountdownNotificationsEnabled ??
                 normalizedInitialLiveCountdownNotificationsEnabled,
+              logNamespaceColorCount: Object.keys(
+                state?.logNamespaceColors ?? {},
+              ).length,
               hasParentPin: Boolean(state?.parentPin),
               logLevel: state?.logLevel ?? normalizedInitialLogLevel,
               restartCountdownAfterCheckIn:
@@ -255,6 +303,7 @@ export function createLocalSettingsStore({
           activeThemeId,
           hapticsEnabled,
           liveCountdownNotificationsEnabled,
+          logNamespaceColors,
           logLevel,
           parentPin,
           restartCountdownAfterCheckIn,
@@ -263,6 +312,7 @@ export function createLocalSettingsStore({
           activeThemeId,
           hapticsEnabled,
           liveCountdownNotificationsEnabled,
+          logNamespaceColors,
           logLevel,
           parentPin,
           restartCountdownAfterCheckIn,

@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
@@ -19,25 +19,29 @@ import {
   isAppLogLevelAtLeast,
   SUPPORTED_APP_LOG_LEVELS,
 } from '../../logging/logger';
+import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
+import { buildLogNamespaceColorAssignment } from './namespaceColors';
 import { shareBufferedLogsAsync } from './shareLogs';
 
-const ALL_LOG_LEVELS_OPTION = 'all';
-
-type LogLevelFilterValue = AppLogLevel | typeof ALL_LOG_LEVELS_OPTION;
-
-const LOG_LEVEL_FILTER_OPTIONS: readonly LogLevelFilterValue[] = [
-  ALL_LOG_LEVELS_OPTION,
-  ...SUPPORTED_APP_LOG_LEVELS,
-];
+const ALL_VISIBLE_LOG_LEVEL: AppLogLevel = 'temp';
 
 export function LogsScreen() {
   const styles = useThemedStyles(createStyles);
   const { tokens } = useAppTheme();
   const entries = useAppLogBuffer((state) => state.entries);
+  const ensureLogNamespaceColors = useLocalSettingsStore(
+    (state) => state.ensureLogNamespaceColors,
+  );
+  const logNamespaceColors = useLocalSettingsStore(
+    (state) => state.logNamespaceColors,
+  );
+  const resetLogNamespaceColors = useLocalSettingsStore(
+    (state) => state.resetLogNamespaceColors,
+  );
   const [expandedLogIds, setExpandedLogIds] = useState<number[]>([]);
-  const [selectedLogLevel, setSelectedLogLevel] = useState<LogLevelFilterValue>(
-    ALL_LOG_LEVELS_OPTION,
+  const [selectedLogLevel, setSelectedLogLevel] = useState<AppLogLevel>(
+    ALL_VISIBLE_LOG_LEVEL,
   );
   const [selectedNamespaceIds, setSelectedNamespaceIds] = useState<string[]>(
     [],
@@ -57,16 +61,42 @@ export function LogsScreen() {
       firstNamespace.localeCompare(secondNamespace),
     );
   }, [entries]);
+  const bufferedNamespacesByReservationOrder = useMemo(() => {
+    return [
+      ...new Set(
+        [...entries]
+          .reverse()
+          .map((entry) => entry.namespace)
+          .filter((namespace): namespace is string => Boolean(namespace)),
+      ),
+    ];
+  }, [entries]);
   const activeSelectedNamespaceIds = selectedNamespaceIds.filter((namespace) =>
     availableNamespaces.includes(namespace),
   );
+  const areAllLogsVisible =
+    selectedLogLevel === ALL_VISIBLE_LOG_LEVEL &&
+    activeSelectedNamespaceIds.length === 0;
+  const namespaceBadgeAssignments = useMemo(() => {
+    return Object.fromEntries(
+      Object.entries(logNamespaceColors).map(([namespace, backgroundColor]) => [
+        namespace,
+        buildLogNamespaceColorAssignment(backgroundColor),
+      ]),
+    );
+  }, [logNamespaceColors]);
+
+  useEffect(() => {
+    if (bufferedNamespacesByReservationOrder.length === 0) {
+      return;
+    }
+
+    ensureLogNamespaceColors(bufferedNamespacesByReservationOrder);
+  }, [bufferedNamespacesByReservationOrder, ensureLogNamespaceColors]);
 
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
-      if (
-        selectedLogLevel !== ALL_LOG_LEVELS_OPTION &&
-        !isAppLogLevelAtLeast(entry.level, selectedLogLevel)
-      ) {
+      if (!isAppLogLevelAtLeast(entry.level, selectedLogLevel)) {
         return false;
       }
 
@@ -90,16 +120,25 @@ export function LogsScreen() {
     );
   };
 
-  const handleShareLogs = async () => {
+  const handleShareLogs = async ({
+    emptyMessage,
+    emptyTitle,
+    entriesToShare,
+    namespaceIds,
+    selectedLevel,
+  }: {
+    emptyMessage: string;
+    emptyTitle: string;
+    entriesToShare: typeof entries;
+    namespaceIds: string[];
+    selectedLevel: AppLogLevel | 'all';
+  }) => {
     if (isSharingLogs) {
       return;
     }
 
-    if (filteredEntries.length === 0) {
-      Alert.alert(
-        'No Logs To Share',
-        'There are no visible logs to share right now.',
-      );
+    if (entriesToShare.length === 0) {
+      Alert.alert(emptyTitle, emptyMessage);
       return;
     }
 
@@ -107,9 +146,9 @@ export function LogsScreen() {
 
     try {
       const result = await shareBufferedLogsAsync({
-        entries: filteredEntries,
-        selectedLogLevel,
-        selectedNamespaceIds: activeSelectedNamespaceIds,
+        entries: entriesToShare,
+        selectedLogLevel: selectedLevel,
+        selectedNamespaceIds: namespaceIds,
       });
 
       if (!result.ok && result.reason === 'sharing-unavailable') {
@@ -136,7 +175,7 @@ export function LogsScreen() {
         <Tile density="extraCompact" title="Filters">
           <View style={styles.filterSection}>
             <View style={styles.filterRow}>
-              {LOG_LEVEL_FILTER_OPTIONS.map((option) => {
+              {SUPPORTED_APP_LOG_LEVELS.map((option) => {
                 const isSelected = selectedLogLevel === option;
 
                 return (
@@ -212,11 +251,44 @@ export function LogsScreen() {
             <ActionPillRow>
               <ActionPill
                 disableLogging
-                label={isSharingLogs ? 'Sharing...' : 'Share Visible Logs'}
+                label={isSharingLogs ? 'Sharing...' : 'Share All Logs'}
                 onPress={() => {
-                  void handleShareLogs();
+                  void handleShareLogs({
+                    emptyMessage: 'There are no logs to share right now.',
+                    emptyTitle: 'No Logs To Share',
+                    entriesToShare: entries,
+                    namespaceIds: [],
+                    selectedLevel: 'all',
+                  });
                 }}
                 tone="primary"
+              />
+              {!areAllLogsVisible ? (
+                <ActionPill
+                  disableLogging
+                  label={isSharingLogs ? 'Sharing...' : 'Share Visible Logs'}
+                  onPress={() => {
+                    void handleShareLogs({
+                      emptyMessage:
+                        'There are no visible logs to share right now.',
+                      emptyTitle: 'No Logs To Share',
+                      entriesToShare: filteredEntries,
+                      namespaceIds: activeSelectedNamespaceIds,
+                      selectedLevel: selectedLogLevel,
+                    });
+                  }}
+                  tone="primary"
+                />
+              ) : null}
+              <ActionPill
+                disableLogging
+                label="Reset Namespace Colors"
+                onPress={() => {
+                  resetLogNamespaceColors();
+                  ensureLogNamespaceColors(
+                    bufferedNamespacesByReservationOrder,
+                  );
+                }}
               />
             </ActionPillRow>
           </View>
@@ -237,6 +309,9 @@ export function LogsScreen() {
           <View style={styles.logList}>
             {filteredEntries.map((entry, index) => {
               const isExpanded = expandedLogIds.includes(entry.id);
+              const namespaceBadgeAssignment = entry.namespace
+                ? namespaceBadgeAssignments[entry.namespace]
+                : null;
 
               return (
                 <Tile
@@ -245,9 +320,24 @@ export function LogsScreen() {
                       <StatusBadge label={entry.level} size="mini" />
                       {entry.namespace ? (
                         <StatusBadge
+                          badgeStyle={
+                            namespaceBadgeAssignment
+                              ? {
+                                  backgroundColor:
+                                    namespaceBadgeAssignment.backgroundColor,
+                                }
+                              : undefined
+                          }
                           label={entry.namespace}
+                          labelStyle={
+                            namespaceBadgeAssignment
+                              ? {
+                                  color: namespaceBadgeAssignment.textColor,
+                                }
+                              : undefined
+                          }
                           size="mini"
-                          tone="good"
+                          testID={`log-namespace-badge-${entry.id}`}
                         />
                       ) : null}
                     </View>
