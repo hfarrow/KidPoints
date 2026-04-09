@@ -41,14 +41,22 @@ export function SkeletonCluster({
 }
 
 export function ActionPill({
+  accessibilityLabel,
   disableLogging = false,
+  icon,
+  iconOnly = false,
   label,
   onPress,
+  testID,
   tone = 'neutral',
 }: {
+  accessibilityLabel?: string;
   disableLogging?: boolean;
-  label: string;
+  icon?: ReactNode;
+  iconOnly?: boolean;
+  label?: string;
   onPress?: () => void;
+  testID?: string;
   tone?: 'critical' | 'neutral' | 'primary';
 }) {
   const styles = useThemedStyles(createStyles);
@@ -64,17 +72,26 @@ export function ActionPill({
       : tone === 'critical'
         ? styles.criticalPillText
         : styles.neutralPillText;
+  const resolvedAccessibilityLabel = accessibilityLabel ?? label ?? 'Action';
+  const resolvedLogLabel = label ?? accessibilityLabel ?? 'Action';
 
   return (
     <LoggedPressable
+      accessibilityLabel={resolvedAccessibilityLabel}
       accessibilityRole="button"
       disableLogging={disableLogging}
       logContext={{ tone }}
-      logLabel={label}
+      logLabel={resolvedLogLabel}
       onPress={onPress}
-      style={[styles.pill, toneStyle]}
+      style={[styles.pill, toneStyle, iconOnly && styles.iconOnlyPill]}
+      testID={testID}
     >
-      <Text style={[styles.pillText, textStyle]}>{label}</Text>
+      <View style={styles.pillContent}>
+        {icon}
+        {label ? (
+          <Text style={[styles.pillText, textStyle]}>{label}</Text>
+        ) : null}
+      </View>
     </LoggedPressable>
   );
 }
@@ -175,6 +192,16 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       minHeight: 34,
       paddingHorizontal: 12,
       paddingVertical: 8,
+    },
+    pillContent: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 6,
+      justifyContent: 'center',
+    },
+    iconOnlyPill: {
+      minWidth: 34,
+      paddingHorizontal: 8,
     },
     pillText: {
       fontSize: 13,

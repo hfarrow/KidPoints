@@ -29,7 +29,7 @@ type SingleSelectListProps<T> = {
 };
 
 export function SingleSelectList<T>({
-  closeLabel,
+  closeLabel = 'Back',
   disableLogging = false,
   emptyState,
   footer,
@@ -49,6 +49,7 @@ export function SingleSelectList<T>({
 
   return (
     <ListScaffold
+      closeTone="warning"
       closeLabel={closeLabel}
       disableLogging={disableLogging}
       emptyState={emptyState}
@@ -91,9 +92,11 @@ export function SingleSelectList<T>({
                     </>
                   )}
                 </View>
-                {isSelected ? (
-                  <StatusBadge label="Selected" size="mini" />
-                ) : null}
+                <View style={styles.selectionBadgeSlot}>
+                  {isSelected ? (
+                    <StatusBadge label="Selected" size="mini" />
+                  ) : null}
+                </View>
               </LoggedPressable>
             );
           })}
@@ -117,6 +120,7 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       flexDirection: 'row',
       gap: 10,
       justifyContent: 'space-between',
+      minHeight: 44,
       paddingHorizontal: 14,
       paddingVertical: 12,
     },
@@ -138,5 +142,12 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       color: tokens.textPrimary,
       fontSize: 14,
       fontWeight: '800',
+    },
+    selectionBadgeSlot: {
+      alignItems: 'flex-end',
+      flexShrink: 0,
+      height: 20,
+      justifyContent: 'center',
+      width: 72,
     },
   });

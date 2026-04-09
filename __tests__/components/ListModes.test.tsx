@@ -5,6 +5,7 @@ import { Text, View } from 'react-native';
 import { ActionList } from '../../src/components/ActionList';
 import { MultiSelectList } from '../../src/components/MultiSelectList';
 import { SingleSelectList } from '../../src/components/SingleSelectList';
+import { ActionPill } from '../../src/components/Skeleton';
 import { AppSettingsProvider } from '../../src/features/settings/appSettingsContext';
 import { createMemoryStorage } from '../testUtils/memoryStorage';
 
@@ -43,6 +44,7 @@ describe('List mode components', () => {
     );
 
     expect(screen.getByText('Selected')).toBeTruthy();
+    expect(screen.getByLabelText('Back Pick a Child')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Milo'));
 
@@ -67,6 +69,7 @@ describe('List mode components', () => {
     );
 
     expect(screen.getByText('Selected')).toBeTruthy();
+    expect(screen.getByLabelText('Done Filter Children')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Milo'));
 
@@ -111,6 +114,50 @@ describe('List mode components', () => {
     fireEvent.press(screen.getByText('Select None'));
 
     expect(screen.queryByText('Selected')).toBeNull();
+  });
+
+  it('supports a pinned clear action for a controlled text filter', () => {
+    function MultiSelectTextFilterHarness() {
+      const [textFilter, setTextFilter] = useState('mil');
+      const filteredItems = listItems.filter((item) =>
+        item.name.toLocaleLowerCase().includes(textFilter),
+      );
+
+      return (
+        <MultiSelectList
+          getItemDescription={(item) => item.detail}
+          getItemLabel={(item) => item.name}
+          items={filteredItems}
+          keyExtractor={(item) => item.id}
+          onRequestClose={jest.fn()}
+          onToggle={jest.fn()}
+          selectedItemIds={[]}
+          title="Filter Children"
+          utilityActions={
+            textFilter ? (
+              <ActionPill
+                label="Clear"
+                onPress={() => {
+                  setTextFilter('');
+                }}
+              />
+            ) : null
+          }
+          visible
+        />
+      );
+    }
+
+    renderWithSettings(<MultiSelectTextFilterHarness />);
+
+    expect(screen.getByText('Milo')).toBeTruthy();
+    expect(screen.queryByText('Ava')).toBeNull();
+    expect(screen.getByText('Clear')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Clear'));
+
+    expect(screen.getByText('Ava')).toBeTruthy();
+    expect(screen.getByText('Milo')).toBeTruthy();
   });
 
   it('renders arbitrary custom rows through ActionList', () => {

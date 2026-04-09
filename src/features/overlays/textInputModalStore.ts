@@ -8,11 +8,13 @@ export type TextInputModalSubmitResult =
   | { error: string; ok: false };
 
 export type TextInputModalRequestInput = {
+  clearLabel?: string;
   confirmLabel: string;
   description: string;
   initialValue?: string;
   inputAccessibilityLabel: string;
   keyboardType?: KeyboardTypeOptions;
+  onClear?: () => void;
   onSubmit: (value: string) => TextInputModalSubmitResult;
   placeholder?: string;
   title: string;

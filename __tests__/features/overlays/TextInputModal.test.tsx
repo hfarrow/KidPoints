@@ -78,6 +78,11 @@ describe('TextInputModal', () => {
         screen.getByTestId('text-input-keyboard-content').props.style,
       ).opacity,
     ).toBe(1);
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId('text-input-keyboard-content').props.style,
+      ).width,
+    ).toBe('100%');
 
     act(() => {
       keyboardControllerModule.__emitKeyboardEvent('keyboardWillShow', {
@@ -111,5 +116,46 @@ describe('TextInputModal', () => {
 
     expect(onSubmit).toHaveBeenCalledWith('12');
     expect(useTextInputModalStore.getState().request).toBeNull();
+  });
+
+  it('shows an optional clear action and keeps the modal open after clearing', () => {
+    const onClear = jest.fn();
+    const onSubmit = jest.fn(() => ({ ok: true as const }));
+
+    presentTextInputModal({
+      clearLabel: 'Clear',
+      confirmLabel: 'Apply Filter',
+      description:
+        'Enter part of the full log text to narrow the visible logs.',
+      initialValue: 'oats',
+      inputAccessibilityLabel: 'Log text filter',
+      onClear,
+      onSubmit,
+      placeholder: 'Log text',
+      title: 'Filter Logs',
+    });
+
+    render(
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked>
+          <AppSettingsProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <TextInputModal />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    const input = screen.getByLabelText('Log text filter');
+
+    fireEvent.press(screen.getByText('Clear'));
+
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(useTextInputModalStore.getState().request).not.toBeNull();
+    expect(screen.getByText('Filter Logs')).toBeTruthy();
+    expect(input.props.value).toBe('');
   });
 });

@@ -162,7 +162,6 @@ export function SettingsScreen() {
         </View>
       </Tile>
       <SingleSelectList
-        closeLabel="Done"
         getItemDescription={(theme) => getThemeDescription(theme)}
         getItemLabel={(theme) => theme.label}
         items={[...availableThemes]}
@@ -290,7 +289,6 @@ export function SettingsScreen() {
         </ActionPillRow>
       </Tile>
       <SingleSelectList
-        closeLabel="Done"
         getItemDescription={(option) => getLogLevelDescription(option)}
         getItemLabel={(option) => option}
         items={selectableAppLogLevels}

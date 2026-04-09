@@ -307,7 +307,7 @@ describe('HomeScreen', () => {
       expect.any(Array),
     );
 
-    fireEvent.press(screen.getByLabelText('Close Archived Children'));
+    fireEvent.press(screen.getByLabelText('Done Archived Children'));
     expect(
       screen.queryByText(
         'Restore archived children back to Home or permanently remove them.',

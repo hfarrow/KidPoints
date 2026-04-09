@@ -94,9 +94,13 @@ const styles = StyleSheet.create({
     paddingTop: CLOSED_MODAL_PADDING,
   },
   contentHidden: {
+    alignItems: 'center',
     opacity: 0,
+    width: '100%',
   },
   contentVisible: {
+    alignItems: 'center',
     opacity: 1,
+    width: '100%',
   },
 });

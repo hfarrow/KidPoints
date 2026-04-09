@@ -9,11 +9,12 @@ import { Alert, StyleSheet, Text } from 'react-native';
 import type { StateStorage } from 'zustand/middleware';
 
 import { LogsScreen } from '../../../src/features/logs/LogsScreen';
-import {
-  buildLogLevelColorAssignment,
-  buildNamespaceTintedTileBackgroundColor,
-} from '../../../src/features/logs/namespaceColors';
+import { buildLogLevelColorAssignment } from '../../../src/features/logs/namespaceColors';
 import { shareBufferedLogsAsync } from '../../../src/features/logs/shareLogs';
+import {
+  clearTextInputModal,
+  useTextInputModalStore,
+} from '../../../src/features/overlays/textInputModalStore';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import {
@@ -56,6 +57,7 @@ describe('LogsScreen', () => {
   beforeEach(() => {
     resetAppLogBuffer();
     setAppLogLevel('debug');
+    clearTextInputModal();
     mockBack.mockReset();
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -66,6 +68,7 @@ describe('LogsScreen', () => {
   });
 
   afterEach(() => {
+    clearTextInputModal();
     resetAppLogBuffer();
     jest.restoreAllMocks();
   });
@@ -192,7 +195,7 @@ describe('LogsScreen', () => {
     fireEvent.press(screen.getByLabelText('Filter logs at info and above'));
     fireEvent.press(screen.getByLabelText('Choose namespace filter'));
     fireEvent.press(screen.getByLabelText('Select alpha'));
-    fireEvent.press(screen.getByLabelText('Close Filter Namespaces'));
+    fireEvent.press(screen.getByLabelText('Done Filter Namespaces'));
 
     expect(getAppBufferedLogEntries()).toHaveLength(logCountBeforeInteractions);
   });
@@ -231,7 +234,7 @@ describe('LogsScreen', () => {
     expect(screen.getByText('Alpha error log')).toBeTruthy();
     expect(screen.queryByText('Beta warn log')).toBeNull();
     expect(screen.getByText('1 On')).toBeTruthy();
-    expect(screen.getByText('Share Visible Logs')).toBeTruthy();
+    expect(screen.getByLabelText('Share Visible Logs')).toBeTruthy();
   });
 
   it('shows share all logs by default and only shows share visible logs for narrowed filters', () => {
@@ -243,12 +246,14 @@ describe('LogsScreen', () => {
       alphaLogger.info('Alpha visible log');
     });
 
-    expect(screen.getByText('Share All Logs')).toBeTruthy();
-    expect(screen.queryByText('Share Visible Logs')).toBeNull();
+    expect(screen.getByLabelText('Share All Logs')).toBeTruthy();
+    expect(screen.queryByText('Share All Logs')).toBeNull();
+    expect(screen.queryByLabelText('Share Visible Logs')).toBeNull();
 
     fireEvent.press(screen.getByLabelText('Filter logs at warn and above'));
 
-    expect(screen.getByText('Share Visible Logs')).toBeTruthy();
+    expect(screen.getByLabelText('Share Visible Logs')).toBeTruthy();
+    expect(screen.getByText('Visible')).toBeTruthy();
   });
 
   it('shares the currently visible logs', async () => {
@@ -264,9 +269,9 @@ describe('LogsScreen', () => {
 
     fireEvent.press(screen.getByLabelText('Choose namespace filter'));
     fireEvent.press(screen.getByLabelText('Select alpha'));
-    fireEvent.press(screen.getByLabelText('Close Filter Namespaces'));
-    expect(screen.getByText('Share Visible Logs')).toBeTruthy();
-    fireEvent.press(screen.getByText('Share Visible Logs'));
+    fireEvent.press(screen.getByLabelText('Done Filter Namespaces'));
+    expect(screen.getByLabelText('Share Visible Logs')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Share Visible Logs'));
 
     await waitFor(() => {
       expect(shareBufferedLogsAsync).toHaveBeenCalledWith({
@@ -295,8 +300,8 @@ describe('LogsScreen', () => {
 
     fireEvent.press(screen.getByLabelText('Choose namespace filter'));
     fireEvent.press(screen.getByLabelText('Select alpha'));
-    fireEvent.press(screen.getByLabelText('Close Filter Namespaces'));
-    fireEvent.press(screen.getByText('Share All Logs'));
+    fireEvent.press(screen.getByLabelText('Done Filter Namespaces'));
+    fireEvent.press(screen.getByLabelText('Share All Logs'));
 
     await waitFor(() => {
       expect(shareBufferedLogsAsync).toHaveBeenCalledWith({
@@ -330,7 +335,7 @@ describe('LogsScreen', () => {
       alphaLogger.info('Alpha visible log');
     });
 
-    fireEvent.press(screen.getByText('Share All Logs'));
+    fireEvent.press(screen.getByLabelText('Share All Logs'));
 
     await waitFor(() => {
       expect(Alert.alert).toHaveBeenCalledWith(
@@ -387,47 +392,54 @@ describe('LogsScreen', () => {
     });
   });
 
-  it('resets persisted namespace colors and reapplies the current buffer order', async () => {
+  it('filters visible logs by full text and can clear the query from the filter modal', () => {
     const alphaLogger = createModuleLogger('alpha');
     const betaLogger = createModuleLogger('beta');
-    const settingsStorage = createMemoryStorage({
-      'kidpoints.local-settings.v1': JSON.stringify({
-        state: {
-          logNamespaceColors: {
-            alpha: '#9333ea',
-            beta: '#2563eb',
-          },
-        },
-        version: 0,
-      }),
-    });
 
-    renderLogsScreen({ settingsStorage });
+    renderLogsScreen();
 
     act(() => {
-      alphaLogger.info('Alpha log');
-      betaLogger.info('Beta log');
+      alphaLogger.info('Alpha log has oats');
+      betaLogger.info('Beta log has apples');
     });
 
-    await waitFor(() => {
-      expect(getLogTileBackgroundColor(1)).toBe(
-        buildNamespaceTintedTileBackgroundColor('#9333ea', '#e3d5fb'),
-      );
-      expect(getLogTileBackgroundColor(2)).toBe(
-        buildNamespaceTintedTileBackgroundColor('#2563eb', '#e3d5fb'),
-      );
+    fireEvent.press(screen.getByLabelText('Set Log Text Filter'));
+
+    expect(useTextInputModalStore.getState().request).toMatchObject({
+      clearLabel: 'Clear',
+      description:
+        'Enter part of the full log text to narrow the visible logs.',
+      initialValue: '',
+      inputAccessibilityLabel: 'Log text filter',
+      title: 'Filter Logs',
     });
 
-    fireEvent.press(screen.getByText('Reset Namespace Colors'));
-
-    await waitFor(() => {
-      expect(getLogTileBackgroundColor(1)).toBe(
-        buildNamespaceTintedTileBackgroundColor('#2563eb', '#e3d5fb'),
-      );
-      expect(getLogTileBackgroundColor(2)).toBe(
-        buildNamespaceTintedTileBackgroundColor('#dc2626', '#e3d5fb'),
-      );
+    act(() => {
+      expect(
+        useTextInputModalStore.getState().request?.onSubmit('OATS'),
+      ).toEqual({ ok: true });
+      clearTextInputModal();
     });
+
+    expect(screen.getByLabelText('Edit Log Text Filter')).toBeTruthy();
+    expect(screen.getByText('Alpha log has oats')).toBeTruthy();
+    expect(screen.queryByText('Beta log has apples')).toBeNull();
+    expect(screen.getByLabelText('Share Visible Logs')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Edit Log Text Filter'));
+
+    expect(useTextInputModalStore.getState().request).toMatchObject({
+      clearLabel: 'Clear',
+      initialValue: 'OATS',
+      title: 'Filter Logs',
+    });
+
+    act(() => {
+      useTextInputModalStore.getState().request?.onClear?.();
+      clearTextInputModal();
+    });
+
+    expect(screen.getByText('Beta log has apples')).toBeTruthy();
   });
 
   it('colors level badges with console-like tones', () => {

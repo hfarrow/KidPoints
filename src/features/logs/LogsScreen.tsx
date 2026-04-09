@@ -20,6 +20,7 @@ import {
   SUPPORTED_APP_LOG_LEVELS,
 } from '../../logging/logger';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
+import { presentTextInputModal } from '../overlays/textInputModalStore';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import {
   buildLogLevelColorAssignment,
@@ -46,9 +47,6 @@ export function LogsScreen() {
   const logNamespaceColors = useLocalSettingsStore(
     (state) => state.logNamespaceColors,
   );
-  const resetLogNamespaceColors = useLocalSettingsStore(
-    (state) => state.resetLogNamespaceColors,
-  );
   const [expandedLogIds, setExpandedLogIds] = useState<number[]>([]);
   const [selectedLogLevel, setSelectedLogLevel] = useState<AppLogLevel>(
     ALL_VISIBLE_LOG_LEVEL,
@@ -56,6 +54,7 @@ export function LogsScreen() {
   const [selectedNamespaceIds, setSelectedNamespaceIds] = useState<string[]>(
     [],
   );
+  const [logTextFilter, setLogTextFilter] = useState('');
   const [isNamespaceFilterVisible, setIsNamespaceFilterVisible] =
     useState(false);
   const [isSharingLogs, setIsSharingLogs] = useState(false);
@@ -84,9 +83,12 @@ export function LogsScreen() {
   const activeSelectedNamespaceIds = selectedNamespaceIds.filter((namespace) =>
     availableNamespaces.includes(namespace),
   );
+  const activeLogTextFilter = logTextFilter.trim();
+  const normalizedLogTextFilter = activeLogTextFilter.toLocaleLowerCase();
   const areAllLogsVisible =
     selectedLogLevel === ALL_VISIBLE_LOG_LEVEL &&
-    activeSelectedNamespaceIds.length === 0;
+    activeSelectedNamespaceIds.length === 0 &&
+    normalizedLogTextFilter.length === 0;
   const namespaceTileBackgroundColors = useMemo(() => {
     return Object.fromEntries(
       Object.entries(logNamespaceColors).map(([namespace, backgroundColor]) => [
@@ -121,9 +123,21 @@ export function LogsScreen() {
         return false;
       }
 
+      if (
+        normalizedLogTextFilter.length > 0 &&
+        !entry.fullText.toLocaleLowerCase().includes(normalizedLogTextFilter)
+      ) {
+        return false;
+      }
+
       return true;
     });
-  }, [activeSelectedNamespaceIds, entries, selectedLogLevel]);
+  }, [
+    activeSelectedNamespaceIds,
+    entries,
+    normalizedLogTextFilter,
+    selectedLogLevel,
+  ]);
 
   const toggleNamespaceFilter = (itemId: string) => {
     setSelectedNamespaceIds((currentIds) =>
@@ -131,6 +145,29 @@ export function LogsScreen() {
         ? currentIds.filter((currentId) => currentId !== itemId)
         : [...currentIds, itemId],
     );
+  };
+
+  const openLogTextFilterModal = () => {
+    presentTextInputModal({
+      clearLabel: 'Clear',
+      confirmLabel: 'Apply Filter',
+      description:
+        'Enter part of the full log text to narrow the visible logs.',
+      initialValue: activeLogTextFilter,
+      inputAccessibilityLabel: 'Log text filter',
+      onClear:
+        activeLogTextFilter.length > 0
+          ? () => {
+              setLogTextFilter('');
+            }
+          : undefined,
+      onSubmit: (nextValue) => {
+        setLogTextFilter(nextValue.trim());
+        return { ok: true };
+      },
+      placeholder: 'Log text',
+      title: 'Filter Logs',
+    });
   };
 
   const handleShareLogs = async ({
@@ -185,7 +222,7 @@ export function LogsScreen() {
       <ScreenScaffold footer={<ScreenBackFooter disableLogging />}>
         <ScreenHeader title="Logs" />
 
-        <Tile density="extraCompact" title="Filters">
+        <Tile density="extraCompact" title="Controls">
           <View style={styles.filterSection}>
             <View style={styles.filterRow}>
               {SUPPORTED_APP_LOG_LEVELS.map((option) => {
@@ -263,23 +300,29 @@ export function LogsScreen() {
 
             <ActionPillRow>
               <ActionPill
+                accessibilityLabel={
+                  activeLogTextFilter
+                    ? 'Edit Log Text Filter'
+                    : 'Set Log Text Filter'
+                }
                 disableLogging
-                label={isSharingLogs ? 'Sharing...' : 'Share All Logs'}
-                onPress={() => {
-                  void handleShareLogs({
-                    emptyMessage: 'There are no logs to share right now.',
-                    emptyTitle: 'No Logs To Share',
-                    entriesToShare: entries,
-                    namespaceIds: [],
-                    selectedLevel: 'all',
-                  });
-                }}
-                tone="primary"
+                icon={
+                  <Feather
+                    color={activeLogTextFilter ? '#f8fafc' : tokens.controlText}
+                    name="filter"
+                    size={14}
+                  />
+                }
+                iconOnly
+                onPress={openLogTextFilterModal}
+                tone={activeLogTextFilter ? 'primary' : 'neutral'}
               />
               {!areAllLogsVisible ? (
                 <ActionPill
+                  accessibilityLabel="Share Visible Logs"
                   disableLogging
-                  label={isSharingLogs ? 'Sharing...' : 'Share Visible Logs'}
+                  icon={<Feather color="#f8fafc" name="share" size={14} />}
+                  label="Visible"
                   onPress={() => {
                     void handleShareLogs({
                       emptyMessage:
@@ -294,14 +337,20 @@ export function LogsScreen() {
                 />
               ) : null}
               <ActionPill
+                accessibilityLabel="Share All Logs"
                 disableLogging
-                label="Reset Namespace Colors"
+                icon={<Feather color="#f8fafc" name="share" size={14} />}
+                iconOnly
                 onPress={() => {
-                  resetLogNamespaceColors();
-                  ensureLogNamespaceColors(
-                    bufferedNamespacesByReservationOrder,
-                  );
+                  void handleShareLogs({
+                    emptyMessage: 'There are no logs to share right now.',
+                    emptyTitle: 'No Logs To Share',
+                    entriesToShare: entries,
+                    namespaceIds: [],
+                    selectedLevel: 'all',
+                  });
                 }}
+                tone="primary"
               />
             </ActionPillRow>
           </View>
@@ -407,7 +456,7 @@ export function LogsScreen() {
         )}
       </ScreenScaffold>
       <MultiSelectList
-        closeLabel="Close"
+        closeLabel="Done"
         disableLogging
         emptyState={
           <Text style={styles.emptyCopy}>

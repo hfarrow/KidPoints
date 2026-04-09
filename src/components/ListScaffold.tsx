@@ -14,7 +14,9 @@ import { useAppTheme, useThemedStyles } from '../features/theme/appTheme';
 import { LoggedPressable } from './LoggedPressable';
 
 type ListScaffoldProps = PropsWithChildren<{
+  closeButtonPlacement?: 'footer' | 'header';
   closeLabel?: string;
+  closeTone?: 'neutral' | 'warning';
   disableLogging?: boolean;
   emptyState?: ReactNode;
   footer?: ReactNode;
@@ -27,7 +29,9 @@ type ListScaffoldProps = PropsWithChildren<{
 
 export function ListScaffold({
   children,
+  closeButtonPlacement = 'header',
   closeLabel = 'Close',
+  closeTone = 'neutral',
   disableLogging = false,
   emptyState,
   footer,
@@ -66,6 +70,26 @@ export function ListScaffold({
 
   const cardWidth = Math.min(Math.max(windowWidth - 32, 280), 480);
   const hasContent = Boolean(children);
+  const closeButtonStyle =
+    closeTone === 'warning' ? styles.warningCloseButton : styles.closeButton;
+  const closeButtonTextStyle =
+    closeTone === 'warning'
+      ? styles.warningCloseButtonText
+      : styles.closeButtonText;
+  const closeButton = (
+    <LoggedPressable
+      accessibilityLabel={`${closeLabel} ${title}`}
+      disableLogging={disableLogging}
+      logLabel={`${closeLabel} ${title}`}
+      onPress={onRequestClose}
+      style={[
+        closeButtonStyle,
+        closeButtonPlacement === 'footer' && styles.footerCloseButton,
+      ]}
+    >
+      <Text style={closeButtonTextStyle}>{closeLabel}</Text>
+    </LoggedPressable>
+  );
 
   return (
     <Modal
@@ -106,15 +130,7 @@ export function ListScaffold({
                   <Text style={styles.subtitle}>{subtitle}</Text>
                 ) : null}
               </View>
-              <LoggedPressable
-                accessibilityLabel={`Close ${title}`}
-                disableLogging={disableLogging}
-                logLabel={`Close ${title}`}
-                onPress={onRequestClose}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>{closeLabel}</Text>
-              </LoggedPressable>
+              {closeButtonPlacement === 'header' ? closeButton : null}
             </View>
             {utilityBar ? (
               <View style={styles.utilityBar}>{utilityBar}</View>
@@ -126,7 +142,12 @@ export function ListScaffold({
             >
               {hasContent ? children : emptyState}
             </ScrollView>
-            {footer ? <View style={styles.footer}>{footer}</View> : null}
+            {closeButtonPlacement === 'footer' || footer ? (
+              <View style={styles.footer}>
+                {closeButtonPlacement === 'footer' ? closeButton : null}
+                {footer}
+              </View>
+            ) : null}
           </View>
         </View>
       </View>
@@ -175,7 +196,11 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       minWidth: 0,
     },
     footer: {
+      gap: 8,
       paddingTop: 2,
+    },
+    footerCloseButton: {
+      width: '100%',
     },
     frame: {
       ...StyleSheet.absoluteFillObject,
@@ -196,6 +221,20 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     },
     utilityBar: {
       paddingTop: 2,
+    },
+    warningCloseButton: {
+      alignItems: 'center',
+      backgroundColor: '#facc15',
+      borderRadius: 999,
+      justifyContent: 'center',
+      minHeight: 34,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    warningCloseButtonText: {
+      color: '#24180a',
+      fontSize: 13,
+      fontWeight: '900',
     },
     scrollView: {
       flexShrink: 1,

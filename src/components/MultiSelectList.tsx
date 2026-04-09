@@ -25,11 +25,12 @@ type MultiSelectListProps<T> = {
   selectedItemIds: string[];
   subtitle?: string;
   title: string;
+  utilityActions?: ReactNode;
   visible: boolean;
 };
 
 export function MultiSelectList<T>({
-  closeLabel,
+  closeLabel = 'Done',
   disableLogging = false,
   emptyState,
   footer,
@@ -43,17 +44,21 @@ export function MultiSelectList<T>({
   selectedItemIds,
   subtitle,
   title,
+  utilityActions,
   visible,
 }: MultiSelectListProps<T>) {
   const styles = useThemedStyles(createStyles);
+  const visibleItems = items.map((item, index) => ({ index, item }));
   const selectedItemIdSet = new Set(selectedItemIds);
-  const hasSelectedItems = selectedItemIds.length > 0;
-  const hasUnselectedItems = items.some(
-    (item, index) => !selectedItemIdSet.has(keyExtractor(item, index)),
+  const hasSelectedItems = visibleItems.some(({ index, item }) =>
+    selectedItemIdSet.has(keyExtractor(item, index)),
+  );
+  const hasUnselectedItems = visibleItems.some(
+    ({ index, item }) => !selectedItemIdSet.has(keyExtractor(item, index)),
   );
 
   const handleSelectAll = () => {
-    items.forEach((item, index) => {
+    visibleItems.forEach(({ index, item }) => {
       const itemId = keyExtractor(item, index);
 
       if (!selectedItemIdSet.has(itemId)) {
@@ -63,7 +68,7 @@ export function MultiSelectList<T>({
   };
 
   const handleSelectNone = () => {
-    items.forEach((item, index) => {
+    visibleItems.forEach(({ index, item }) => {
       const itemId = keyExtractor(item, index);
 
       if (selectedItemIdSet.has(itemId)) {
@@ -74,6 +79,8 @@ export function MultiSelectList<T>({
 
   return (
     <ListScaffold
+      closeButtonPlacement="footer"
+      closeTone="warning"
       closeLabel={closeLabel}
       disableLogging={disableLogging}
       emptyState={emptyState}
@@ -82,26 +89,31 @@ export function MultiSelectList<T>({
       subtitle={subtitle}
       title={title}
       utilityBar={
-        items.length > 0 ? (
+        items.length > 0 || utilityActions ? (
           <ActionPillRow>
-            <ActionPill
-              disableLogging={disableLogging}
-              label="Select None"
-              onPress={hasSelectedItems ? handleSelectNone : undefined}
-            />
-            <ActionPill
-              disableLogging={disableLogging}
-              label="Select All"
-              onPress={hasUnselectedItems ? handleSelectAll : undefined}
-            />
+            {items.length > 0 ? (
+              <ActionPill
+                disableLogging={disableLogging}
+                label="Select None"
+                onPress={hasSelectedItems ? handleSelectNone : undefined}
+              />
+            ) : null}
+            {items.length > 0 ? (
+              <ActionPill
+                disableLogging={disableLogging}
+                label="Select All"
+                onPress={hasUnselectedItems ? handleSelectAll : undefined}
+              />
+            ) : null}
+            {utilityActions}
           </ActionPillRow>
         ) : undefined
       }
       visible={visible}
     >
-      {items.length > 0 ? (
+      {visibleItems.length > 0 ? (
         <View style={styles.list}>
-          {items.map((item, index) => {
+          {visibleItems.map(({ index, item }) => {
             const itemId = keyExtractor(item, index);
             const isSelected = selectedItemIds.includes(itemId);
             const label = getItemLabel(item, index);
@@ -132,9 +144,11 @@ export function MultiSelectList<T>({
                     </>
                   )}
                 </View>
-                {isSelected ? (
-                  <StatusBadge label="Selected" size="mini" />
-                ) : null}
+                <View style={styles.selectionBadgeSlot}>
+                  {isSelected ? (
+                    <StatusBadge label="Selected" size="mini" />
+                  ) : null}
+                </View>
               </LoggedPressable>
             );
           })}
@@ -158,6 +172,7 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       flexDirection: 'row',
       gap: 10,
       justifyContent: 'space-between',
+      minHeight: 44,
       paddingHorizontal: 14,
       paddingVertical: 12,
     },
@@ -179,5 +194,12 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       color: tokens.textPrimary,
       fontSize: 14,
       fontWeight: '800',
+    },
+    selectionBadgeSlot: {
+      alignItems: 'flex-end',
+      flexShrink: 0,
+      height: 20,
+      justifyContent: 'center',
+      width: 72,
     },
   });

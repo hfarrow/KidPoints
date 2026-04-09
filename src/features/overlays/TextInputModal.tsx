@@ -27,6 +27,7 @@ const log = createModuleLogger('text-input-modal');
 
 type ActiveTextInputModalProps = {
   errorMessage: string;
+  handleClear: () => void;
   handleClose: () => void;
   handleSave: () => void;
   inputRef: React.RefObject<TextInput | null>;
@@ -40,6 +41,7 @@ type ActiveTextInputModalProps = {
 };
 function ActiveTextInputModal({
   errorMessage,
+  handleClear,
   handleClose,
   handleSave,
   inputRef,
@@ -116,6 +118,12 @@ function ActiveTextInputModal({
           ) : null}
           <View style={styles.footer}>
             <ActionPill label="Cancel" onPress={handleClose} />
+            {request.onClear ? (
+              <ActionPill
+                label={request.clearLabel ?? 'Clear'}
+                onPress={handleClear}
+              />
+            ) : null}
             {isParentUnlocked ? (
               <ActionPill
                 label={request.confirmLabel}
@@ -220,6 +228,17 @@ export function TextInputModal() {
     closeInputModal();
   };
 
+  const handleClear = () => {
+    if (!request?.onClear) {
+      return;
+    }
+
+    request.onClear();
+    setValue('');
+    setErrorMessage('');
+    inputRef.current?.focus();
+  };
+
   const handleSave = () => {
     if (!request) {
       clearRequest();
@@ -248,6 +267,7 @@ export function TextInputModal() {
   return (
     <ActiveTextInputModal
       errorMessage={errorMessage}
+      handleClear={handleClear}
       handleClose={handleClose}
       handleSave={handleSave}
       inputRef={inputRef}
