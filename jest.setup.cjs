@@ -70,3 +70,11 @@ jest.mock('react-native-keyboard-controller', () => {
     useResizeMode: jest.fn(),
   };
 });
+
+jest.mock('react-native-reanimated', () => {
+  const Reanimated = require('react-native-reanimated/mock');
+
+  Reanimated.default.call = () => {};
+
+  return Reanimated;
+});

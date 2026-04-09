@@ -21,6 +21,7 @@ import { useAppTheme, useThemedStyles } from '../theme/themeContext';
 import { CountdownTileSummary } from '../timer/CountdownTileSummary';
 import { TimerControlRail } from '../timer/TimerControlRail';
 import { useSharedTimerViewModel } from '../timer/useSharedTimerViewModel';
+import { ChildPointsRail } from './ChildPointsRail';
 
 const log = createModuleLogger('home-screen');
 
@@ -196,83 +197,21 @@ export function HomeScreen() {
           initiallyCollapsed={isParentUnlocked}
           key={child.id}
           summary={
-            <View style={styles.pointsSummary}>
-              <View
-                style={[
-                  styles.pointsRail,
-                  !isParentUnlocked && styles.pointsRailLocked,
-                ]}
-              >
-                {isParentUnlocked ? (
-                  <LoggedPressable
-                    accessibilityLabel={`Decrease ${child.name} points`}
-                    accessibilityRole="button"
-                    logContext={{
-                      childId: child.id,
-                      childName: child.name,
-                      delta: -1,
-                    }}
-                    logLabel={`Decrease ${child.name} points`}
-                    onPress={() => {
-                      adjustPoints(child.id, -1);
-                    }}
-                    style={[styles.pointsSegment, styles.pointsCapLeft]}
-                  >
-                    <Text
-                      style={[styles.pointsCapText, styles.pointsCapTextLeft]}
-                    >
-                      -1
-                    </Text>
-                  </LoggedPressable>
-                ) : null}
-                <LoggedPressable
-                  accessibilityLabel={`Edit ${child.name} points`}
-                  accessibilityRole="button"
-                  logContext={{
-                    childId: child.id,
-                    childName: child.name,
-                    points: child.points,
-                  }}
-                  logLabel={`Edit ${child.name} points`}
-                  onPress={() => {
-                    if (!isParentUnlocked) {
-                      router.push('/parent-unlock');
-                      return;
-                    }
+            <ChildPointsRail
+              childId={child.id}
+              childName={child.name}
+              isParentUnlocked={isParentUnlocked}
+              onAdjustPoints={(delta) => adjustPoints(child.id, delta)}
+              onEditPoints={() => {
+                if (!isParentUnlocked) {
+                  router.push('/parent-unlock');
+                  return;
+                }
 
-                    openEditPointTotalModal(child.id, child.name, child.points);
-                  }}
-                  style={[
-                    styles.pointsCore,
-                    !isParentUnlocked && styles.pointsCoreLocked,
-                  ]}
-                >
-                  <Text style={styles.pointsValue}>{child.points}</Text>
-                </LoggedPressable>
-                {isParentUnlocked ? (
-                  <LoggedPressable
-                    accessibilityLabel={`Increase ${child.name} points`}
-                    accessibilityRole="button"
-                    logContext={{
-                      childId: child.id,
-                      childName: child.name,
-                      delta: 1,
-                    }}
-                    logLabel={`Increase ${child.name} points`}
-                    onPress={() => {
-                      adjustPoints(child.id, 1);
-                    }}
-                    style={[styles.pointsSegment, styles.pointsCapRight]}
-                  >
-                    <Text
-                      style={[styles.pointsCapText, styles.pointsCapTextRight]}
-                    >
-                      +1
-                    </Text>
-                  </LoggedPressable>
-                ) : null}
-              </View>
-            </View>
+                openEditPointTotalModal(child.id, child.name, child.points);
+              }}
+              points={child.points}
+            />
           }
           title={child.name}
         >
@@ -330,10 +269,7 @@ export function HomeScreen() {
   );
 }
 
-const createStyles = ({
-  resolvedTheme,
-  tokens,
-}: ReturnType<typeof useAppTheme>) =>
+const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
     emptyStateRow: {
       alignItems: 'center',
@@ -357,72 +293,5 @@ const createStyles = ({
       height: 32,
       justifyContent: 'center',
       width: 32,
-    },
-    pointsSummary: {
-      flex: 1,
-      minWidth: 0,
-    },
-    pointsRail: {
-      backgroundColor: tokens.controlSurface,
-      borderRadius: 999,
-      flexDirection: 'row',
-      minHeight: 42,
-      overflow: 'hidden',
-    },
-    pointsRailLocked: {
-      alignSelf: 'flex-start',
-    },
-    pointsSegment: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      minWidth: 0,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-    },
-    pointsCapLeft: {
-      backgroundColor: resolvedTheme === 'dark' ? '#562646' : '#ffd7eb',
-      borderRightColor: resolvedTheme === 'dark' ? '#7c3a63' : '#f4b6d6',
-      borderRightWidth: 1,
-      flexBasis: 0,
-      flexGrow: 2,
-    },
-    pointsCapRight: {
-      backgroundColor: resolvedTheme === 'dark' ? '#1f3560' : '#dbe8ff',
-      borderLeftColor: resolvedTheme === 'dark' ? '#33528d' : '#bccffb',
-      borderLeftWidth: 1,
-      flexBasis: 0,
-      flexGrow: 2,
-    },
-    pointsCore: {
-      alignItems: 'center',
-      backgroundColor: tokens.controlSurface,
-      flexBasis: 0,
-      flexGrow: 6,
-      justifyContent: 'center',
-      minWidth: 0,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-    },
-    pointsCoreLocked: {
-      borderRadius: 999,
-      flexBasis: 'auto',
-      flexGrow: 0,
-      minWidth: 110,
-    },
-    pointsCapText: {
-      fontSize: 14,
-      fontWeight: '800',
-    },
-    pointsCapTextLeft: {
-      color: resolvedTheme === 'dark' ? '#ffe5f1' : '#8a1d55',
-    },
-    pointsCapTextRight: {
-      color: resolvedTheme === 'dark' ? '#e2ecff' : '#23458f',
-    },
-    pointsValue: {
-      color: tokens.textPrimary,
-      fontSize: 24,
-      fontWeight: '900',
-      fontVariant: ['tabular-nums'],
     },
   });
