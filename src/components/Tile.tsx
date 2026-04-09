@@ -17,6 +17,7 @@ type TileProps = {
   collapsible?: boolean;
   collapsibleLabel?: string;
   density?: 'default' | 'extraCompact';
+  disableCollapseLogging?: boolean;
   footer?: ReactNode;
   initiallyCollapsed?: boolean;
   muted?: boolean;
@@ -33,6 +34,7 @@ export function Tile({
   collapsible = false,
   collapsibleLabel,
   density = 'default',
+  disableCollapseLogging = false,
   footer,
   initiallyCollapsed = false,
   muted = false,
@@ -85,6 +87,7 @@ export function Tile({
         <LoggedPressable
           accessibilityLabel={`${isCollapsed ? 'Expand' : 'Collapse'} ${titleText}`}
           accessibilityRole="button"
+          disableLogging={disableCollapseLogging}
           logContext={{
             component: 'Tile',
             isCollapsed,

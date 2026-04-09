@@ -163,6 +163,25 @@ describe('SettingsScreen', () => {
     expect(screen.getAllByText('Off')).toHaveLength(1);
   });
 
+  it('opens the logs viewer from the debug section', () => {
+    render(
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppSettingsProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <SettingsScreen />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    fireEvent.press(screen.getByText('View Logs'));
+
+    expect(mockPush).toHaveBeenCalledWith('/logs');
+  });
+
   it('hides the temp option when only production log levels are selectable', () => {
     jest
       .spyOn(loggerModule, 'getSelectableAppLogLevels')

@@ -40,10 +40,12 @@ export function SkeletonCluster({
 }
 
 export function ActionPill({
+  disableLogging = false,
   label,
   onPress,
   tone = 'neutral',
 }: {
+  disableLogging?: boolean;
   label: string;
   onPress?: () => void;
   tone?: 'critical' | 'neutral' | 'primary';
@@ -65,6 +67,7 @@ export function ActionPill({
   return (
     <LoggedPressable
       accessibilityRole="button"
+      disableLogging={disableLogging}
       logContext={{ tone }}
       logLabel={label}
       onPress={onPress}

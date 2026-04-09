@@ -3,6 +3,7 @@ import {
   logger,
   type transportFunctionType,
 } from 'react-native-logs';
+import { appendAppBufferedLogEntry } from './logBufferStore';
 
 const appLogLevels = {
   temp: 0,
@@ -89,6 +90,11 @@ type AppConsoleTransportOptions = {
 type ForwardedNativeLogMarkerCarrier = {
   [forwardedNativeLogMarker]?: true;
   [forwardedNativeOccurredAtMsMarker]?: number;
+};
+
+type FormattedAppLogMessage = {
+  fullText: string;
+  previewText: string;
 };
 
 const appConsoleTransport: transportFunctionType<AppConsoleTransportOptions> = (
@@ -223,12 +229,52 @@ function formatAppLogTimestamp(date: Date) {
   return `${hours}:${minutes}:${seconds}.${milliseconds}`;
 }
 
-function formatAppLogMessage(
-  level: string,
-  extension: string | null,
-  messages: unknown[],
-) {
-  const timestampMetadata = getLogTimestampMetadata(messages);
+function serializeAppLogMessagePart(message: unknown) {
+  if (typeof message === 'string') {
+    return message;
+  }
+
+  if (typeof message === 'function') {
+    return `[function ${message.name || 'anonymous'}()]`;
+  }
+
+  if (message instanceof Error) {
+    return message.message;
+  }
+
+  try {
+    return JSON.stringify(message, null, 2);
+  } catch {
+    return '[[Unserializable Value]]';
+  }
+}
+
+function buildAppLogPreview(messages: unknown[]) {
+  for (const message of messages) {
+    const serializedMessage = serializeAppLogMessagePart(message);
+    const previewLine = serializedMessage
+      .split(/\r?\n/u)
+      .find((line) => line.trim().length > 0);
+
+    if (previewLine) {
+      return previewLine.trim();
+    }
+  }
+
+  return 'Log entry';
+}
+
+function buildFormattedAppLogMessage({
+  extension,
+  level,
+  messages,
+  timestampMetadata,
+}: {
+  extension: string | null;
+  level: string;
+  messages: unknown[];
+  timestampMetadata: ReturnType<typeof getLogTimestampMetadata>;
+}): FormattedAppLogMessage {
   const paddedLevelLabel = level.toUpperCase().padEnd(appLogLevelLabelWidth);
   const segments = [
     `[${paddedLevelLabel}]`,
@@ -239,34 +285,40 @@ function formatAppLogMessage(
     segments.push(`[${extension}]`);
   }
 
-  const messageText = messages
-    .map((message) => {
-      if (typeof message === 'string') {
-        return message;
-      }
+  const messageText = messages.map(serializeAppLogMessagePart).join(' ');
 
-      if (typeof message === 'function') {
-        return `[function ${message.name || 'anonymous'}()]`;
-      }
+  return {
+    fullText: `${segments.join(' ')}: ${messageText}`,
+    previewText: buildAppLogPreview(messages),
+  };
+}
 
-      if (message instanceof Error) {
-        return message.message;
-      }
+function formatAppLogMessage(
+  level: string,
+  extension: string | null,
+  messages: unknown[],
+) {
+  const timestampMetadata = getLogTimestampMetadata(messages);
+  const { fullText, previewText } = buildFormattedAppLogMessage({
+    extension,
+    level,
+    messages,
+    timestampMetadata,
+  });
 
-      try {
-        return JSON.stringify(message, null, 2);
-      } catch {
-        return '[[Unserializable Value]]';
-      }
-    })
-    .join(' ');
-
+  appendAppBufferedLogEntry({
+    fullText,
+    level: isAppLogLevel(level) ? level : defaultAppLogLevel,
+    namespace: extension,
+    previewText,
+    timestampMs: timestampMetadata.occurredAtMs,
+  });
   latestObservedLogTimestampMs = Math.max(
     latestObservedLogTimestampMs,
     timestampMetadata.occurredAtMs,
   );
 
-  return `${segments.join(' ')}: ${messageText}`;
+  return fullText;
 }
 
 function getLogTimestampMetadata(messages: unknown[]) {
@@ -279,7 +331,7 @@ function getLogTimestampMetadata(messages: unknown[]) {
       nativeOccurredAtMs != null &&
       latestObservedLogTimestampMs > 0 &&
       nativeOccurredAtMs < latestObservedLogTimestampMs,
-    label: formatAppLogTimestamp(new Date()),
+    label: formatAppLogTimestamp(new Date(occurredAtMs)),
   };
 }
 
@@ -340,6 +392,13 @@ export function clearCapturedAppLogs() {
   latestObservedLogTimestampMs = 0;
 }
 
+export function isAppLogLevelAtLeast(
+  logLevel: AppLogLevel,
+  minimumLogLevel: AppLogLevel,
+) {
+  return appLogLevels[logLevel] >= appLogLevels[minimumLogLevel];
+}
+
 export function logForwardedNativeEntry(
   loggerInstance: AppLogger,
   entry: ForwardedNativeLogEntry,
@@ -347,7 +406,10 @@ export function logForwardedNativeEntry(
 ) {
   const forwardedDetails = {
     ...details,
+    nativeSequence: entry.sequence,
+    nativeTag: entry.tag,
     nativeTimestamp: formatAppLogTimestamp(new Date(entry.timestampMs)),
+    nativeTimestampMs: entry.timestampMs,
   };
 
   Object.defineProperty(forwardedDetails, forwardedNativeLogMarker, {

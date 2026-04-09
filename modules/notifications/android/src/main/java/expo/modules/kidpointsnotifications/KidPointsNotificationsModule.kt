@@ -41,6 +41,10 @@ class KidPointsNotificationsModule : Module() {
       NotificationNativeLogRelay.getBufferedLogs(afterSequence.toLong())
     }
 
+    Function("getBufferedLogs") { afterSequence: Double ->
+      NotificationNativeLogRelay.getBufferedLogs(afterSequence.toLong())
+    }
+
     AsyncFunction("getDocument") {
       KidPointsNotificationsEngine.getStoredDocument(appContext.reactContext ?: return@AsyncFunction null)
     }

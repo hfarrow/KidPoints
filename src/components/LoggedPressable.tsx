@@ -13,6 +13,7 @@ type LoggedPressableProps = Omit<
   'children' | 'onPress' | 'style'
 > & {
   children: ReactNode;
+  disableLogging?: boolean;
   logContext?: Record<string, unknown>;
   logLabel: string;
   onPress?: () => void;
@@ -25,6 +26,7 @@ export function LoggedPressable({
   accessibilityLabel,
   accessibilityRole = 'button',
   children,
+  disableLogging = false,
   logContext,
   logLabel,
   onPress,
@@ -36,11 +38,13 @@ export function LoggedPressable({
       accessibilityLabel={accessibilityLabel}
       accessibilityRole={accessibilityRole}
       onPress={() => {
-        log.debug('Pressable pressed', {
-          accessibilityLabel: accessibilityLabel ?? null,
-          label: logLabel,
-          ...logContext,
-        });
+        if (!disableLogging) {
+          log.debug('Pressable pressed', {
+            accessibilityLabel: accessibilityLabel ?? null,
+            label: logLabel,
+            ...logContext,
+          });
+        }
         onPress?.();
       }}
       style={style}

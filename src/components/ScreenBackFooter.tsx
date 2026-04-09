@@ -6,10 +6,14 @@ import { useAppTheme, useThemedStyles } from '../features/theme/appTheme';
 import { LoggedPressable } from './LoggedPressable';
 
 type ScreenBackFooterProps = {
+  disableLogging?: boolean;
   label?: string;
 };
 
-export function ScreenBackFooter({ label = 'Back' }: ScreenBackFooterProps) {
+export function ScreenBackFooter({
+  disableLogging = false,
+  label = 'Back',
+}: ScreenBackFooterProps) {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { tokens } = useAppTheme();
@@ -17,6 +21,7 @@ export function ScreenBackFooter({ label = 'Back' }: ScreenBackFooterProps) {
   return (
     <LoggedPressable
       accessibilityLabel="Go Back"
+      disableLogging={disableLogging}
       logLabel="Go Back"
       onPress={() => router.back()}
       style={styles.button}

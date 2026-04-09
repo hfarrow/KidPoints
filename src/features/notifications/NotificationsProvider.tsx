@@ -217,7 +217,6 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
 
       forwardNotificationNativeLog(entry);
     };
-
     const logSubscription = addNotificationLogListener(handleLogEntry);
     const bufferedLogEntries = getBufferedNotificationLogs(
       lastSeenNativeLogSequenceRef.current,

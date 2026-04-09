@@ -1,4 +1,9 @@
 import {
+  APP_LOG_BUFFER_LIMIT,
+  getAppBufferedLogEntries,
+  resetAppLogBuffer,
+} from '../../src/logging/logBufferStore';
+import {
   appLogger,
   clearCapturedAppLogs,
   createModuleLogger,
@@ -19,11 +24,14 @@ describe('logger', () => {
 
   beforeEach(() => {
     clearCapturedAppLogs();
+    resetAppLogBuffer();
     setAppLogLevel(initialLogLevel);
   });
 
   afterEach(() => {
     jest.useRealTimers();
+    clearCapturedAppLogs();
+    resetAppLogBuffer();
     setAppLogLevel(initialLogLevel);
     jest.restoreAllMocks();
   });
@@ -99,6 +107,7 @@ describe('logger', () => {
     settingsLogger.temp('Hidden temp log');
 
     expect(getCapturedAppLogs()).toHaveLength(0);
+    expect(getAppBufferedLogEntries()).toHaveLength(0);
   });
 
   it('creates a fixed-message logger that forwards details', () => {
@@ -120,6 +129,26 @@ describe('logger', () => {
     expect(capturedLogs[0]?.renderedMessage).toContain('save');
   });
 
+  it('buffers formatted logs with preview and full text', () => {
+    const settingsLogger = createModuleLogger('settings-buffered');
+
+    settingsLogger.info('Settings event', {
+      action: 'save',
+      nested: { changed: true },
+    });
+
+    const entries = getAppBufferedLogEntries();
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      level: 'info',
+      namespace: 'settings-buffered',
+      previewText: 'Settings event',
+    });
+    expect(entries[0]?.fullText).toContain('Settings event');
+    expect(entries[0]?.fullText).toContain('"changed": true');
+  });
+
   it('forwards native log metadata through the shared logger', () => {
     const nativeLogger = createModuleLogger('notifications-native');
 
@@ -136,6 +165,7 @@ describe('logger', () => {
     );
 
     const capturedLogs = getCapturedAppLogs();
+    const bufferedEntries = getAppBufferedLogEntries();
 
     expect(capturedLogs).toHaveLength(1);
     expect(capturedLogs[0]?.consoleMethod).toBe('info');
@@ -143,10 +173,16 @@ describe('logger', () => {
     expect(capturedLogs[0]?.renderedMessage).toContain('Forwarded native log');
     expect(capturedLogs[0]?.renderedMessage).toContain('notificationId');
     expect(capturedLogs[0]?.renderedMessage).toContain('nativeTimestamp');
-    expect(capturedLogs[0]?.renderedMessage).not.toContain('nativeTimestampMs');
-    expect(capturedLogs[0]?.renderedMessage).not.toContain('nativeSequence');
-    expect(capturedLogs[0]?.renderedMessage).not.toContain('nativeTag');
+    expect(capturedLogs[0]?.renderedMessage).toContain('nativeTimestampMs');
+    expect(capturedLogs[0]?.renderedMessage).toContain('nativeSequence');
+    expect(capturedLogs[0]?.renderedMessage).toContain('nativeTag');
     expect(capturedLogs[0]?.renderedMessage).toContain('\u001b[38;5;141m');
+    expect(bufferedEntries[0]).toMatchObject({
+      level: 'info',
+      namespace: 'notifications-native',
+      previewText: 'Forwarded native log',
+      timestampMs: new Date('2026-04-08T12:34:56.789Z').getTime(),
+    });
   });
 
   it('keeps direct JS logs grayscale while forwarded native logs use purple tones', () => {
@@ -201,6 +237,24 @@ describe('logger', () => {
     expect(capturedLogs).toHaveLength(2);
     expect(capturedLogs[0]?.renderedMessage).not.toContain('[*');
     expect(capturedLogs[1]?.renderedMessage).toContain('[*');
+  });
+
+  it('keeps only the newest buffered log entries within the memory limit', () => {
+    const bufferLogger = createModuleLogger('buffer-limit');
+
+    setAppLogLevel('temp');
+
+    for (let index = 0; index < APP_LOG_BUFFER_LIMIT + 5; index += 1) {
+      bufferLogger.temp(`Buffered entry ${index}`);
+    }
+
+    const entries = getAppBufferedLogEntries();
+
+    expect(entries).toHaveLength(APP_LOG_BUFFER_LIMIT);
+    expect(entries[0]?.previewText).toBe(
+      `Buffered entry ${APP_LOG_BUFFER_LIMIT + 4}`,
+    );
+    expect(entries.at(-1)?.previewText).toBe('Buffered entry 5');
   });
 
   it('validates and normalizes app log levels', () => {

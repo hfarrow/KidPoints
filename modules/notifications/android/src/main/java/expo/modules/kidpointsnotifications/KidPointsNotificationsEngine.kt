@@ -18,7 +18,6 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.widget.RemoteViews
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat

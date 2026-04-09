@@ -55,4 +55,24 @@ describe('LoggedPressable', () => {
     );
     expect(onPress).toHaveBeenCalledTimes(1);
   });
+
+  it('can skip press logging when disabled', () => {
+    const onPress = jest.fn();
+
+    render(
+      <LoggedPressable
+        accessibilityLabel="Open Logs"
+        disableLogging
+        logLabel="Open Logs"
+        onPress={onPress}
+      >
+        <Text>Open Logs</Text>
+      </LoggedPressable>,
+    );
+
+    fireEvent.press(screen.getByLabelText('Open Logs'));
+
+    expect(mockLogger.debug).not.toHaveBeenCalled();
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
 });
