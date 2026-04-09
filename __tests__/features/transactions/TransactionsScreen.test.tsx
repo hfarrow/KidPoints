@@ -272,4 +272,39 @@ describe('TransactionsScreen', () => {
     expect(screen.getByText('Audit entries cannot be restored.')).toBeTruthy();
     expect(screen.queryByText('Restore To This Point')).toBeNull();
   });
+
+  it('shows timer lifecycle entries as audit-only rows without restore actions', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'tx-timer-audit',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().startTimer().ok).toBe(true);
+
+    render(
+      <SharedStoreProvider
+        initialDocument={store.getState().document}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppThemeProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <TransactionsScreen />
+          </AppThemeProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(screen.getByTestId('transaction-summary-0').props.children).toBe(
+      'Started Timer',
+    );
+
+    fireEvent.press(screen.getByLabelText('Expand Started Timer'));
+    expect(screen.getByText('Audit entries cannot be restored.')).toBeTruthy();
+    expect(screen.queryByText('Restore To This Point')).toBeNull();
+  });
 });

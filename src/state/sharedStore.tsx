@@ -92,6 +92,11 @@ const logSharedStoreRehydrated = createStructuredLog(
   'info',
   'Shared store rehydrated persisted document',
 );
+const TRANSIENT_TIMER_TRANSACTION_KINDS = new Set<TransactionKind>([
+  'timer-paused',
+  'timer-reset',
+  'timer-started',
+]);
 
 const SharedStoreContext = createContext<SharedStore | null>(null);
 
@@ -207,6 +212,16 @@ function normalizeHead(
     timerConfig: normalizeTimerConfig(head?.timerConfig),
     timerState: normalizeTimerState(head?.timerState),
   };
+}
+
+function cloneHeadWithTimerState(
+  head: SharedHead,
+  timerState: SharedTimerState,
+) {
+  return {
+    ...cloneHead(head),
+    timerState: cloneTimerState(timerState),
+  } satisfies SharedHead;
 }
 
 /**
@@ -434,12 +449,20 @@ function getHeadForCurrentTransaction(
 function normalizeTransactionRecord(
   transaction: TransactionRecord,
 ): TransactionRecord {
+  const isTransientTimerTransaction = TRANSIENT_TIMER_TRANSACTION_KINDS.has(
+    transaction.kind,
+  );
+
   return {
     ...transaction,
     affectedChildIds: [...transaction.affectedChildIds],
     eventIds: [...transaction.eventIds],
-    isRestorable: transaction.isRestorable ?? true,
-    participatesInHistory: transaction.participatesInHistory ?? true,
+    isRestorable: isTransientTimerTransaction
+      ? false
+      : (transaction.isRestorable ?? true),
+    participatesInHistory: isTransientTimerTransaction
+      ? false
+      : (transaction.participatesInHistory ?? true),
     stateAfter: normalizeHead(transaction.stateAfter),
   };
 }
@@ -503,12 +526,17 @@ export function cloneSharedDocument(
   )
     ? document.currentHeadTransactionId
     : fallbackHeadTransactionId;
+  const historyHead = getHeadForCurrentTransaction(
+    transactions,
+    currentHeadTransactionId,
+  );
+  const persistedHead = normalizeHead(document.head);
 
   return {
     currentHeadTransactionId,
     deviceId: document.deviceId,
     events,
-    head: getHeadForCurrentTransaction(transactions, currentHeadTransactionId),
+    head: cloneHeadWithTimerState(historyHead, persistedHead.timerState),
     isOrphanedRestoreWindowOpen: Boolean(document.isOrphanedRestoreWindowOpen),
     nextSequence: document.nextSequence ?? deriveNextSequence(events),
     schemaVersion: 3,
@@ -617,6 +645,34 @@ function appendDisplayOnlyTransaction(args: {
 
   return {
     ...document,
+    transactions: [...document.transactions, transaction],
+  } satisfies SharedDocument;
+}
+
+/**
+ * Applies a transient head change that should persist and be logged without
+ * advancing restore history or altering orphaned-branch restore rules.
+ */
+function commitTransientHeadChange(args: {
+  document: SharedDocument;
+  nextHead: SharedHead;
+  transaction: TransactionRecord;
+  eventsToAppend?: SharedEvent[];
+}) {
+  const { document, eventsToAppend = [], nextHead, transaction } = args;
+  const sortedEvents = sortEventsCanonical([
+    ...document.events,
+    ...eventsToAppend,
+  ]);
+
+  return {
+    ...document,
+    events: sortedEvents,
+    head: cloneHead(nextHead),
+    nextSequence: Math.max(
+      document.nextSequence,
+      deriveNextSequence(sortedEvents),
+    ),
     transactions: [...document.transactions, transaction],
   } satisfies SharedDocument;
 }
@@ -1595,9 +1651,11 @@ function createSharedStoreActions(
           childBefore: null,
           childId: null,
           eventIds: [event.eventId],
+          isRestorable: false,
           kind: 'timer-paused',
           occurredAt,
           parentTransactionId: state.document.currentHeadTransactionId,
+          participatesInHistory: false,
           stateAfter: nextHead,
         });
 
@@ -1613,10 +1671,9 @@ function createSharedStoreActions(
 
         return {
           ...state,
-          document: commitDocumentChange({
+          document: commitTransientHeadChange({
             document: state.document,
             eventsToAppend: [event],
-            isOrphanedRestoreWindowOpen: false,
             nextHead,
             transaction,
           }),
@@ -1671,9 +1728,11 @@ function createSharedStoreActions(
           childBefore: null,
           childId: null,
           eventIds: [event.eventId],
+          isRestorable: false,
           kind: 'timer-reset',
           occurredAt,
           parentTransactionId: state.document.currentHeadTransactionId,
+          participatesInHistory: false,
           stateAfter: nextHead,
         });
 
@@ -1688,10 +1747,9 @@ function createSharedStoreActions(
 
         return {
           ...state,
-          document: commitDocumentChange({
+          document: commitTransientHeadChange({
             document: state.document,
             eventsToAppend: [event],
-            isOrphanedRestoreWindowOpen: false,
             nextHead,
             transaction,
           }),
@@ -1888,9 +1946,13 @@ function createSharedStoreActions(
         }
 
         const occurredAt = new Date().toISOString();
+        const targetHead = cloneHeadWithTimerState(
+          transactionRow.stateAfter,
+          state.document.head.timerState,
+        );
         const { affectedChildIds, eventsToAppend } = buildRestoreEvents(
           state.document,
-          transactionRow.stateAfter,
+          targetHead,
           occurredAt,
         );
         const transaction = createTransactionRecord({
@@ -1905,7 +1967,7 @@ function createSharedStoreActions(
           restoredFromTransactionId:
             state.document.currentHeadTransactionId ?? undefined,
           restoredToTransactionId: transactionRow.id,
-          stateAfter: transactionRow.stateAfter,
+          stateAfter: targetHead,
           transactionId: generateId('transaction'),
         });
 
@@ -1924,7 +1986,7 @@ function createSharedStoreActions(
             document: state.document,
             eventsToAppend,
             isOrphanedRestoreWindowOpen: true,
-            nextHead: transactionRow.stateAfter,
+            nextHead: targetHead,
             transaction,
           }),
         };
@@ -2058,9 +2120,11 @@ function createSharedStoreActions(
           childBefore: null,
           childId: null,
           eventIds: [event.eventId],
+          isRestorable: false,
           kind: 'timer-started',
           occurredAt,
           parentTransactionId: state.document.currentHeadTransactionId,
+          participatesInHistory: false,
           stateAfter: nextHead,
         });
 
@@ -2076,10 +2140,9 @@ function createSharedStoreActions(
 
         return {
           ...state,
-          document: commitDocumentChange({
+          document: commitTransientHeadChange({
             document: state.document,
             eventsToAppend: [event],
-            isOrphanedRestoreWindowOpen: false,
             nextHead,
             transaction,
           }),

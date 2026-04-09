@@ -402,16 +402,49 @@ describe('sharedStore timer state', () => {
     });
 
     expect(
-      deriveTransactionRows(store.getState().document).map(
-        (row) => row.summaryText,
-      ),
+      deriveTransactionRows(store.getState().document).map((row) => ({
+        isRestorable: row.isRestorable,
+        isRestorableNow: row.isRestorableNow,
+        participatesInHistory: row.participatesInHistory,
+        summaryText: row.summaryText,
+      })),
     ).toEqual([
-      'Started Timer',
-      'Reset Timer',
-      'Started Timer',
-      'Updated Timer Settings',
-      'Paused Timer',
-      'Started Timer',
+      {
+        isRestorable: false,
+        isRestorableNow: false,
+        participatesInHistory: false,
+        summaryText: 'Started Timer',
+      },
+      {
+        isRestorable: false,
+        isRestorableNow: false,
+        participatesInHistory: false,
+        summaryText: 'Reset Timer',
+      },
+      {
+        isRestorable: false,
+        isRestorableNow: false,
+        participatesInHistory: false,
+        summaryText: 'Started Timer',
+      },
+      {
+        isRestorable: true,
+        isRestorableNow: false,
+        participatesInHistory: true,
+        summaryText: 'Updated Timer Settings',
+      },
+      {
+        isRestorable: false,
+        isRestorableNow: false,
+        participatesInHistory: false,
+        summaryText: 'Paused Timer',
+      },
+      {
+        isRestorable: false,
+        isRestorableNow: false,
+        participatesInHistory: false,
+        summaryText: 'Started Timer',
+      },
     ]);
   });
 
@@ -464,6 +497,176 @@ describe('sharedStore timer state', () => {
       cadenceLabel: '10s cadence',
       remainingLabel: '00:10',
       statusLabel: 'Ready',
+    });
+  });
+
+  it('keeps timer lifecycle actions out of the history head and leaves the orphaned restore window open', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-timer-audit-window',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+    expect(store.getState().setPoints(childId, 4).ok).toBe(true);
+
+    const restoreTarget = deriveTransactionRows(store.getState().document).find(
+      (row) => row.summaryText === 'Ava +1 Points [0 > 1]',
+    );
+
+    expect(
+      store.getState().restoreTransaction(restoreTarget?.id ?? '').ok,
+    ).toBe(true);
+
+    const headTransactionIdBeforeTimerAction =
+      store.getState().document.currentHeadTransactionId;
+
+    expect(store.getState().startTimer().ok).toBe(true);
+    jest.advanceTimersByTime(1_000);
+    expect(store.getState().pauseTimer().ok).toBe(true);
+    expect(store.getState().resetTimer().ok).toBe(true);
+
+    expect(store.getState().document.currentHeadTransactionId).toBe(
+      headTransactionIdBeforeTimerAction,
+    );
+    expect(store.getState().document.isOrphanedRestoreWindowOpen).toBe(true);
+  });
+
+  it('preserves the live timer state when restoring child history', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-timer-preserve-state-child-restore',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+    expect(store.getState().setPoints(childId, 4).ok).toBe(true);
+    expect(store.getState().startTimer().ok).toBe(true);
+    jest.advanceTimersByTime(2_000);
+    expect(store.getState().pauseTimer().ok).toBe(true);
+
+    const timerStateBeforeRestore = store.getState().document.head.timerState;
+    const restoreTarget = deriveTransactionRows(store.getState().document).find(
+      (row) => row.summaryText === 'Ava +1 Points [0 > 1]',
+    );
+
+    expect(
+      store.getState().restoreTransaction(restoreTarget?.id ?? '').ok,
+    ).toBe(true);
+
+    expect(store.getState().document.head.childrenById[childId]?.points).toBe(
+      1,
+    );
+    expect(store.getState().document.head.timerState).toEqual(
+      timerStateBeforeRestore,
+    );
+  });
+
+  it('restores timer config without changing the live countdown state', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-timer-preserve-state-config-restore',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(
+      store.getState().updateTimerConfig({
+        intervalMinutes: 0,
+        intervalSeconds: 5,
+      }).ok,
+    ).toBe(true);
+    expect(store.getState().startTimer().ok).toBe(true);
+    jest.advanceTimersByTime(2_000);
+    expect(
+      store.getState().updateTimerConfig({
+        intervalMinutes: 0,
+        intervalSeconds: 10,
+      }).ok,
+    ).toBe(true);
+
+    const timerStateBeforeRestore = store.getState().document.head.timerState;
+    const restoreTarget = deriveTransactionRows(store.getState().document).find(
+      (row) =>
+        row.kind === 'timer-config-updated' &&
+        row.stateAfter.timerConfig.intervalMinutes === 0 &&
+        row.stateAfter.timerConfig.intervalSeconds === 5,
+    );
+
+    expect(
+      store.getState().restoreTransaction(restoreTarget?.id ?? '').ok,
+    ).toBe(true);
+
+    expect(store.getState().document.head.timerConfig).toEqual({
+      alarmDurationSeconds: 20,
+      intervalMinutes: 0,
+      intervalSeconds: 5,
+    });
+    expect(store.getState().document.head.timerState).toEqual(
+      timerStateBeforeRestore,
+    );
+  });
+
+  it('rehydrates legacy timer lifecycle transactions as audit-only while preserving timer state', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-timer-legacy-rehydrate',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(
+      store.getState().updateTimerConfig({
+        intervalMinutes: 0,
+        intervalSeconds: 5,
+      }).ok,
+    ).toBe(true);
+    expect(store.getState().startTimer().ok).toBe(true);
+
+    const persistedDocument = store.getState().document;
+    const legacyTimerTransaction = persistedDocument.transactions.at(-1);
+    const historyTransaction = persistedDocument.transactions.find(
+      (transaction) => transaction.kind === 'timer-config-updated',
+    );
+
+    expect(legacyTimerTransaction).toBeTruthy();
+    expect(historyTransaction).toBeTruthy();
+
+    const rehydratedStore = createSharedStore({
+      initialDocument: {
+        ...persistedDocument,
+        currentHeadTransactionId: legacyTimerTransaction?.id ?? null,
+        transactions: persistedDocument.transactions.map((transaction) =>
+          transaction.id === legacyTimerTransaction?.id
+            ? {
+                ...transaction,
+                isRestorable: true,
+                participatesInHistory: true,
+              }
+            : transaction,
+        ),
+      },
+      storage: createMemoryStorage(),
+    });
+    const rows = deriveTransactionRows(rehydratedStore.getState().document);
+
+    expect(rehydratedStore.getState().document.currentHeadTransactionId).toBe(
+      historyTransaction?.id,
+    );
+    expect(rehydratedStore.getState().document.head.timerState).toEqual(
+      persistedDocument.head.timerState,
+    );
+    expect(rows[0]).toMatchObject({
+      isRestorable: false,
+      isRestorableNow: false,
+      kind: 'timer-started',
+      participatesInHistory: false,
     });
   });
 
