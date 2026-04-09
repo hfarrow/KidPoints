@@ -31,6 +31,42 @@ describe('sharedStore transaction graph', () => {
     expect(rows[3]?.summaryText).toBe('Ava Added');
   });
 
+  it('records one check-in transaction when multiple children are awarded together', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-check-in-batch',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    expect(store.getState().addChild('Noah').ok).toBe(true);
+    const [avaId, noahId] = store.getState().document.head.activeChildIds;
+
+    if (!avaId || !noahId) {
+      throw new Error('Expected check-in batch test to create two children');
+    }
+
+    expect(store.getState().resolveCheckInSession([avaId, noahId]).ok).toBe(
+      true,
+    );
+
+    const document = store.getState().document;
+    const rows = deriveTransactionRows(document);
+
+    expect(document.head.childrenById[avaId]?.points).toBe(1);
+    expect(document.head.childrenById[noahId]?.points).toBe(1);
+    expect(
+      document.events.filter((event) => event.type === 'child.pointsAdjusted'),
+    ).toHaveLength(2);
+    expect(
+      document.transactions.filter(
+        (transaction) => transaction.kind === 'check-in-resolved',
+      ),
+    ).toHaveLength(1);
+    expect(rows[0]?.summaryText).toBe('Check-In Awards +2 Points');
+  });
+
   it('records restore as its own transaction and restores the exact target state', () => {
     const store = createSharedStore({
       initialDocument: createInitialSharedDocument({ deviceId: 'device-b' }),

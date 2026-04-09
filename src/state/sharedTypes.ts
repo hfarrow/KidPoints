@@ -109,6 +109,7 @@ export type SharedEvent =
   | TimerStateUpdatedEvent;
 
 export type TransactionKind =
+  | 'check-in-resolved'
   | 'child-archived'
   | 'child-created'
   | 'child-deleted'

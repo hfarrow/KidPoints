@@ -24,6 +24,7 @@ import {
 import {
   createInitialSharedDocument,
   createSharedStore,
+  deriveTransactionRows,
   SharedStoreProvider,
   useSharedStore,
 } from '../../../src/state/sharedStore';
@@ -124,7 +125,7 @@ const {
   logForwardedNativeEntry: jest.Mock;
 };
 
-function createSharedDocumentFixture() {
+function createSharedDocumentFixture(childNames = ['Avery']) {
   const store = createSharedStore({
     initialDocument: createInitialSharedDocument({
       deviceId: 'notifications-provider',
@@ -132,16 +133,19 @@ function createSharedDocumentFixture() {
     storage: createMemoryStorage(),
   });
 
-  store.getState().addChild('Avery');
+  childNames.forEach((childName) => {
+    store.getState().addChild(childName);
+  });
 
   const document = store.getState().document;
   const childId = document.head.activeChildIds[0] ?? null;
+  const childIds = [...document.head.activeChildIds];
 
   if (!childId) {
     throw new Error('Expected shared store fixture to create an active child');
   }
 
-  return { childId, document };
+  return { childId, childIds, document };
 }
 
 function createExpiredNotificationDocument(
@@ -181,7 +185,52 @@ function createExpiredNotificationDocument(
   };
 }
 
-function createExpiredRunningSharedDocumentFixture() {
+function createExpiredNotificationDocumentForChildren(
+  childActions: {
+    childId: string;
+    childName: string;
+    status: 'awarded' | 'dismissed' | 'pending';
+  }[],
+): NotificationDocument {
+  return {
+    head: {
+      children: childActions.map(({ childId, childName }) => ({
+        displayName: childName,
+        id: childId,
+        isArchived: false,
+      })),
+      expiredIntervals: [
+        {
+          childActions,
+          intervalId: 'interval-1',
+          notificationId: 5001,
+          sessionId: 'session-1',
+          triggeredAt: 100,
+        },
+      ],
+      timerConfig: {
+        alarmDurationSeconds: 20,
+        intervalMinutes: 15,
+        intervalSeconds: 0,
+        notificationsEnabled: true,
+      },
+      timerRuntimeState: {
+        lastTriggeredAt: 100,
+        nextTriggerAt: null,
+        sessionId: 'session-1',
+      },
+      timerState: {
+        activeIntervalMs: null,
+        cycleStartedAt: null,
+        isRunning: false,
+        pausedRemainingMs: null,
+      },
+    },
+    schemaVersion: 1,
+  };
+}
+
+function createExpiredRunningSharedDocumentFixture(childNames = ['Avery']) {
   jest.useFakeTimers();
   jest.setSystemTime(new Date('2026-04-08T12:00:00.000Z'));
 
@@ -192,19 +241,22 @@ function createExpiredRunningSharedDocumentFixture() {
     storage: createMemoryStorage(),
   });
 
-  store.getState().addChild('Avery');
+  childNames.forEach((childName) => {
+    store.getState().addChild(childName);
+  });
   store.getState().startTimer();
 
   jest.setSystemTime(new Date('2026-04-08T12:20:00.000Z'));
 
   const document = store.getState().document;
   const childId = document.head.activeChildIds[0] ?? null;
+  const childIds = [...document.head.activeChildIds];
 
   if (!childId) {
     throw new Error('Expected running shared store fixture to create a child');
   }
 
-  return { childId, document };
+  return { childId, childIds, document };
 }
 
 function NotificationsProbe() {
@@ -215,9 +267,20 @@ function NotificationsProbe() {
     resolveExpiredTimerChild,
   } = useNotifications();
   const sharedDocument = useSharedStore((state) => state.document);
-  const activeChildId = sharedDocument.head.activeChildIds[0] ?? null;
+  const activeChildIds = sharedDocument.head.activeChildIds;
+  const activeChildId = activeChildIds[0] ?? null;
+  const secondActiveChildId = activeChildIds[1] ?? null;
   const pauseTimer = useSharedStore((state) => state.pauseTimer);
   const startTimer = useSharedStore((state) => state.startTimer);
+  const checkInTransactionCount = sharedDocument.transactions.filter(
+    (transaction) => transaction.kind === 'check-in-resolved',
+  ).length;
+  const pointSnapshot = activeChildIds
+    .map((childId) => sharedDocument.head.childrenById[childId]?.points ?? -1)
+    .join('|');
+  const transactionKinds = deriveTransactionRows(sharedDocument)
+    .map((row) => row.kind)
+    .join('|');
 
   return (
     <>
@@ -233,6 +296,11 @@ function NotificationsProbe() {
       <Text testID="active-session">
         {activeExpiredTimerSession?.intervalId ?? 'none'}
       </Text>
+      <Text testID="points-snapshot">{pointSnapshot}</Text>
+      <Text testID="check-in-transaction-count">
+        {String(checkInTransactionCount)}
+      </Text>
+      <Text testID="transaction-kinds">{transactionKinds}</Text>
       <Text
         onPress={() => {
           if (!activeChildId) {
@@ -256,6 +324,39 @@ function NotificationsProbe() {
         }}
       >
         Award child without restart
+      </Text>
+      <Text
+        onPress={() => {
+          if (!activeChildId) {
+            return;
+          }
+
+          void resolveExpiredTimerChild(activeChildId, 'dismissed');
+        }}
+      >
+        Dismiss child
+      </Text>
+      <Text
+        onPress={() => {
+          if (!secondActiveChildId) {
+            return;
+          }
+
+          void resolveExpiredTimerChild(secondActiveChildId, 'awarded');
+        }}
+      >
+        Award child 2
+      </Text>
+      <Text
+        onPress={() => {
+          if (!secondActiveChildId) {
+            return;
+          }
+
+          void resolveExpiredTimerChild(secondActiveChildId, 'dismissed');
+        }}
+      >
+        Dismiss child 2
       </Text>
       <Text
         onPress={() => {
@@ -608,6 +709,89 @@ describe('NotificationsProvider', () => {
       ]),
     );
     expect(mockRequestNotificationPermission).not.toHaveBeenCalled();
+  });
+
+  it('defers check-in point commits until the session is fully resolved and records one transaction', async () => {
+    try {
+      const multiChildFixture = createExpiredRunningSharedDocumentFixture([
+        'Avery',
+        'Noah',
+      ]);
+      const [firstChildId, secondChildId] = multiChildFixture.childIds;
+
+      if (!firstChildId || !secondChildId) {
+        throw new Error(
+          'Expected multi-child fixture to provide two child ids',
+        );
+      }
+
+      mockLoadPersistedNotificationDocument.mockResolvedValue(
+        createExpiredNotificationDocumentForChildren([
+          { childId: firstChildId, childName: 'Avery', status: 'pending' },
+          { childId: secondChildId, childName: 'Noah', status: 'pending' },
+        ]),
+      );
+
+      renderProvider({
+        initialDocument: multiChildFixture.document,
+        initialParentUnlocked: true,
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'interval-1',
+        ),
+      );
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Award child'));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('points-snapshot').props.children).toBe(
+          '0|0',
+        ),
+      );
+      expect(
+        screen.getByTestId('check-in-transaction-count').props.children,
+      ).toBe('0');
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Dismiss child'));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('points-snapshot').props.children).toBe(
+          '0|0',
+        ),
+      );
+      expect(
+        screen.getByTestId('check-in-transaction-count').props.children,
+      ).toBe('0');
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Award child 2'));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('active-session').props.children).toBe(
+          'none',
+        ),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('points-snapshot').props.children).toBe(
+          '0|1',
+        ),
+      );
+      expect(
+        screen.getByTestId('check-in-transaction-count').props.children,
+      ).toBe('1');
+      expect(screen.getByTestId('transaction-kinds').props.children).toContain(
+        'check-in-resolved',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('awards a point, clears the expired session, and restarts the shared timer when the last action is resolved', async () => {

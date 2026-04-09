@@ -152,7 +152,7 @@ export function TimerCheckInModal() {
                   }
                   iconName="thumbs-down"
                   isActive={childAction.status === 'dismissed'}
-                  isDisabled={childAction.status !== 'pending'}
+                  isDisabled={childAction.status === 'dismissed'}
                   side="left"
                   onPress={() =>
                     void resolveExpiredTimerChild(
@@ -187,7 +187,7 @@ export function TimerCheckInModal() {
                   }
                   iconName="thumbs-up"
                   isActive={childAction.status === 'awarded'}
-                  isDisabled={childAction.status !== 'pending'}
+                  isDisabled={childAction.status === 'awarded'}
                   side="right"
                   onPress={() =>
                     void resolveExpiredTimerChild(

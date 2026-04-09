@@ -52,6 +52,7 @@ type SharedStoreState = {
   recordParentModeLocked: () => SharedCommandResult;
   recordParentUnlockAttempt: (success: boolean) => SharedCommandResult;
   resetTimer: () => SharedCommandResult;
+  resolveCheckInSession: (awardedChildIds: string[]) => SharedCommandResult;
   restoreChild: (childId: string) => SharedCommandResult;
   restoreTransaction: (transactionId: string) => SharedCommandResult;
   setPoints: (childId: string, points: number) => SharedCommandResult;
@@ -907,6 +908,24 @@ function summarizeRestoreTarget(
   }
 
   switch (targetTransaction.kind) {
+    case 'check-in-resolved': {
+      const awardCount = targetTransaction.eventIds.length;
+
+      if (
+        awardCount === 1 &&
+        targetTransaction.childName &&
+        targetTransaction.pointsBefore != null &&
+        targetTransaction.pointsAfter != null
+      ) {
+        return `${targetTransaction.childName} Check-In Award [${targetTransaction.pointsBefore} > ${targetTransaction.pointsAfter}]`;
+      }
+
+      if (awardCount > 0) {
+        return `Check-In Awards +${awardCount} Point${awardCount === 1 ? '' : 's'}`;
+      }
+
+      return 'Resolved Check-In';
+    }
     case 'points-adjusted': {
       if (
         targetTransaction.childName &&
@@ -984,6 +1003,24 @@ function summarizeTransactionRow(
   transactionsById: Map<string, TransactionRecord>,
 ) {
   switch (transaction.kind) {
+    case 'check-in-resolved': {
+      const awardCount = transaction.eventIds.length;
+
+      if (
+        awardCount === 1 &&
+        transaction.childName &&
+        transaction.pointsBefore != null &&
+        transaction.pointsAfter != null
+      ) {
+        return `${transaction.childName} Check-In Award [${transaction.pointsBefore} > ${transaction.pointsAfter}]`;
+      }
+
+      if (awardCount > 0) {
+        return `Check-In Awards +${awardCount} Point${awardCount === 1 ? '' : 's'}`;
+      }
+
+      return 'Resolved Check-In';
+    }
     case 'child-created':
       return transaction.childName
         ? `${transaction.childName} Added`
@@ -1285,6 +1322,105 @@ function createSharedStoreActions(
           document: commitDocumentChange({
             document: state.document,
             eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
+    resolveCheckInSession(awardedChildIds: string[]): SharedCommandResult {
+      const uniqueAwardedChildIds = [...new Set(awardedChildIds)];
+
+      if (uniqueAwardedChildIds.length === 0) {
+        return { ok: true };
+      }
+
+      let result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const childSnapshotsBefore = new Map<string, ChildSnapshot>();
+
+        for (const childId of uniqueAwardedChildIds) {
+          const child = getChild(state.document.head, childId);
+
+          if (!child || child.status !== 'active') {
+            logRejectedSharedStoreMutation(
+              'resolveCheckInSession',
+              'Only active children can receive check-in awards.',
+              {
+                awardedChildIds: uniqueAwardedChildIds,
+                childId,
+              },
+            );
+            result = {
+              error: 'Only active children can receive check-in awards.',
+              ok: false,
+            };
+            return state;
+          }
+
+          childSnapshotsBefore.set(childId, child);
+        }
+
+        const occurredAt = new Date().toISOString();
+        const builder = createEventBuilder(state.document);
+        const events: SharedEvent[] = [];
+        let nextHead = cloneHead(state.document.head);
+
+        for (const childId of uniqueAwardedChildIds) {
+          const event = builder.build(
+            'child.pointsAdjusted',
+            {
+              childId,
+              delta: 1,
+            },
+            occurredAt,
+          );
+
+          events.push(event);
+          nextHead = applySharedEvent(nextHead, event);
+        }
+
+        const primaryChildId =
+          uniqueAwardedChildIds.length === 1 ? uniqueAwardedChildIds[0] : null;
+        const primaryChildBefore = primaryChildId
+          ? (childSnapshotsBefore.get(primaryChildId) ?? null)
+          : null;
+        const primaryChildAfter = primaryChildId
+          ? getChild(nextHead, primaryChildId)
+          : null;
+        const transaction = createTransactionRecord({
+          affectedChildIds: uniqueAwardedChildIds,
+          childAfter: primaryChildAfter,
+          childBefore: primaryChildBefore,
+          childId: primaryChildId,
+          eventIds: events.map((event) => event.eventId),
+          kind: 'check-in-resolved',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          pointsAfter: primaryChildAfter?.points,
+          pointsBefore: primaryChildBefore?.points,
+          stateAfter: nextHead,
+        });
+
+        logSharedStoreMutation('resolveCheckInSession', {
+          awardedChildIds: uniqueAwardedChildIds,
+          eventCount: events.length,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          awardedChildIds: uniqueAwardedChildIds,
+          eventCount: events.length,
+        });
+
+        return {
+          ...state,
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: events,
             isOrphanedRestoreWindowOpen: false,
             nextHead,
             transaction,

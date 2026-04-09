@@ -463,11 +463,13 @@ export function resolveExpiredTimerChildAction(
     status: Extract<ExpiredTimerChildActionStatus, 'awarded' | 'dismissed'>;
   },
 ): {
+  childActions: ExpiredTimerChildAction[] | null;
   didResolveSession: boolean;
   didUpdate: boolean;
   document: NotificationDocument;
 } {
   const { childId, intervalId, status } = options;
+  let nextChildActions: ExpiredTimerChildAction[] | null = null;
   let didUpdate = false;
   let didResolveSession = false;
 
@@ -485,10 +487,7 @@ export function resolveExpiredTimerChildAction(
       }
 
       const childActions = interval.childActions.map((childAction) => {
-        if (
-          childAction.childId !== childId ||
-          childAction.status !== 'pending'
-        ) {
+        if (childAction.childId !== childId || childAction.status === status) {
           return { ...childAction };
         }
 
@@ -499,6 +498,9 @@ export function resolveExpiredTimerChildAction(
           status,
         };
       });
+      nextChildActions = childActions.map((childAction) => ({
+        ...childAction,
+      }));
       const hasPendingAction = childActions.some(
         (childAction) => childAction.status === 'pending',
       );
@@ -518,6 +520,7 @@ export function resolveExpiredTimerChildAction(
   );
 
   return {
+    childActions: nextChildActions,
     didResolveSession,
     didUpdate,
     document: {

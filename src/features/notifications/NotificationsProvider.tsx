@@ -116,10 +116,12 @@ function createLaunchActionKey(
 export function NotificationsProvider({ children }: PropsWithChildren) {
   const engineAvailable = isNotificationsModuleAvailable();
   const sharedStoreApi = useSharedStoreApi() as SharedStoreWithPersist;
-  const adjustPoints = useSharedStore((state) => state.adjustPoints);
   const document = useSharedStore((state) => state.document);
   const pauseSharedTimer = useSharedStore((state) => state.pauseTimer);
   const resetSharedTimer = useSharedStore((state) => state.resetTimer);
+  const resolveCheckInSession = useSharedStore(
+    (state) => state.resolveCheckInSession,
+  );
   const startSharedTimer = useSharedStore((state) => state.startTimer);
   const notificationsEnabled = useLocalSettingsStore(
     (state) => state.notificationsEnabled,
@@ -700,6 +702,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       const shouldRestartTimer = options?.restartTimerOnResolve ?? true;
 
       const {
+        childActions,
         didResolveSession,
         didUpdate,
         document: nextDocument,
@@ -723,11 +726,24 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       setNotificationDocument(nextDocument);
       notificationDocumentRef.current = nextDocument;
 
-      if (status === 'awarded') {
-        adjustPoints(childId, 1);
-      }
-
       if (didResolveSession) {
+        const awardedChildIds =
+          childActions
+            ?.filter((childAction) => childAction.status === 'awarded')
+            .map((childAction) => childAction.childId) ?? [];
+
+        if (awardedChildIds.length > 0) {
+          const resolveCheckInResult = resolveCheckInSession(awardedChildIds);
+
+          if (!resolveCheckInResult.ok) {
+            log.error('Failed to commit resolved check-in session', {
+              awardedChildIds,
+              error: resolveCheckInResult.error,
+              intervalId: activeExpiredTimerSession.intervalId,
+            });
+          }
+        }
+
         activeLaunchActionKeyRef.current = null;
         setPendingLaunchAction(null);
         removeStartupNavigationRequest(CHECK_IN_REQUEST_ID);
@@ -742,12 +758,12 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       await syncResolvedDocument(nextDocument);
     },
     [
-      adjustPoints,
       isParentUnlocked,
       parentPin,
       queueStartupNavigationRequest,
       removeStartupNavigationRequest,
       resetSharedTimer,
+      resolveCheckInSession,
       startSharedTimer,
       syncResolvedDocument,
     ],

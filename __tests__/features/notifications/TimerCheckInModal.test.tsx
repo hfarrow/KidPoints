@@ -222,6 +222,34 @@ describe('TimerCheckInModal', () => {
     fireEvent.press(screen.getByLabelText('Dismiss point for Avery'));
   });
 
+  it('allows swapping a prior child decision while another child is still pending', () => {
+    mockUseParentSession.mockReturnValue({ isParentUnlocked: true });
+    mockUseNotifications.mockReturnValue({
+      activeExpiredTimerSession: {
+        childActions: [
+          { childId: 'child-1', childName: 'Avery', status: 'awarded' },
+          { childId: 'child-2', childName: 'Parker', status: 'pending' },
+        ],
+        intervalId: 'interval-1',
+        notificationId: 5001,
+        sessionId: 'session-1',
+        triggeredAt: 100,
+      },
+      dismissCheckInFlow: mockDismissCheckInFlow,
+      resolveExpiredTimerChild: mockResolveExpiredTimerChild,
+    });
+
+    render(<TimerCheckInModal />);
+
+    fireEvent.press(screen.getByLabelText('Dismiss point for Avery'));
+
+    expect(mockResolveExpiredTimerChild).toHaveBeenCalledWith(
+      'child-1',
+      'dismissed',
+      { restartTimerOnResolve: true },
+    );
+  });
+
   it('closes with back navigation after the active session is cleared', async () => {
     mockUseParentSession.mockReturnValue({ isParentUnlocked: true });
     mockUseNotifications.mockReturnValue({
