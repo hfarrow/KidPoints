@@ -30,6 +30,9 @@ When generating React or React Native code for this repo:
 
 Workflow rules for this repo:
 
+- The generated Android Gradle project in `./android` should not be edited directly for persistent changes.
+- Direct edits inside `./android` are acceptable only for local testing or troubleshooting.
+- Any Android change that must survive `expo prebuild` regeneration must be implemented through an Expo config plugin or another tracked prebuild input, not by manually editing generated files.
 - Always run `yarn check` after code changes for frequent incremental validation.
 - If `yarn check` fails with fixable Biome or ESLint issues, run `yarn check-fix` and then re-read any files that were modified by those fixes before continuing.
 - Always run `yarn test` after completing testable features.
