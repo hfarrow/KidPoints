@@ -409,7 +409,6 @@ export function logForwardedNativeEntry(
     nativeSequence: entry.sequence,
     nativeTag: entry.tag,
     nativeTimestamp: formatAppLogTimestamp(new Date(entry.timestampMs)),
-    nativeTimestampMs: entry.timestampMs,
   };
 
   Object.defineProperty(forwardedDetails, forwardedNativeLogMarker, {

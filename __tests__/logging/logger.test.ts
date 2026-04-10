@@ -173,7 +173,6 @@ describe('logger', () => {
     expect(capturedLogs[0]?.renderedMessage).toContain('Forwarded native log');
     expect(capturedLogs[0]?.renderedMessage).toContain('notificationId');
     expect(capturedLogs[0]?.renderedMessage).toContain('nativeTimestamp');
-    expect(capturedLogs[0]?.renderedMessage).toContain('nativeTimestampMs');
     expect(capturedLogs[0]?.renderedMessage).toContain('nativeSequence');
     expect(capturedLogs[0]?.renderedMessage).toContain('nativeTag');
     expect(capturedLogs[0]?.renderedMessage).toContain('\u001b[38;5;141m');
