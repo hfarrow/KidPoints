@@ -24,6 +24,7 @@ export type NearbySyncAvailability = {
 
 export type NearbySyncPermissionStatus = {
   allGranted: boolean;
+  deniedPermissions: string[];
   requiredPermissions: string[];
   results: Record<string, string>;
 };
@@ -56,7 +57,7 @@ export type NearbySyncPayloadProgressEvent = {
   bytesTransferred: number | null;
   endpointId: string;
   fileUri: string | null;
-  payloadId: number;
+  payloadId: string;
   payloadKind: 'bytes' | 'file' | 'stream';
   status: 'canceled' | 'failure' | 'in-progress' | 'success';
   totalBytes: number | null;
@@ -65,7 +66,7 @@ export type NearbySyncPayloadProgressEvent = {
 export type NearbySyncEnvelopeReceivedEvent = {
   endpointId: string;
   envelopeJson: string;
-  payloadId: number;
+  payloadId: string;
 };
 
 export type NearbySyncErrorEvent = {
@@ -127,8 +128,8 @@ type NearbySyncNativeModule = NativeModule<{
   getBufferedLogs: (afterSequence: number) => string;
   rejectConnection: (endpointId: string) => Promise<void>;
   requestConnection: (endpointId: string) => Promise<void>;
-  sendEnvelope: (endpointId: string, envelopeJson: string) => Promise<number>;
-  sendFile: (endpointId: string, fileUri: string) => Promise<number>;
+  sendEnvelope: (endpointId: string, envelopeJson: string) => Promise<string>;
+  sendFile: (endpointId: string, fileUri: string) => Promise<string>;
   startDiscovery: (localEndpointName: string) => Promise<void>;
   startHosting: (
     sessionLabel: string,
@@ -159,6 +160,9 @@ function getRequiredNearbyPermissions(): Permission[] {
 
   if (version >= 33) {
     return [
+      PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE,
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
       PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES,
@@ -167,9 +171,16 @@ function getRequiredNearbyPermissions(): Permission[] {
 
   if (version >= 31) {
     return [
+      PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE,
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
     ];
+  }
+
+  if (version >= 29) {
+    return [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
   }
 
   return [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
@@ -181,6 +192,54 @@ function createUnavailableAvailability(): NearbySyncAvailability {
     isSupported: false,
     playServicesStatus: null,
     reason: 'module-unavailable',
+  };
+}
+
+function isPermissionGranted(result: string | undefined) {
+  return result === PermissionsAndroid.RESULTS.GRANTED;
+}
+
+function evaluateNearbyPermissionGrant(args: {
+  requiredPermissions: string[];
+  results: Record<string, string>;
+}) {
+  const { requiredPermissions, results } = args;
+  const coarseLocationPermission =
+    PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION;
+  const fineLocationPermission =
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
+  const coarseGranted = isPermissionGranted(results[coarseLocationPermission]);
+  const fineGranted = isPermissionGranted(results[fineLocationPermission]);
+  const locationSatisfied =
+    !requiredPermissions.includes(coarseLocationPermission) &&
+    !requiredPermissions.includes(fineLocationPermission)
+      ? true
+      : coarseGranted || fineGranted;
+  const deniedPermissions = requiredPermissions.filter((permission) => {
+    if (
+      permission === coarseLocationPermission ||
+      permission === fineLocationPermission
+    ) {
+      return false;
+    }
+
+    return !isPermissionGranted(results[permission]);
+  });
+
+  if (
+    !locationSatisfied &&
+    requiredPermissions.some(
+      (permission) =>
+        permission === coarseLocationPermission ||
+        permission === fineLocationPermission,
+    )
+  ) {
+    deniedPermissions.unshift('android.permission.ACCESS_LOCATION');
+  }
+
+  return {
+    allGranted: deniedPermissions.length === 0,
+    deniedPermissions,
   };
 }
 
@@ -207,6 +266,7 @@ export async function requestPermissions(): Promise<NearbySyncPermissionStatus> 
   if (Platform.OS !== 'android' || requiredPermissions.length === 0) {
     return {
       allGranted: true,
+      deniedPermissions: [],
       requiredPermissions,
       results: {},
     };
@@ -224,18 +284,21 @@ export async function requestPermissions(): Promise<NearbySyncPermissionStatus> 
       results[permission] ?? 'unavailable',
     ]),
   );
-  const allGranted = requiredPermissions.every(
-    (permission) =>
-      normalizedResults[permission] === PermissionsAndroid.RESULTS.GRANTED,
-  );
+  const { allGranted, deniedPermissions } = evaluateNearbyPermissionGrant({
+    requiredPermissions,
+    results: normalizedResults,
+  });
 
   log.info('Nearby sync permissions request completed', {
     allGranted,
+    deniedPermissions,
     requiredPermissions,
+    results: normalizedResults,
   });
 
   return {
     allGranted,
+    deniedPermissions,
     requiredPermissions,
     results: normalizedResults,
   };
@@ -305,7 +368,7 @@ export async function sendEnvelope(args: {
 }) {
   if (!nativeModuleRef) {
     logModuleUnavailable('sendEnvelope');
-    return -1;
+    return '-1';
   }
 
   log.debug('Sending nearby sync envelope', {
@@ -317,7 +380,7 @@ export async function sendEnvelope(args: {
 export async function sendFile(args: { endpointId: string; fileUri: string }) {
   if (!nativeModuleRef) {
     logModuleUnavailable('sendFile');
-    return -1;
+    return '-1';
   }
 
   log.info('Sending nearby sync file payload', {

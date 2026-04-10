@@ -64,8 +64,8 @@ describe('nearbySyncBridge', () => {
       ),
       rejectConnection: jest.fn(async () => undefined),
       requestConnection: jest.fn(async () => undefined),
-      sendEnvelope: jest.fn(async () => 11),
-      sendFile: jest.fn(async () => 22),
+      sendEnvelope: jest.fn(async () => '11'),
+      sendFile: jest.fn(async () => '22'),
       startDiscovery: jest.fn(async () => undefined),
       startHosting: jest.fn(async () => undefined),
       stopAll: jest.fn(async () => undefined),
@@ -78,6 +78,9 @@ describe('nearbySyncBridge', () => {
       return {
         PermissionsAndroid: {
           PERMISSIONS: {
+            ACCESS_COARSE_LOCATION: 'android.permission.ACCESS_COARSE_LOCATION',
+            ACCESS_FINE_LOCATION: 'android.permission.ACCESS_FINE_LOCATION',
+            BLUETOOTH_ADVERTISE: 'android.permission.BLUETOOTH_ADVERTISE',
             BLUETOOTH_CONNECT: 'android.permission.BLUETOOTH_CONNECT',
             BLUETOOTH_SCAN: 'android.permission.BLUETOOTH_SCAN',
             NEARBY_WIFI_DEVICES: 'android.permission.NEARBY_WIFI_DEVICES',
@@ -121,7 +124,7 @@ describe('nearbySyncBridge', () => {
     subscriptions[1]?.({
       endpointId: 'endpoint-1',
       envelopeJson: '{"type":"HELLO"}',
-      payloadId: 12,
+      payloadId: '12',
     });
     subscriptions[2]?.({
       contextJson: JSON.stringify({ source: 'live' }),
@@ -134,6 +137,15 @@ describe('nearbySyncBridge', () => {
 
     expect(permissions).toMatchObject({
       allGranted: true,
+      deniedPermissions: [],
+      requiredPermissions: [
+        'android.permission.ACCESS_COARSE_LOCATION',
+        'android.permission.ACCESS_FINE_LOCATION',
+        'android.permission.BLUETOOTH_ADVERTISE',
+        'android.permission.BLUETOOTH_CONNECT',
+        'android.permission.BLUETOOTH_SCAN',
+        'android.permission.NEARBY_WIFI_DEVICES',
+      ],
     });
     expect(availability).toEqual({
       isReady: true,
@@ -147,7 +159,7 @@ describe('nearbySyncBridge', () => {
     expect(envelopeListener).toHaveBeenCalledWith({
       endpointId: 'endpoint-1',
       envelopeJson: '{"type":"HELLO"}',
-      payloadId: 12,
+      payloadId: '12',
     });
     expect(logListener).toHaveBeenCalledWith({
       contextJson: JSON.stringify({ source: 'live' }),
@@ -167,5 +179,60 @@ describe('nearbySyncBridge', () => {
         timestampMs: 123,
       },
     ]);
+  });
+
+  it('treats coarse location as sufficient when fine location is denied', async () => {
+    const nativeModule = {
+      getAvailabilityStatus: jest.fn(async () => ({
+        isReady: true,
+        isSupported: true,
+        playServicesStatus: 0,
+        reason: 'ready',
+      })),
+      getBufferedLogs: jest.fn(() => '[]'),
+    };
+
+    jest.doMock('expo-modules-core', () => ({
+      requireOptionalNativeModule: jest.fn(() => nativeModule),
+    }));
+    jest.doMock('react-native', () => ({
+      PermissionsAndroid: {
+        PERMISSIONS: {
+          ACCESS_COARSE_LOCATION: 'android.permission.ACCESS_COARSE_LOCATION',
+          ACCESS_FINE_LOCATION: 'android.permission.ACCESS_FINE_LOCATION',
+          BLUETOOTH_ADVERTISE: 'android.permission.BLUETOOTH_ADVERTISE',
+          BLUETOOTH_CONNECT: 'android.permission.BLUETOOTH_CONNECT',
+          BLUETOOTH_SCAN: 'android.permission.BLUETOOTH_SCAN',
+          NEARBY_WIFI_DEVICES: 'android.permission.NEARBY_WIFI_DEVICES',
+        },
+        RESULTS: {
+          GRANTED: 'granted',
+        },
+        requestMultiple: jest.fn(async () => ({
+          'android.permission.ACCESS_COARSE_LOCATION': 'granted',
+          'android.permission.ACCESS_FINE_LOCATION': 'denied',
+          'android.permission.BLUETOOTH_ADVERTISE': 'granted',
+          'android.permission.BLUETOOTH_CONNECT': 'granted',
+          'android.permission.BLUETOOTH_SCAN': 'granted',
+          'android.permission.NEARBY_WIFI_DEVICES': 'granted',
+        })),
+      },
+      Platform: {
+        OS: 'android',
+        Version: 33,
+      },
+    }));
+
+    let nearbySyncBridge!: typeof import('../../../src/features/sync/nearbySyncBridge');
+    jest.isolateModules(() => {
+      nearbySyncBridge = jest.requireActual(
+        '../../../src/features/sync/nearbySyncBridge',
+      );
+    });
+
+    await expect(nearbySyncBridge.requestPermissions()).resolves.toMatchObject({
+      allGranted: true,
+      deniedPermissions: [],
+    });
   });
 });

@@ -25,6 +25,7 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 
 class KidPointsNearbySyncModule : Module() {
   companion object {
@@ -41,6 +42,7 @@ class KidPointsNearbySyncModule : Module() {
   private val pendingConnectionsById = mutableMapOf<String, ConnectionInfo>()
   private val incomingFilePayloads = mutableMapOf<Long, Payload>()
   private var advertisedSessionLabel: String? = null
+  private var intentionalShutdownInFlight = false
   private var localEndpointName: String = "KidPoints"
 
   private fun serviceId(context: Context): String = "${context.packageName}.kidpoints.sync"
@@ -98,6 +100,7 @@ class KidPointsNearbySyncModule : Module() {
     AsyncFunction("startHosting") { sessionLabel: String, nextLocalEndpointName: String ->
       val context = appContext.reactContext ?: return@AsyncFunction
       stopAllInternal(context)
+      intentionalShutdownInFlight = false
       advertisedSessionLabel = sessionLabel
       localEndpointName = nextLocalEndpointName
 
@@ -128,6 +131,7 @@ class KidPointsNearbySyncModule : Module() {
     AsyncFunction("startDiscovery") { nextLocalEndpointName: String ->
       val context = appContext.reactContext ?: return@AsyncFunction
       stopAllInternal(context)
+      intentionalShutdownInFlight = false
       localEndpointName = nextLocalEndpointName
 
       nativeLogRelay.info(
@@ -154,6 +158,7 @@ class KidPointsNearbySyncModule : Module() {
 
     AsyncFunction("requestConnection") { endpointId: String ->
       val context = appContext.reactContext ?: return@AsyncFunction
+      intentionalShutdownInFlight = false
       nativeLogRelay.info(
         TAG,
         "Requesting connection",
@@ -169,12 +174,6 @@ class KidPointsNearbySyncModule : Module() {
           endpointId,
           connectionLifecycleCallback,
         ),
-      )
-      emitConnectionStateChanged(
-        endpointId = endpointId,
-        endpointName = endpointNamesById[endpointId] ?: discoveredEndpoints[endpointId] ?: "",
-        state = "connecting",
-        reason = null,
       )
     }
 
@@ -207,7 +206,7 @@ class KidPointsNearbySyncModule : Module() {
     }
 
     AsyncFunction("sendEnvelope") { endpointId: String, envelopeJson: String ->
-      val context = appContext.reactContext ?: return@AsyncFunction (-1).toDouble()
+      val context = appContext.reactContext ?: return@AsyncFunction "-1"
       val payload = Payload.fromBytes(envelopeJson.toByteArray(Charsets.UTF_8))
 
       nativeLogRelay.debug(
@@ -220,11 +219,11 @@ class KidPointsNearbySyncModule : Module() {
       )
 
       Tasks.await(connectionsClient(context).sendPayload(endpointId, payload))
-      payload.id.toDouble()
+      payload.id.toString()
     }
 
     AsyncFunction("sendFile") { endpointId: String, fileUri: String ->
-      val context = appContext.reactContext ?: return@AsyncFunction (-1).toDouble()
+      val context = appContext.reactContext ?: return@AsyncFunction "-1"
       val filePayload = Payload.fromFile(resolveFile(fileUri))
 
       nativeLogRelay.info(
@@ -238,11 +237,12 @@ class KidPointsNearbySyncModule : Module() {
       )
 
       Tasks.await(connectionsClient(context).sendPayload(endpointId, filePayload))
-      filePayload.id.toDouble()
+      filePayload.id.toString()
     }
 
     AsyncFunction("disconnect") { endpointId: String? ->
       val context = appContext.reactContext ?: return@AsyncFunction
+      intentionalShutdownInFlight = true
 
       if (endpointId.isNullOrBlank()) {
         nativeLogRelay.info(TAG, "Disconnecting all endpoints")
@@ -383,19 +383,39 @@ class KidPointsNearbySyncModule : Module() {
 
       override fun onDisconnected(endpointId: String) {
         val endpointName = endpointNamesById[endpointId] ?: ""
-        nativeLogRelay.warn(
-          TAG,
-          "Endpoint disconnected",
-          buildContextJson(
-            "endpointId" to endpointId,
-            "endpointName" to endpointName,
-          ),
-        )
+        val reason =
+          if (intentionalShutdownInFlight) {
+            "local-stop"
+          } else {
+            "remote-disconnect"
+          }
+
+        if (intentionalShutdownInFlight) {
+          nativeLogRelay.info(
+            TAG,
+            "Endpoint disconnected during intentional shutdown",
+            buildContextJson(
+              "endpointId" to endpointId,
+              "endpointName" to endpointName,
+              "reason" to reason,
+            ),
+          )
+        } else {
+          nativeLogRelay.warn(
+            TAG,
+            "Endpoint disconnected",
+            buildContextJson(
+              "endpointId" to endpointId,
+              "endpointName" to endpointName,
+              "reason" to reason,
+            ),
+          )
+        }
         emitConnectionStateChanged(
           endpointId = endpointId,
           endpointName = endpointName,
           state = "disconnected",
-          reason = "remote-disconnect",
+          reason = reason,
         )
       }
     }
@@ -468,6 +488,7 @@ class KidPointsNearbySyncModule : Module() {
       }
 
       override fun onPayloadTransferUpdate(endpointId: String, update: PayloadTransferUpdate) {
+        val context = appContext.reactContext ?: appContext.currentActivity?.applicationContext
         val status =
           when (update.status) {
             PayloadTransferUpdate.Status.SUCCESS -> "success"
@@ -481,11 +502,26 @@ class KidPointsNearbySyncModule : Module() {
             else -> "bytes"
           }
         val fileUri =
-          if (status == "success" && payloadKind == "file") {
-            incomingFilePayloads.remove(update.payloadId)?.asFile()?.asJavaFile()?.let { file ->
-              Uri.fromFile(file).toString()
-            }
+          if (status == "success" && payloadKind == "file" && context != null) {
+            copyIncomingFilePayloadToCache(context, endpointId, update.payloadId)
           } else {
+            if (
+              (status == "failure" || status == "canceled") &&
+              payloadKind == "file"
+            ) {
+              incomingFilePayloads.remove(update.payloadId)
+            }
+
+            if (status == "success" && payloadKind == "file" && context == null) {
+              nativeLogRelay.warn(
+                TAG,
+                "Nearby sync file payload completed before an app context was available",
+                buildContextJson(
+                  "endpointId" to endpointId,
+                  "payloadId" to update.payloadId,
+                ),
+              )
+            }
             null
           }
 
@@ -495,7 +531,9 @@ class KidPointsNearbySyncModule : Module() {
           buildContextJson(
             "bytesTransferred" to update.bytesTransferred,
             "endpointId" to endpointId,
+            "fileUri" to fileUri,
             "payloadId" to update.payloadId,
+            "payloadKind" to payloadKind,
             "status" to status,
             "totalBytes" to update.totalBytes,
           ),
@@ -521,7 +559,77 @@ class KidPointsNearbySyncModule : Module() {
     return File(fileUri)
   }
 
+  private fun copyIncomingFilePayloadToCache(
+    context: Context,
+    endpointId: String,
+    payloadId: Long,
+  ): String? {
+    val payload = incomingFilePayloads.remove(payloadId)
+    val sourceUri = payload?.asFile()?.asUri()
+
+    if (sourceUri == null) {
+      nativeLogRelay.warn(
+        TAG,
+        "Incoming file payload was missing a readable source uri",
+        buildContextJson(
+          "endpointId" to endpointId,
+          "payloadId" to payloadId,
+        ),
+      )
+      return null
+    }
+
+    val destinationDirectory = File(context.cacheDir, "nearby-sync").apply {
+      mkdirs()
+    }
+    val destinationFile = File(destinationDirectory, "incoming-$payloadId.json")
+
+    return try {
+      context.contentResolver.openInputStream(sourceUri).use { inputStream ->
+        if (inputStream == null) {
+          throw IOException("ContentResolver returned a null InputStream for $sourceUri")
+        }
+
+        destinationFile.outputStream().use { outputStream ->
+          inputStream.copyTo(outputStream)
+          outputStream.flush()
+        }
+      }
+      nativeLogRelay.info(
+        TAG,
+        "Copied incoming nearby sync file payload into app cache",
+        buildContextJson(
+          "destinationFileUri" to Uri.fromFile(destinationFile).toString(),
+          "endpointId" to endpointId,
+          "payloadId" to payloadId,
+          "sourceFileUri" to sourceUri.toString(),
+          "sourceSizeBytes" to destinationFile.length(),
+        ),
+      )
+      runCatching {
+        context.contentResolver.delete(sourceUri, null, null)
+      }
+      payload?.close()
+      Uri.fromFile(destinationFile).toString()
+    } catch (error: IOException) {
+      nativeLogRelay.error(
+        TAG,
+        "Failed to copy incoming nearby sync file payload",
+        buildContextJson(
+          "destinationFileUri" to Uri.fromFile(destinationFile).toString(),
+          "endpointId" to endpointId,
+          "error" to error.message,
+          "payloadId" to payloadId,
+          "sourceFileUri" to sourceUri.toString(),
+        ),
+      )
+      payload?.close()
+      null
+    }
+  }
+
   private fun stopAllInternal(context: Context) {
+    intentionalShutdownInFlight = true
     nativeLogRelay.info(
       TAG,
       "Stopping all nearby sync activity",
@@ -642,7 +750,7 @@ class KidPointsNearbySyncModule : Module() {
         "bytesTransferred" to bytesTransferred?.toDouble(),
         "endpointId" to endpointId,
         "fileUri" to fileUri,
-        "payloadId" to payloadId.toDouble(),
+        "payloadId" to payloadId.toString(),
         "payloadKind" to payloadKind,
         "status" to status,
         "totalBytes" to totalBytes?.toDouble(),
@@ -656,7 +764,7 @@ class KidPointsNearbySyncModule : Module() {
       mapOf(
         "endpointId" to endpointId,
         "envelopeJson" to envelopeJson,
-        "payloadId" to payloadId.toDouble(),
+        "payloadId" to payloadId.toString(),
       ),
     )
   }

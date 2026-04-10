@@ -1,8 +1,13 @@
-import { cloneSharedDocument } from './sharedStore';
+import { cloneTimerConfig, cloneTimerState } from './sharedTimer';
 import type {
   ChildSnapshot,
   SharedDocument,
+  SharedDocumentSnapshot,
+  SharedEvent,
   SharedHead,
+  SharedSyncState,
+  StoredSyncBundle,
+  StoredSyncRollbackSnapshot,
   TransactionKind,
   TransactionRecord,
 } from './sharedTypes';
@@ -218,6 +223,173 @@ function projectChildSnapshotForSync(
     points: child.points,
     status: child.status,
     updatedAt: child.updatedAt,
+  };
+}
+
+function cloneSharedEventRecordForSync(event: SharedEvent): SharedEvent {
+  switch (event.type) {
+    case 'child.archived':
+    case 'child.deleted':
+    case 'child.restored':
+      return {
+        ...event,
+        payload: {
+          childId: event.payload.childId,
+        },
+      };
+    case 'child.created':
+      return {
+        ...event,
+        payload: {
+          child: { ...event.payload.child },
+        },
+      };
+    case 'child.pointsAdjusted':
+      return {
+        ...event,
+        payload: {
+          childId: event.payload.childId,
+          delta: event.payload.delta,
+        },
+      };
+    case 'child.pointsSet':
+      return {
+        ...event,
+        payload: {
+          childId: event.payload.childId,
+          points: event.payload.points,
+        },
+      };
+    case 'timer.configUpdated':
+      return {
+        ...event,
+        payload: {
+          timerConfig: cloneTimerConfig(event.payload.timerConfig),
+        },
+      };
+    case 'timer.stateUpdated':
+      return {
+        ...event,
+        payload: {
+          timerState: cloneTimerState(event.payload.timerState),
+        },
+      };
+  }
+}
+
+function cloneSharedHeadForSync(head: SharedHead): SharedHead {
+  return {
+    activeChildIds: [...head.activeChildIds],
+    archivedChildIds: [...head.archivedChildIds],
+    childrenById: Object.fromEntries(
+      Object.entries(head.childrenById).map(([childId, child]) => [
+        childId,
+        { ...child },
+      ]),
+    ),
+    timerConfig: cloneTimerConfig(head.timerConfig),
+    timerState: cloneTimerState(head.timerState),
+  };
+}
+
+function cloneTransactionRecordForSync(
+  transaction: TransactionRecord,
+): TransactionRecord {
+  return {
+    ...transaction,
+    affectedChildIds: [...transaction.affectedChildIds],
+    eventIds: [...transaction.eventIds],
+    stateAfter: cloneSharedHeadForSync(transaction.stateAfter),
+  };
+}
+
+function cloneStoredSyncBundleForSync(
+  bundle: StoredSyncBundle | null | undefined,
+): StoredSyncBundle | null {
+  if (!bundle) {
+    return null;
+  }
+
+  return {
+    ...bundle,
+    childReconciliations: bundle.childReconciliations.map(
+      (childReconciliation) => ({
+        ...childReconciliation,
+      }),
+    ),
+    participantHeadHashes: [...bundle.participantHeadHashes],
+    participantHeadSyncHashes: [...bundle.participantHeadSyncHashes],
+  };
+}
+
+function cloneSharedDocumentSnapshotForSync(
+  snapshot: SharedDocumentSnapshot | null | undefined,
+): SharedDocumentSnapshot | null {
+  if (!snapshot) {
+    return null;
+  }
+
+  return {
+    currentHeadTransactionId: snapshot.currentHeadTransactionId,
+    deviceId: snapshot.deviceId,
+    events: snapshot.events.map(cloneSharedEventRecordForSync),
+    head: cloneSharedHeadForSync(snapshot.head),
+    isOrphanedRestoreWindowOpen: Boolean(snapshot.isOrphanedRestoreWindowOpen),
+    nextSequence: snapshot.nextSequence,
+    schemaVersion: snapshot.schemaVersion,
+    transactions: snapshot.transactions.map(cloneTransactionRecordForSync),
+  };
+}
+
+function cloneStoredSyncRollbackSnapshotForSync(
+  snapshot: StoredSyncRollbackSnapshot | null | undefined,
+): StoredSyncRollbackSnapshot | null {
+  if (!snapshot) {
+    return null;
+  }
+
+  const documentSnapshot = cloneSharedDocumentSnapshotForSync(
+    snapshot.documentSnapshot,
+  );
+
+  if (!documentSnapshot) {
+    return null;
+  }
+
+  return {
+    capturedAt: snapshot.capturedAt,
+    documentSnapshot,
+    projectionHeadHash: snapshot.projectionHeadHash,
+    projectionHeadSyncHash: snapshot.projectionHeadSyncHash,
+  };
+}
+
+function cloneSharedSyncStateForSync(
+  syncState: SharedSyncState | null | undefined,
+): SharedSyncState | null {
+  if (!syncState) {
+    return null;
+  }
+
+  return {
+    lastAppliedSync: cloneStoredSyncBundleForSync(syncState.lastAppliedSync),
+    lastRollbackSnapshot: cloneStoredSyncRollbackSnapshotForSync(
+      syncState.lastRollbackSnapshot,
+    ),
+  };
+}
+
+function cloneSharedDocumentForSync(document: SharedDocument): SharedDocument {
+  return {
+    currentHeadTransactionId: document.currentHeadTransactionId,
+    deviceId: document.deviceId,
+    events: document.events.map(cloneSharedEventRecordForSync),
+    head: cloneSharedHeadForSync(document.head),
+    isOrphanedRestoreWindowOpen: Boolean(document.isOrphanedRestoreWindowOpen),
+    nextSequence: document.nextSequence,
+    schemaVersion: document.schemaVersion,
+    syncState: cloneSharedSyncStateForSync(document.syncState),
+    transactions: document.transactions.map(cloneTransactionRecordForSync),
   };
 }
 
@@ -865,7 +1037,7 @@ export function captureSyncRollbackSnapshot(args: {
 
   return {
     capturedAt,
-    document: cloneSharedDocument(document),
+    document: cloneSharedDocumentForSync(document),
     projectionHeadHash: resolvedProjection.headHash,
     projectionHeadSyncHash: resolvedProjection.headSyncHash,
   };

@@ -65,7 +65,7 @@ export type HistoryFileMetaEnvelope = {
   fileName: string;
   headHash: string;
   headSyncHash: string;
-  payloadId: number;
+  payloadId: string;
   projectionScope: SyncProjection['scope'];
   projectionSyncSchemaVersion: SyncProjection['syncSchemaVersion'];
   protocolVersion: typeof SYNC_PROTOCOL_VERSION;
@@ -277,7 +277,7 @@ export function createSyncResponseEnvelope(args: {
 export function createHistoryFileMetaEnvelope(args: {
   exportId: string;
   fileName: string;
-  payloadId: number;
+  payloadId: string;
   projection: SyncProjection;
   sessionId: string;
 }): HistoryFileMetaEnvelope {
@@ -464,7 +464,7 @@ export function parseSyncEnvelope(
         isString(envelope.fileName) &&
         isString(envelope.headHash) &&
         isString(envelope.headSyncHash) &&
-        isNumber(envelope.payloadId) &&
+        isString(envelope.payloadId) &&
         envelope.projectionScope === 'child-ledger' &&
         envelope.projectionSyncSchemaVersion === 1
       ) {
@@ -569,7 +569,7 @@ export function truncateHashForLog(hash: string | null | undefined) {
 export function buildSyncLoggerContext(args: {
   bundleHash?: string | null;
   endpointId?: string | null;
-  payloadId?: number | null;
+  payloadId?: string | null;
   phase?: string | null;
   sessionId?: string | null;
 }) {

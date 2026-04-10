@@ -113,12 +113,12 @@ describe('syncSessionMachine', () => {
     expect(
       buildSyncSessionLogDetails(review, {
         bundleHash: review.review?.bundleHash,
-        payloadId: 42,
+        payloadId: '42',
       }),
     ).toMatchObject({
       bundleHashPrefix: 'sync-bundle-12',
       endpointId: 'endpoint-1',
-      payloadId: 42,
+      payloadId: '42',
       phase: 'review',
       sessionId: 'sync-session-state',
     });
@@ -143,6 +143,32 @@ describe('syncSessionMachine', () => {
     expect(errorState.phase).toBe('error');
     expect(errorState.errorCode).toBe('connection-disconnected');
     expect(errorState.sessionId).toBe('sync-session-error');
+  });
+
+  it('keeps pairing state when a duplicate pairingStarted action arrives for the same endpoint', () => {
+    const pairingState = reduceSyncSessionState(
+      createInitialSyncSessionState(),
+      {
+        authToken: 'token-1234',
+        endpoint: {
+          endpointId: 'endpoint-1',
+          endpointName: 'KidPoints-AB12',
+        },
+        type: 'authTokenReady',
+      },
+    );
+
+    const nextState = reduceSyncSessionState(pairingState, {
+      endpoint: {
+        endpointId: 'endpoint-1',
+        endpointName: 'KidPoints-AB12',
+      },
+      type: 'pairingStarted',
+    });
+
+    expect(nextState.phase).toBe('pairing');
+    expect(nextState.authToken).toBe('token-1234');
+    expect(nextState.connectedEndpoint?.endpointId).toBe('endpoint-1');
   });
 });
 

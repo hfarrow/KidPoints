@@ -43,6 +43,7 @@ const mockSession: MockSyncSession = {
     localPrepareConfirmed: false,
     permissions: {
       allGranted: true,
+      deniedPermissions: [],
       requiredPermissions: [],
       results: {},
     },

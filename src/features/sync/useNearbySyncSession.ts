@@ -79,6 +79,12 @@ const nativeLog = createModuleLogger('nearby-sync-native');
 
 type PreparedBundle = Extract<PrepareSyncDeviceBundleResult, { ok: true }>;
 
+function waitForMs(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function toEndpoint(args: {
   endpointId: string;
   endpointName: string;
@@ -89,12 +95,55 @@ function toEndpoint(args: {
   };
 }
 
-function createPermissionsRejectedMessage() {
-  return 'Nearby sync needs the required nearby-device permissions before it can start.';
+function createPermissionsRejectedMessage(args: {
+  deniedPermissions: string[];
+}) {
+  if (args.deniedPermissions.length === 0) {
+    return 'Nearby sync needs the required nearby-device permissions before it can start.';
+  }
+
+  return `Nearby sync needs the required nearby-device permissions before it can start. Missing: ${args.deniedPermissions.join(', ')}.`;
 }
 
 function createAvailabilityRejectedMessage() {
   return 'Nearby sync is unavailable because Google Play services could not be used on this device.';
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function normalizeSessionStartFailureReason(reason: string) {
+  if (reason.includes('MISSING_PERMISSION_BLUETOOTH_ADVERTISE')) {
+    return 'Bluetooth advertise permission is missing on this device.';
+  }
+
+  if (reason.includes('MISSING_PERMISSION_ACCESS_COARSE_LOCATION')) {
+    return 'Nearby discovery location permission is missing on this device.';
+  }
+
+  if (reason.includes('MISSING_PERMISSION_ACCESS_FINE_LOCATION')) {
+    return 'Nearby discovery precise location permission is missing on this device.';
+  }
+
+  return reason.replace(/\s+/g, ' ').trim();
+}
+
+function createSessionStartFailureMessage(
+  role: 'host' | 'join',
+  error: unknown,
+) {
+  const baseMessage =
+    role === 'host'
+      ? 'Nearby sync hosting could not start.'
+      : 'Nearby sync discovery could not start.';
+  const reason = normalizeSessionStartFailureReason(getErrorMessage(error));
+
+  return reason ? `${baseMessage} ${reason}` : baseMessage;
 }
 
 export function useNearbySyncSession() {
@@ -121,10 +170,13 @@ export function useNearbySyncSession() {
   const localCommitIssuedRef = useRef(false);
   const localPrepareConfirmedRef = useRef(false);
   const remotePrepareConfirmedRef = useRef(false);
+  const pairingDecisionInFlightRef = useRef(false);
+  const commitSucceededRef = useRef(false);
+  const stopAllInFlightRef = useRef(false);
   const historyMetaByPayloadIdRef = useRef(
-    new Map<number, HistoryFileMetaEnvelope>(),
+    new Map<string, HistoryFileMetaEnvelope>(),
   );
-  const completedFileUrisByPayloadIdRef = useRef(new Map<number, string>());
+  const completedFileUrisByPayloadIdRef = useRef(new Map<string, string>());
   const effectOpsRef = useRef({
     bestEffortStopAll: async () => {},
     failSession: async (_args: {
@@ -132,7 +184,7 @@ export function useNearbySyncSession() {
       message: string;
       sendRemoteError?: boolean;
     }) => {},
-    maybeProcessIncomingHistoryFile: async (_payloadId: number) => {},
+    maybeProcessIncomingHistoryFile: async (_payloadId: string) => {},
     refreshAvailability: async () => {},
     sendHelloIfNeeded: async (_endpointId: string) => {},
     sendSummaryIfNeeded: async (_endpointId: string) => {},
@@ -159,11 +211,19 @@ export function useNearbySyncSession() {
     localCommitIssuedRef.current = false;
     localPrepareConfirmedRef.current = false;
     remotePrepareConfirmedRef.current = false;
+    pairingDecisionInFlightRef.current = false;
+    commitSucceededRef.current = false;
+    stopAllInFlightRef.current = false;
     historyMetaByPayloadIdRef.current.clear();
     completedFileUrisByPayloadIdRef.current.clear();
   }
 
   async function bestEffortStopAll() {
+    if (stopAllInFlightRef.current) {
+      return;
+    }
+
+    stopAllInFlightRef.current = true;
     try {
       await stopAll();
     } catch (error) {
@@ -174,6 +234,8 @@ export function useNearbySyncSession() {
         }),
         error: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      stopAllInFlightRef.current = false;
     }
   }
 
@@ -189,6 +251,19 @@ export function useNearbySyncSession() {
     message: string;
     sendRemoteError?: boolean;
   }) {
+    if (commitSucceededRef.current) {
+      log.debug('Ignoring nearby sync failure after a completed commit', {
+        ...buildSyncLoggerContext({
+          endpointId: stateRef.current.connectedEndpoint?.endpointId ?? null,
+          phase: stateRef.current.phase,
+          sessionId: stateRef.current.sessionId,
+        }),
+        code: args.code,
+        message: args.message,
+      });
+      return;
+    }
+
     const sessionState = stateRef.current;
     const endpointId = sessionState.connectedEndpoint?.endpointId ?? null;
 
@@ -311,41 +386,47 @@ export function useNearbySyncSession() {
       return;
     }
 
-    const projection = deriveSyncProjection(documentRef.current);
-    const exportResult = exportSyncProjectionToFile({ projection });
-    const payloadId = await sendFile({
-      endpointId,
-      fileUri: exportResult.fileUri,
-    });
-
-    await sendProtocolEnvelope(
-      endpointId,
-      serializeSyncEnvelope(
-        createHistoryFileMetaEnvelope({
-          exportId: exportResult.exportId,
-          fileName: exportResult.fileName,
-          payloadId,
-          projection,
-          sessionId: stateRef.current.sessionId,
-        }),
-      ),
-      {
-        envelopeType: 'HISTORY_FILE_META',
-        payloadId,
-        sizeBytes: exportResult.sizeBytes,
-      },
-    );
     localProjectionSentRef.current = true;
 
-    dispatch({
-      progress: {
-        bytesTransferred: 0,
-        payloadId,
-        status: 'in-progress',
-        totalBytes: exportResult.sizeBytes,
-      },
-      type: 'transferUpdated',
-    });
+    const projection = deriveSyncProjection(documentRef.current);
+    const exportResult = exportSyncProjectionToFile({ projection });
+    try {
+      const payloadId = await sendFile({
+        endpointId,
+        fileUri: exportResult.fileUri,
+      });
+
+      await sendProtocolEnvelope(
+        endpointId,
+        serializeSyncEnvelope(
+          createHistoryFileMetaEnvelope({
+            exportId: exportResult.exportId,
+            fileName: exportResult.fileName,
+            payloadId,
+            projection,
+            sessionId: stateRef.current.sessionId,
+          }),
+        ),
+        {
+          envelopeType: 'HISTORY_FILE_META',
+          payloadId,
+          sizeBytes: exportResult.sizeBytes,
+        },
+      );
+
+      dispatch({
+        progress: {
+          bytesTransferred: 0,
+          payloadId,
+          status: 'in-progress',
+          totalBytes: exportResult.sizeBytes,
+        },
+        type: 'transferUpdated',
+      });
+    } catch (error) {
+      localProjectionSentRef.current = false;
+      throw error;
+    }
   }
 
   async function maybeEnterReview() {
@@ -390,13 +471,39 @@ export function useNearbySyncSession() {
     });
   }
 
-  async function prepareBundleFromRemoteProjection(
-    remoteProjectionFileUri: string,
-  ) {
+  async function prepareBundleFromRemoteProjection(args: {
+    payloadId: string;
+    remoteProjectionFileUri: string;
+  }) {
+    const { payloadId, remoteProjectionFileUri } = args;
     const localDocument = documentRef.current;
-    const loadedProjection = loadSyncProjectionFromFile(
-      remoteProjectionFileUri,
-    );
+    let loadedProjection = loadSyncProjectionFromFile(remoteProjectionFileUri);
+
+    if (!loadedProjection.ok) {
+      log.warn('Retrying unreadable nearby sync history file', {
+        ...buildSyncLoggerContext({
+          endpointId: stateRef.current.connectedEndpoint?.endpointId ?? null,
+          payloadId,
+          phase: stateRef.current.phase,
+          sessionId: stateRef.current.sessionId,
+        }),
+        fileUri: remoteProjectionFileUri,
+      });
+      await waitForMs(100);
+      loadedProjection = loadSyncProjectionFromFile(remoteProjectionFileUri);
+    }
+
+    if (!loadedProjection.ok) {
+      log.error('Received nearby sync history file could not be loaded', {
+        ...buildSyncLoggerContext({
+          endpointId: stateRef.current.connectedEndpoint?.endpointId ?? null,
+          payloadId,
+          phase: stateRef.current.phase,
+          sessionId: stateRef.current.sessionId,
+        }),
+        fileUri: remoteProjectionFileUri,
+      });
+    }
 
     if (!loadedProjection.ok) {
       await failSession({
@@ -447,17 +554,30 @@ export function useNearbySyncSession() {
     await maybeEnterReview();
   }
 
-  async function maybeProcessIncomingHistoryFile(payloadId: number) {
+  async function maybeProcessIncomingHistoryFile(payloadId: string) {
     const meta = historyMetaByPayloadIdRef.current.get(payloadId);
     const fileUri = completedFileUrisByPayloadIdRef.current.get(payloadId);
 
     if (!meta || !fileUri) {
+      log.debug('Nearby sync history file is still waiting for its pair', {
+        ...buildSyncLoggerContext({
+          endpointId: stateRef.current.connectedEndpoint?.endpointId ?? null,
+          payloadId,
+          phase: stateRef.current.phase,
+          sessionId: stateRef.current.sessionId,
+        }),
+        hasFileUri: Boolean(fileUri),
+        hasHistoryMeta: Boolean(meta),
+      });
       return;
     }
 
     historyMetaByPayloadIdRef.current.delete(payloadId);
     completedFileUrisByPayloadIdRef.current.delete(payloadId);
-    await prepareBundleFromRemoteProjection(fileUri);
+    await prepareBundleFromRemoteProjection({
+      payloadId,
+      remoteProjectionFileUri: fileUri,
+    });
   }
 
   async function applyPreparedBundle(bundleHash: string) {
@@ -488,6 +608,17 @@ export function useNearbySyncSession() {
       preparedBundle.sharedBundle,
       preparedBundle.localRollbackSnapshot,
     );
+  }
+
+  async function finalizeSuccessfulCommit(
+    bundle: PreparedBundle['sharedBundle'],
+  ) {
+    commitSucceededRef.current = true;
+    dispatch({
+      review: buildMergeReviewSummary(bundle),
+      type: 'commitSucceeded',
+    });
+    await bestEffortStopAll();
   }
 
   async function issueCommitIfReady() {
@@ -600,11 +731,7 @@ export function useNearbySyncSession() {
         envelopeType: 'COMMIT_ACK',
       },
     );
-    dispatch({
-      review: buildMergeReviewSummary(preparedBundle.sharedBundle),
-      type: 'commitSucceeded',
-    });
-    await bestEffortStopAll();
+    await finalizeSuccessfulCommit(preparedBundle.sharedBundle);
   }
 
   async function handleRemoteCommitAck(envelope: CommitAckEnvelope) {
@@ -632,11 +759,7 @@ export function useNearbySyncSession() {
       return;
     }
 
-    dispatch({
-      review: buildMergeReviewSummary(preparedBundle.sharedBundle),
-      type: 'commitSucceeded',
-    });
-    await bestEffortStopAll();
+    await finalizeSuccessfulCommit(preparedBundle.sharedBundle);
   }
 
   const handleEnvelopeReceivedRef = useRef(
@@ -701,8 +824,6 @@ export function useNearbySyncSession() {
           });
           return;
         }
-
-        await sendProjectionFileIfNeeded(event.endpointId);
         break;
       case 'HISTORY_FILE_META':
         historyMetaByPayloadIdRef.current.set(envelope.payloadId, envelope);
@@ -751,6 +872,14 @@ export function useNearbySyncSession() {
     });
     const connectionRequestedSubscription = addConnectionRequestedListener(
       (event) => {
+        log.debug('Nearby sync connection request received', {
+          ...buildSyncLoggerContext({
+            endpointId: event.endpointId,
+            phase: stateRef.current.phase,
+            sessionId: stateRef.current.sessionId,
+          }),
+          endpointName: event.endpointName,
+        });
         dispatch({
           endpoint: toEndpoint(event),
           type: 'pairingStarted',
@@ -758,6 +887,15 @@ export function useNearbySyncSession() {
       },
     );
     const authTokenSubscription = addAuthTokenReadyListener((event) => {
+      log.info('Nearby sync pairing token ready', {
+        ...buildSyncLoggerContext({
+          endpointId: event.endpointId,
+          phase: stateRef.current.phase,
+          sessionId: stateRef.current.sessionId,
+        }),
+        endpointName: event.endpointName,
+        isIncomingConnection: event.isIncomingConnection,
+      });
       dispatch({
         authToken: event.authToken,
         endpoint: toEndpoint(event),
@@ -766,6 +904,17 @@ export function useNearbySyncSession() {
     });
     const connectionStateSubscription = addConnectionStateChangedListener(
       (event: NearbySyncConnectionStateEvent) => {
+        log.debug('Nearby sync connection state changed', {
+          ...buildSyncLoggerContext({
+            endpointId: event.endpointId,
+            phase: stateRef.current.phase,
+            sessionId: stateRef.current.sessionId,
+          }),
+          endpointName: event.endpointName,
+          reason: event.reason,
+          state: event.state,
+        });
+
         if (event.state === 'connected') {
           dispatch({
             endpoint: toEndpoint(event),
@@ -778,7 +927,34 @@ export function useNearbySyncSession() {
           return;
         }
 
-        if (event.state === 'requested' || event.state === 'connecting') {
+        if (event.state === 'requested') {
+          log.debug('Ignoring redundant nearby sync requested state event', {
+            ...buildSyncLoggerContext({
+              endpointId: event.endpointId,
+              phase: stateRef.current.phase,
+              sessionId: stateRef.current.sessionId,
+            }),
+            endpointName: event.endpointName,
+          });
+          return;
+        }
+
+        if (event.state === 'connecting') {
+          if (
+            stateRef.current.phase === 'pairing' &&
+            stateRef.current.authToken
+          ) {
+            log.debug('Ignoring redundant nearby sync connecting state event', {
+              ...buildSyncLoggerContext({
+                endpointId: event.endpointId,
+                phase: stateRef.current.phase,
+                sessionId: stateRef.current.sessionId,
+              }),
+              endpointName: event.endpointName,
+            });
+            return;
+          }
+
           dispatch({
             endpoint: toEndpoint(event),
             type: 'pairingStarted',
@@ -788,7 +964,9 @@ export function useNearbySyncSession() {
 
         if (
           stateRef.current.phase === 'idle' ||
-          stateRef.current.phase === 'success'
+          stateRef.current.phase === 'success' ||
+          commitSucceededRef.current ||
+          stopAllInFlightRef.current
         ) {
           return;
         }
@@ -823,6 +1001,15 @@ export function useNearbySyncSession() {
           event.payloadKind === 'file' &&
           event.fileUri
         ) {
+          log.info('Nearby sync file payload completed', {
+            ...buildSyncLoggerContext({
+              endpointId: event.endpointId,
+              payloadId: event.payloadId,
+              phase: stateRef.current.phase,
+              sessionId: stateRef.current.sessionId,
+            }),
+            fileUri: event.fileUri,
+          });
           completedFileUrisByPayloadIdRef.current.set(
             event.payloadId,
             event.fileUri,
@@ -833,7 +1020,34 @@ export function useNearbySyncSession() {
           return;
         }
 
+        if (event.status === 'success' && event.payloadKind === 'file') {
+          log.warn('Nearby sync file payload completed without a file URI', {
+            ...buildSyncLoggerContext({
+              endpointId: event.endpointId,
+              payloadId: event.payloadId,
+              phase: stateRef.current.phase,
+              sessionId: stateRef.current.sessionId,
+            }),
+          });
+        }
+
         if (event.status === 'failure' || event.status === 'canceled') {
+          if (commitSucceededRef.current || stopAllInFlightRef.current) {
+            log.debug(
+              'Ignoring nearby sync payload failure during intentional teardown',
+              {
+                ...buildSyncLoggerContext({
+                  endpointId: event.endpointId,
+                  payloadId: event.payloadId,
+                  phase: stateRef.current.phase,
+                  sessionId: stateRef.current.sessionId,
+                }),
+                status: event.status,
+              },
+            );
+            return;
+          }
+
           void effectOpsRef.current.failSession({
             code: 'payload-transfer-failed',
             message: 'A nearby sync payload transfer failed before completion.',
@@ -922,7 +1136,9 @@ export function useNearbySyncSession() {
     if (!permissions.allGranted) {
       await failSession({
         code: 'permissions-denied',
-        message: createPermissionsRejectedMessage(),
+        message: createPermissionsRejectedMessage({
+          deniedPermissions: permissions.deniedPermissions,
+        }),
       });
       return;
     }
@@ -934,37 +1150,57 @@ export function useNearbySyncSession() {
     );
 
     resetEphemeralSessionRefs();
-    dispatch({
-      role,
-      sessionId,
-      sessionLabel,
-      type: 'sessionStarted',
-    });
+    try {
+      if (role === 'host') {
+        await startHosting({
+          localEndpointName,
+          sessionLabel: sessionLabel ?? createSessionLabel(),
+        });
+      } else {
+        await startDiscovery({ localEndpointName });
+      }
 
-    if (role === 'host') {
-      await startHosting({
-        localEndpointName,
-        sessionLabel: sessionLabel ?? createSessionLabel(),
+      dispatch({
+        role,
+        sessionId,
+        sessionLabel,
+        type: 'sessionStarted',
       });
-      log.info('Nearby sync hosting started', {
+
+      log.info(
+        role === 'host'
+          ? 'Nearby sync hosting started'
+          : 'Nearby sync discovery started',
+        {
+          ...buildSyncLoggerContext({
+            phase: role === 'host' ? 'hosting' : 'discovering',
+            sessionId,
+          }),
+          localEndpointName,
+          sessionLabel,
+        },
+      );
+    } catch (error) {
+      const message = createSessionStartFailureMessage(role, error);
+
+      log.error('Nearby sync transport startup failed', {
         ...buildSyncLoggerContext({
-          phase: 'hosting',
+          phase: 'idle',
           sessionId,
         }),
+        error: getErrorMessage(error),
         localEndpointName,
+        role,
         sessionLabel,
       });
-      return;
+      await bestEffortStopAll();
+      resetEphemeralSessionRefs();
+      await failSession({
+        code:
+          role === 'host' ? 'start-hosting-failed' : 'start-discovery-failed',
+        message,
+      });
     }
-
-    await startDiscovery({ localEndpointName });
-    log.info('Nearby sync discovery started', {
-      ...buildSyncLoggerContext({
-        phase: 'discovering',
-        sessionId,
-      }),
-      localEndpointName,
-    });
   }
 
   async function startHostFlow() {
@@ -986,34 +1222,50 @@ export function useNearbySyncSession() {
   async function acceptPairingCode() {
     const endpointId = stateRef.current.connectedEndpoint?.endpointId;
 
-    if (!endpointId) {
+    if (!endpointId || pairingDecisionInFlightRef.current) {
       return;
     }
 
-    await acceptConnection(endpointId);
-    log.info('Nearby sync pairing code accepted', {
-      ...buildSyncLoggerContext({
-        endpointId,
-        phase: stateRef.current.phase,
-        sessionId: stateRef.current.sessionId,
-      }),
-      authToken: stateRef.current.authToken,
-    });
+    pairingDecisionInFlightRef.current = true;
+
+    try {
+      await acceptConnection(endpointId);
+      log.info('Nearby sync pairing code accepted', {
+        ...buildSyncLoggerContext({
+          endpointId,
+          phase: stateRef.current.phase,
+          sessionId: stateRef.current.sessionId,
+        }),
+        authToken: stateRef.current.authToken,
+      });
+    } catch (error) {
+      pairingDecisionInFlightRef.current = false;
+      await failSession({
+        code: 'accept-connection-failed',
+        message: `The nearby sync connection could not be accepted. ${getErrorMessage(error)}`,
+      });
+    }
   }
 
   async function rejectPairingCode() {
     const endpointId = stateRef.current.connectedEndpoint?.endpointId;
 
-    if (!endpointId) {
+    if (!endpointId || pairingDecisionInFlightRef.current) {
       return;
     }
 
-    await rejectConnection(endpointId);
-    await failSession({
-      code: 'pairing-rejected',
-      message:
-        'The pairing code was rejected and the sync session was canceled.',
-    });
+    pairingDecisionInFlightRef.current = true;
+
+    try {
+      await rejectConnection(endpointId);
+      await failSession({
+        code: 'pairing-rejected',
+        message:
+          'The pairing code was rejected and the sync session was canceled.',
+      });
+    } finally {
+      pairingDecisionInFlightRef.current = false;
+    }
   }
 
   async function confirmMergeAndPrepareCommit() {

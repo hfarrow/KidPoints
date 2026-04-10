@@ -30,6 +30,7 @@ export type SyncTransportAvailability = {
 
 export type SyncPermissionsState = {
   allGranted: boolean;
+  deniedPermissions: string[];
   requiredPermissions: string[];
   results: Record<string, string>;
 };
@@ -41,7 +42,7 @@ export type SyncNearbyEndpoint = {
 
 export type SyncTransferProgress = {
   bytesTransferred: number | null;
-  payloadId: number | null;
+  payloadId: string | null;
   status: 'canceled' | 'failure' | 'idle' | 'in-progress' | 'success';
   totalBytes: number | null;
 };
@@ -140,6 +141,7 @@ const defaultAvailability: SyncTransportAvailability = {
 
 const defaultPermissions: SyncPermissionsState = {
   allGranted: false,
+  deniedPermissions: [],
   requiredPermissions: [],
   results: {},
 };
@@ -232,6 +234,17 @@ export function reduceSyncSessionState(
         discoveredEndpoints: action.endpoints,
       };
     case 'pairingStarted':
+      if (
+        state.phase === 'pairing' &&
+        state.authToken &&
+        state.connectedEndpoint?.endpointId === action.endpoint.endpointId
+      ) {
+        return {
+          ...state,
+          connectedEndpoint: action.endpoint,
+        };
+      }
+
       return {
         ...state,
         authToken: null,
@@ -326,7 +339,7 @@ export function buildSyncSessionLogDetails(
   state: SyncSessionState,
   details: {
     bundleHash?: string | null;
-    payloadId?: number | null;
+    payloadId?: string | null;
   } = {},
 ) {
   return buildSyncLoggerContext({
