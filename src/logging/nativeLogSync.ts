@@ -1,4 +1,9 @@
-import type { AppLogger, ForwardedNativeAppLogLevel } from './logger';
+import type {
+  AppLogDetails,
+  AppLogger,
+  ForwardedNativeAppLogLevel,
+} from './logger';
+import { logForwardedNativeEntry } from './logger';
 
 export type NativeLogEntry = {
   contextJson: string | null;
@@ -112,6 +117,51 @@ export function createNativeLogReplayController<T extends NativeLogEntry>({
         .forEach(forwardEntry);
       queuedLiveEntries = [];
     },
+  };
+}
+
+type NativeLogSubscription = {
+  remove?: () => void;
+} | null;
+
+export function connectNativeLogReceiver<T extends NativeLogEntry>({
+  addLogListener,
+  getBufferedEntries,
+  getLastSeenSequence,
+  parseContextJson,
+  setLastSeenSequence,
+}: {
+  addLogListener: (listener: (entry: T) => void) => NativeLogSubscription;
+  getBufferedEntries: (afterSequence: number) => T[];
+  getLastSeenSequence: () => number;
+  parseContextJson?: (contextJson: string | null, entry: T) => AppLogDetails;
+  setLastSeenSequence: (sequence: number) => void;
+}) {
+  let isCancelled = false;
+  const nativeLogReplayController = createNativeLogReplayController<T>({
+    getLastSeenSequence,
+    onForward: (entry) => {
+      logForwardedNativeEntry(
+        entry,
+        parseContextJson?.(entry.contextJson, entry) ?? {},
+      );
+    },
+    setLastSeenSequence,
+  });
+  const logSubscription = addLogListener((entry) => {
+    if (isCancelled) {
+      return;
+    }
+
+    nativeLogReplayController.handleLiveEntry(entry);
+  });
+  const bufferedLogEntries = getBufferedEntries(getLastSeenSequence());
+
+  nativeLogReplayController.replayBufferedEntries(bufferedLogEntries);
+
+  return () => {
+    isCancelled = true;
+    logSubscription?.remove?.();
   };
 }
 

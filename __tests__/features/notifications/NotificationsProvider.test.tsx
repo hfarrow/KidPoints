@@ -517,7 +517,6 @@ describe('NotificationsProvider', () => {
     expect(mockGetBufferedNotificationLogs).toHaveBeenCalledWith(-1);
     expect(mockLogForwardedNativeEntry).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ namespace: 'notifications-native' }),
       expect.objectContaining({
         level: 'debug',
         message: 'Buffered first',
@@ -531,7 +530,6 @@ describe('NotificationsProvider', () => {
     );
     expect(mockLogForwardedNativeEntry).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ namespace: 'notifications-native' }),
       expect.objectContaining({
         level: 'warn',
         message: 'Buffered second',
@@ -605,24 +603,33 @@ describe('NotificationsProvider', () => {
     expect(mockLogForwardedNativeEntry).toHaveBeenCalledTimes(3);
     expect(mockLogForwardedNativeEntry).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ namespace: 'notifications-native' }),
-      expect.objectContaining({ sequence: 1, timestampMs: 100 }),
+      expect.objectContaining({
+        sequence: 1,
+        tag: 'KidPointsNotifications',
+        timestampMs: 100,
+      }),
       expect.objectContaining({
         source: 'buffer-early',
       }),
     );
     expect(mockLogForwardedNativeEntry).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ namespace: 'notifications-native' }),
-      expect.objectContaining({ sequence: 2, timestampMs: 200 }),
+      expect.objectContaining({
+        sequence: 2,
+        tag: 'KidPointsNotificationsService',
+        timestampMs: 200,
+      }),
       expect.objectContaining({
         source: 'buffer-duplicate',
       }),
     );
     expect(mockLogForwardedNativeEntry).toHaveBeenNthCalledWith(
       3,
-      expect.objectContaining({ namespace: 'notifications-native' }),
-      expect.objectContaining({ sequence: 3, timestampMs: 300 }),
+      expect.objectContaining({
+        sequence: 3,
+        tag: 'KidPointsNotificationsService',
+        timestampMs: 300,
+      }),
       expect.objectContaining({
         source: 'live-new',
       }),

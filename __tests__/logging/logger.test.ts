@@ -150,10 +150,7 @@ describe('logger', () => {
   });
 
   it('forwards native log metadata through the shared logger', () => {
-    const nativeLogger = createModuleLogger('notifications-native');
-
     logForwardedNativeEntry(
-      nativeLogger,
       {
         level: 'info',
         message: 'Forwarded native log',
@@ -169,26 +166,24 @@ describe('logger', () => {
 
     expect(capturedLogs).toHaveLength(1);
     expect(capturedLogs[0]?.consoleMethod).toBe('info');
-    expect(capturedLogs[0]?.renderedMessage).toContain('notifications-native');
+    expect(capturedLogs[0]?.renderedMessage).toContain(
+      'KidPointsNotifications',
+    );
     expect(capturedLogs[0]?.renderedMessage).toContain('Forwarded native log');
     expect(capturedLogs[0]?.renderedMessage).toContain('notificationId');
     expect(capturedLogs[0]?.renderedMessage).toContain('nativeTimestamp');
-    expect(capturedLogs[0]?.renderedMessage).toContain('nativeSequence');
-    expect(capturedLogs[0]?.renderedMessage).toContain('nativeTag');
     expect(capturedLogs[0]?.renderedMessage).toContain('\u001b[38;5;141m');
     expect(bufferedEntries[0]).toMatchObject({
       level: 'info',
-      namespace: 'notifications-native',
+      namespace: 'KidPointsNotifications',
       previewText: 'Forwarded native log',
       timestampMs: new Date('2026-04-08T12:34:56.789Z').getTime(),
     });
   });
 
   it('forwards native temp logs through the shared logger', () => {
-    const nativeLogger = createModuleLogger('notifications-native-temp');
-
     setAppLogLevel('temp');
-    logForwardedNativeEntry(nativeLogger, {
+    logForwardedNativeEntry({
       level: 'temp',
       message: 'Forwarded native temp log',
       sequence: 11,
@@ -206,25 +201,24 @@ describe('logger', () => {
     );
     expect(bufferedEntries[0]).toMatchObject({
       level: 'temp',
-      namespace: 'notifications-native-temp',
+      namespace: 'KidPointsNotifications',
       previewText: 'Forwarded native temp log',
     });
   });
 
   it('keeps direct JS logs grayscale while forwarded native logs use purple tones', () => {
     const jsLogger = createModuleLogger('settings');
-    const nativeLogger = createModuleLogger('notifications-native');
 
     jsLogger.debug('Direct JS debug');
     jsLogger.info('Direct JS info');
-    logForwardedNativeEntry(nativeLogger, {
+    logForwardedNativeEntry({
       level: 'debug',
       message: 'Forwarded native debug',
       sequence: 8,
       tag: 'KidPointsNotifications',
       timestampMs: new Date('2026-04-08T12:34:56.789Z').getTime(),
     });
-    logForwardedNativeEntry(nativeLogger, {
+    logForwardedNativeEntry({
       level: 'info',
       message: 'Forwarded native info',
       sequence: 9,
@@ -244,13 +238,12 @@ describe('logger', () => {
   it('marks forwarded native logs that arrive out of order with an asterisk timestamp', () => {
     jest.useFakeTimers();
     const jsLogger = createModuleLogger('settings-order');
-    const nativeLogger = createModuleLogger('notifications-native');
 
     jest.setSystemTime(new Date('2026-04-08T14:00:10.000Z'));
     jsLogger.info('Direct JS info');
 
     jest.setSystemTime(new Date('2026-04-08T14:00:11.000Z'));
-    logForwardedNativeEntry(nativeLogger, {
+    logForwardedNativeEntry({
       level: 'info',
       message: 'Forwarded native info',
       sequence: 10,

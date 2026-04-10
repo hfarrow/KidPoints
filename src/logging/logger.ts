@@ -400,14 +400,12 @@ export function isAppLogLevelAtLeast(
 }
 
 export function logForwardedNativeEntry(
-  loggerInstance: AppLogger,
   entry: ForwardedNativeLogEntry,
   details: AppLogDetails = {},
 ) {
+  const loggerInstance = createModuleLogger(entry.tag);
   const forwardedDetails = {
     ...details,
-    nativeSequence: entry.sequence,
-    nativeTag: entry.tag,
     nativeTimestamp: formatAppLogTimestamp(new Date(entry.timestampMs)),
   };
 

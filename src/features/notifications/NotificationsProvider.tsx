@@ -9,12 +9,8 @@ import {
   useState,
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import {
-  type AppLogDetails,
-  createModuleLogger,
-  logForwardedNativeEntry,
-} from '../../logging/logger';
-import { createNativeLogReplayController } from '../../logging/nativeLogSync';
+import { type AppLogDetails, createModuleLogger } from '../../logging/logger';
+import { connectNativeLogReceiver } from '../../logging/nativeLogSync';
 import { useStartupNavigationStore } from '../../navigation/startupNavigationStore';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useSharedStore, useSharedStoreApi } from '../../state/sharedStore';
@@ -62,7 +58,6 @@ const LOCK_SCREEN_CHECK_IN_ROUTE = '/timer-check-in-lock-screen';
 const CHECK_IN_REQUEST_ID = 'notifications-check-in';
 const PARENT_UNLOCK_REQUEST_ID = 'notifications-parent-unlock';
 const log = createModuleLogger('notifications-provider');
-const nativeLog = createModuleLogger('notifications-native');
 
 type SharedStoreWithPersist = ReturnType<typeof useSharedStoreApi> & {
   persist?: {
@@ -208,50 +203,22 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       liveCountdownNotificationsEnabled;
   }, [liveCountdownNotificationsEnabled]);
 
-  const forwardNotificationNativeLog = useCallback(
-    (entry: NotificationNativeLogEntry) => {
-      logForwardedNativeEntry(
-        nativeLog,
-        entry,
-        parseNotificationNativeLogContext(entry.contextJson),
-      );
-    },
-    [],
-  );
-
   useEffect(() => {
     if (!engineAvailable) {
       return;
     }
 
-    let isCancelled = false;
-    const nativeLogReplayController =
-      createNativeLogReplayController<NotificationNativeLogEntry>({
-        getLastSeenSequence: () => lastSeenNativeLogSequenceRef.current,
-        onForward: forwardNotificationNativeLog,
-        setLastSeenSequence: (sequence) => {
-          lastSeenNativeLogSequenceRef.current = sequence;
-        },
-      });
-    const handleLogEntry = (entry: NotificationNativeLogEntry) => {
-      if (isCancelled) {
-        return;
-      }
-
-      nativeLogReplayController.handleLiveEntry(entry);
-    };
-    const logSubscription = addNotificationLogListener(handleLogEntry);
-    const bufferedLogEntries = getBufferedNotificationLogs(
-      lastSeenNativeLogSequenceRef.current,
-    );
-
-    nativeLogReplayController.replayBufferedEntries(bufferedLogEntries);
-
-    return () => {
-      isCancelled = true;
-      logSubscription?.remove();
-    };
-  }, [engineAvailable, forwardNotificationNativeLog]);
+    return connectNativeLogReceiver<NotificationNativeLogEntry>({
+      addLogListener: addNotificationLogListener,
+      getBufferedEntries: getBufferedNotificationLogs,
+      getLastSeenSequence: () => lastSeenNativeLogSequenceRef.current,
+      parseContextJson: (contextJson) =>
+        parseNotificationNativeLogContext(contextJson),
+      setLastSeenSequence: (sequence) => {
+        lastSeenNativeLogSequenceRef.current = sequence;
+      },
+    });
+  }, [engineAvailable]);
 
   useEffect(() => {
     const persistApi = sharedStoreApi.persist;

@@ -1,10 +1,7 @@
 import { useEffect, useReducer, useRef } from 'react';
 
-import {
-  createModuleLogger,
-  logForwardedNativeEntry,
-} from '../../logging/logger';
-import { createNativeLogReplayController } from '../../logging/nativeLogSync';
+import { createModuleLogger } from '../../logging/logger';
+import { connectNativeLogReceiver } from '../../logging/nativeLogSync';
 import { useSharedStore } from '../../state/sharedStore';
 import {
   deriveSyncProjection,
@@ -75,7 +72,6 @@ import {
 } from './syncSessionMachine';
 
 const log = createModuleLogger('nearby-sync-session');
-const nativeLog = createModuleLogger('nearby-sync-native');
 
 type PreparedBundle = Extract<PrepareSyncDeviceBundleResult, { ok: true }>;
 
@@ -1066,37 +1062,18 @@ export function useNearbySyncSession() {
       });
     });
 
-    let isCancelled = false;
-    const nativeLogReplayController =
-      createNativeLogReplayController<NearbySyncNativeLogEntry>({
+    const removeNativeLogSync =
+      connectNativeLogReceiver<NearbySyncNativeLogEntry>({
+        addLogListener: addNearbySyncLogListener,
+        getBufferedEntries: getBufferedNearbySyncLogs,
         getLastSeenSequence: () => lastSeenNativeLogSequenceRef.current,
-        onForward: (entry) => {
-          logForwardedNativeEntry(
-            nativeLog,
-            entry,
-            entry.contextJson ? { contextJson: entry.contextJson } : {},
-          );
-        },
+        parseContextJson: (contextJson) => (contextJson ? { contextJson } : {}),
         setLastSeenSequence: (sequence) => {
           lastSeenNativeLogSequenceRef.current = sequence;
         },
       });
-    const logSubscription = addNearbySyncLogListener((entry) => {
-      if (isCancelled) {
-        return;
-      }
-
-      nativeLogReplayController.handleLiveEntry(entry);
-    });
-
-    const bufferedEntries = getBufferedNearbySyncLogs(
-      lastSeenNativeLogSequenceRef.current,
-    );
-
-    nativeLogReplayController.replayBufferedEntries(bufferedEntries);
 
     return () => {
-      isCancelled = true;
       availabilitySubscription?.remove();
       discoverySubscription?.remove();
       connectionRequestedSubscription?.remove();
@@ -1105,7 +1082,7 @@ export function useNearbySyncSession() {
       payloadProgressSubscription?.remove();
       envelopeSubscription?.remove();
       errorSubscription?.remove();
-      logSubscription?.remove();
+      removeNativeLogSync();
 
       if (
         stateRef.current.phase !== 'idle' &&
