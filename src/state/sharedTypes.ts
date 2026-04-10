@@ -121,6 +121,7 @@ export type TransactionKind =
   | 'parent-unlock-succeeded'
   | 'points-adjusted'
   | 'points-set'
+  | 'sync-applied'
   | 'timer-config-updated'
   | 'timer-paused'
   | 'timer-reset'
@@ -183,8 +184,55 @@ export type SharedDocument = {
   head: SharedHead;
   isOrphanedRestoreWindowOpen: boolean;
   nextSequence: number;
-  schemaVersion: 3;
+  schemaVersion: 4;
+  syncState: SharedSyncState | null;
   transactions: TransactionRecord[];
 };
 
 export type SharedCommandResult = { ok: true } | { error: string; ok: false };
+
+export type SharedDocumentSnapshot = {
+  currentHeadTransactionId: string | null;
+  deviceId: string;
+  events: SharedEvent[];
+  head: SharedHead;
+  isOrphanedRestoreWindowOpen: boolean;
+  nextSequence: number;
+  schemaVersion: 3 | 4;
+  transactions: TransactionRecord[];
+};
+
+export type StoredSyncPointReconciliation = {
+  basePoints: number;
+  childId: string;
+  childName: string;
+  leftDelta: number;
+  leftPoints: number;
+  mergedPoints: number;
+  rightDelta: number;
+  rightPoints: number;
+};
+
+export type StoredSyncBundle = {
+  appliedAt: string;
+  bundleHash: string;
+  childReconciliations: StoredSyncPointReconciliation[];
+  commonBaseHash: string | null;
+  mergedHeadSyncHash: string;
+  mode: 'bootstrap' | 'merged';
+  participantHeadHashes: string[];
+  participantHeadSyncHashes: string[];
+  syncSchemaVersion: 1;
+};
+
+export type StoredSyncRollbackSnapshot = {
+  capturedAt: string;
+  documentSnapshot: SharedDocumentSnapshot;
+  projectionHeadHash: string;
+  projectionHeadSyncHash: string;
+};
+
+export type SharedSyncState = {
+  lastAppliedSync: StoredSyncBundle | null;
+  lastRollbackSnapshot: StoredSyncRollbackSnapshot | null;
+};

@@ -3,8 +3,20 @@ import {
   createSharedStore,
   deriveTransactionRows,
 } from '../../src/state/sharedStore';
+import {
+  deriveSyncProjection,
+  prepareSyncDeviceBundle,
+} from '../../src/state/sharedSync';
 import { buildSharedTimerViewModel } from '../../src/state/sharedTimer';
+import type { SharedDocument } from '../../src/state/sharedTypes';
 import { createMemoryStorage } from '../testUtils/memoryStorage';
+
+function cloneDocumentForDevice(document: SharedDocument, deviceId: string) {
+  return {
+    ...document,
+    deviceId,
+  } satisfies SharedDocument;
+}
 
 describe('sharedStore transaction graph', () => {
   it('records one transaction per critical action and orders rows newest first', () => {
@@ -725,6 +737,225 @@ describe('sharedStore timer state', () => {
       isExpired: true,
       remainingLabel: '00:00',
       statusLabel: 'Expired',
+    });
+  });
+});
+
+describe('sharedStore sync integration', () => {
+  it('applies a validated sync bundle and records durable sync metadata', () => {
+    const leftStorage = createMemoryStorage();
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-store-seed',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = seedStore.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error('Expected sync integration fixture to create a child.');
+    }
+
+    expect(seedStore.getState().setPoints(childId, 5).ok).toBe(true);
+
+    const leftStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-store-left',
+      ),
+      storage: leftStorage,
+    });
+    const rightStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-store-right',
+      ),
+      storage: createMemoryStorage(),
+    });
+
+    expect(leftStore.getState().setPoints(childId, 10).ok).toBe(true);
+    expect(rightStore.getState().setPoints(childId, 10).ok).toBe(true);
+
+    const preparedBundle = prepareSyncDeviceBundle({
+      capturedAt: '2026-04-09T22:00:00.000Z',
+      localDocument: leftStore.getState().document,
+      remoteProjection: deriveSyncProjection(rightStore.getState().document),
+    });
+
+    if (!preparedBundle.ok) {
+      throw new Error('Expected sync bundle preparation to succeed.');
+    }
+
+    expect(
+      leftStore
+        .getState()
+        .applySyncBundle(
+          preparedBundle.sharedBundle,
+          preparedBundle.localRollbackSnapshot,
+        ).ok,
+    ).toBe(true);
+
+    const document = leftStore.getState().document;
+    const rows = deriveTransactionRows(document);
+
+    expect(document.head.childrenById[childId]?.points).toBe(15);
+    expect(document.transactions.at(-1)?.kind).toBe('sync-applied');
+    expect(rows[0]?.summaryText).toBe('Applied Device Sync');
+    expect(document.syncState?.lastAppliedSync).toMatchObject({
+      appliedAt: expect.any(String),
+      bundleHash: preparedBundle.sharedBundle.bundleHash,
+      mergedHeadSyncHash: preparedBundle.sharedBundle.mergedHeadSyncHash,
+      mode: 'merged',
+    });
+    expect(document.syncState?.lastRollbackSnapshot).toMatchObject({
+      capturedAt: '2026-04-09T22:00:00.000Z',
+      projectionHeadHash:
+        preparedBundle.localRollbackSnapshot.projectionHeadHash,
+      projectionHeadSyncHash:
+        preparedBundle.localRollbackSnapshot.projectionHeadSyncHash,
+    });
+  });
+
+  it('rehydrates persisted sync metadata after applying a bundle', () => {
+    const sharedStorage = createMemoryStorage();
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-store-rehydrate-seed',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = seedStore.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error('Expected rehydrate fixture to create a child.');
+    }
+
+    const leftStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-store-rehydrate-left',
+      ),
+      storage: sharedStorage,
+    });
+    const rightStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-store-rehydrate-right',
+      ),
+      storage: createMemoryStorage(),
+    });
+
+    expect(leftStore.getState().adjustPoints(childId, 1).ok).toBe(true);
+    expect(rightStore.getState().adjustPoints(childId, 2).ok).toBe(true);
+
+    const preparedBundle = prepareSyncDeviceBundle({
+      capturedAt: '2026-04-09T22:05:00.000Z',
+      localDocument: leftStore.getState().document,
+      remoteProjection: deriveSyncProjection(rightStore.getState().document),
+    });
+
+    if (!preparedBundle.ok) {
+      throw new Error('Expected sync bundle preparation to succeed.');
+    }
+
+    expect(
+      leftStore
+        .getState()
+        .applySyncBundle(
+          preparedBundle.sharedBundle,
+          preparedBundle.localRollbackSnapshot,
+        ).ok,
+    ).toBe(true);
+
+    const rehydratedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-store-rehydrate-left',
+      }),
+      storage: sharedStorage,
+    });
+
+    expect(
+      rehydratedStore.getState().document.head.childrenById[childId]?.points,
+    ).toBe(3);
+    expect(
+      rehydratedStore.getState().document.syncState?.lastAppliedSync,
+    ).toMatchObject({
+      bundleHash: preparedBundle.sharedBundle.bundleHash,
+      mergedHeadSyncHash: preparedBundle.sharedBundle.mergedHeadSyncHash,
+    });
+    expect(
+      rehydratedStore.getState().document.syncState?.lastRollbackSnapshot,
+    ).toBeTruthy();
+  });
+
+  it('reverts the last applied sync back to the exact rollback snapshot', () => {
+    const leftStorage = createMemoryStorage();
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-store-revert-seed',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = seedStore.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error('Expected revert fixture to create a child.');
+    }
+
+    expect(seedStore.getState().setPoints(childId, 5).ok).toBe(true);
+
+    const leftStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-store-revert-left',
+      ),
+      storage: leftStorage,
+    });
+    const rightStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-store-revert-right',
+      ),
+      storage: createMemoryStorage(),
+    });
+
+    expect(leftStore.getState().setPoints(childId, 10).ok).toBe(true);
+    expect(rightStore.getState().setPoints(childId, 10).ok).toBe(true);
+
+    const preparedBundle = prepareSyncDeviceBundle({
+      capturedAt: '2026-04-09T22:10:00.000Z',
+      localDocument: leftStore.getState().document,
+      remoteProjection: deriveSyncProjection(rightStore.getState().document),
+    });
+
+    if (!preparedBundle.ok) {
+      throw new Error('Expected sync bundle preparation to succeed.');
+    }
+
+    const rollbackDocument = preparedBundle.localRollbackSnapshot.document;
+
+    expect(
+      leftStore
+        .getState()
+        .applySyncBundle(
+          preparedBundle.sharedBundle,
+          preparedBundle.localRollbackSnapshot,
+        ).ok,
+    ).toBe(true);
+    expect(
+      leftStore.getState().document.head.childrenById[childId]?.points,
+    ).toBe(15);
+
+    expect(leftStore.getState().revertLastSync().ok).toBe(true);
+    expect(leftStore.getState().document).toEqual({
+      ...rollbackDocument,
+      syncState: null,
     });
   });
 });

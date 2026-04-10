@@ -15,6 +15,8 @@ import {
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import { createModuleLogger, createStructuredLog } from '../logging/logger';
+import type { SyncBundle, SyncRollbackSnapshot } from './sharedSync';
+import { deriveSyncProjection } from './sharedSync';
 import {
   areTimerConfigsEquivalent,
   areTimerStatesEquivalent,
@@ -31,10 +33,14 @@ import type {
   ChildSnapshot,
   SharedCommandResult,
   SharedDocument,
+  SharedDocumentSnapshot,
   SharedEvent,
   SharedHead,
+  SharedSyncState,
   SharedTimerConfig,
   SharedTimerState,
+  StoredSyncBundle,
+  StoredSyncRollbackSnapshot,
   TransactionFilterChild,
   TransactionKind,
   TransactionRecord,
@@ -45,6 +51,10 @@ import { useStableStoreReference } from './useStableStoreReference';
 type SharedStoreState = {
   addChild: (name: string) => SharedCommandResult;
   adjustPoints: (childId: string, delta: number) => SharedCommandResult;
+  applySyncBundle: (
+    bundle: SyncBundle,
+    rollbackSnapshot: SyncRollbackSnapshot,
+  ) => SharedCommandResult;
   archiveChild: (childId: string) => SharedCommandResult;
   deleteChildPermanently: (childId: string) => SharedCommandResult;
   document: SharedDocument;
@@ -59,6 +69,7 @@ type SharedStoreState = {
     }[],
   ) => SharedCommandResult;
   restoreChild: (childId: string) => SharedCommandResult;
+  revertLastSync: () => SharedCommandResult;
   restoreTransaction: (transactionId: string) => SharedCommandResult;
   setPoints: (childId: string, points: number) => SharedCommandResult;
   startTimer: () => SharedCommandResult;
@@ -229,6 +240,131 @@ function cloneHeadWithTimerState(
   } satisfies SharedHead;
 }
 
+function cloneStoredSyncBundle(
+  bundle: StoredSyncBundle | null | undefined,
+): StoredSyncBundle | null {
+  if (!bundle) {
+    return null;
+  }
+
+  return {
+    ...bundle,
+    childReconciliations: bundle.childReconciliations.map(
+      (childReconciliation) => ({
+        ...childReconciliation,
+      }),
+    ),
+    participantHeadHashes: [...bundle.participantHeadHashes],
+    participantHeadSyncHashes: [...bundle.participantHeadSyncHashes],
+  };
+}
+
+function cloneSharedEventRecord(event: SharedEvent): SharedEvent {
+  switch (event.type) {
+    case 'child.archived':
+    case 'child.deleted':
+    case 'child.restored':
+      return {
+        ...event,
+        payload: {
+          childId: event.payload.childId,
+        },
+      };
+    case 'child.created':
+      return {
+        ...event,
+        payload: {
+          child: cloneChildSnapshot(event.payload.child),
+        },
+      };
+    case 'child.pointsAdjusted':
+      return {
+        ...event,
+        payload: {
+          childId: event.payload.childId,
+          delta: event.payload.delta,
+        },
+      };
+    case 'child.pointsSet':
+      return {
+        ...event,
+        payload: {
+          childId: event.payload.childId,
+          points: event.payload.points,
+        },
+      };
+    case 'timer.configUpdated':
+      return {
+        ...event,
+        payload: {
+          timerConfig: cloneTimerConfig(event.payload.timerConfig),
+        },
+      };
+    case 'timer.stateUpdated':
+      return {
+        ...event,
+        payload: {
+          timerState: cloneTimerState(event.payload.timerState),
+        },
+      };
+  }
+}
+
+function cloneDocumentSnapshot(
+  snapshot: SharedDocumentSnapshot | null | undefined,
+): SharedDocumentSnapshot | null {
+  if (!snapshot) {
+    return null;
+  }
+
+  return {
+    currentHeadTransactionId: snapshot.currentHeadTransactionId,
+    deviceId: snapshot.deviceId,
+    events: snapshot.events.map(cloneSharedEventRecord),
+    head: cloneHead(snapshot.head),
+    isOrphanedRestoreWindowOpen: Boolean(snapshot.isOrphanedRestoreWindowOpen),
+    nextSequence: snapshot.nextSequence,
+    schemaVersion: snapshot.schemaVersion,
+    transactions: snapshot.transactions.map(normalizeTransactionRecord),
+  };
+}
+
+function cloneStoredSyncRollbackSnapshot(
+  snapshot: StoredSyncRollbackSnapshot | null | undefined,
+): StoredSyncRollbackSnapshot | null {
+  if (!snapshot) {
+    return null;
+  }
+
+  const documentSnapshot = cloneDocumentSnapshot(snapshot.documentSnapshot);
+
+  if (!documentSnapshot) {
+    return null;
+  }
+
+  return {
+    capturedAt: snapshot.capturedAt,
+    documentSnapshot,
+    projectionHeadHash: snapshot.projectionHeadHash,
+    projectionHeadSyncHash: snapshot.projectionHeadSyncHash,
+  };
+}
+
+function cloneSharedSyncState(
+  syncState: SharedSyncState | null | undefined,
+): SharedSyncState | null {
+  if (!syncState) {
+    return null;
+  }
+
+  return {
+    lastAppliedSync: cloneStoredSyncBundle(syncState.lastAppliedSync),
+    lastRollbackSnapshot: cloneStoredSyncRollbackSnapshot(
+      syncState.lastRollbackSnapshot,
+    ),
+  };
+}
+
 /**
  * Keeps restored and user-entered names consistent so transaction summaries and
  * list rendering do not drift because of whitespace differences.
@@ -298,7 +434,8 @@ export function createInitialSharedDocument({
     head: createEmptyHead(),
     isOrphanedRestoreWindowOpen: false,
     nextSequence: 1,
-    schemaVersion: 3,
+    schemaVersion: 4,
+    syncState: null,
     transactions: [],
   };
 }
@@ -503,7 +640,9 @@ function isSharedDocument(value: unknown): value is SharedDocument {
   };
 
   return (
-    (candidate.schemaVersion === 2 || candidate.schemaVersion === 3) &&
+    (candidate.schemaVersion === 2 ||
+      candidate.schemaVersion === 3 ||
+      candidate.schemaVersion === 4) &&
     typeof candidate.deviceId === 'string' &&
     Array.isArray(candidate.events) &&
     Array.isArray(candidate.transactions)
@@ -546,7 +685,8 @@ export function cloneSharedDocument(
     head: cloneHeadWithTimerState(historyHead, persistedHead.timerState),
     isOrphanedRestoreWindowOpen: Boolean(document.isOrphanedRestoreWindowOpen),
     nextSequence: document.nextSequence ?? deriveNextSequence(events),
-    schemaVersion: 3,
+    schemaVersion: 4,
+    syncState: cloneSharedSyncState(document.syncState),
     transactions,
   };
 }
@@ -725,6 +865,74 @@ function commitDocumentChange(args: {
     ),
     transactions: [...document.transactions, transaction],
   } satisfies SharedDocument;
+}
+
+function buildStoredSyncBundle(
+  bundle: SyncBundle,
+  appliedAt: string,
+): StoredSyncBundle {
+  return {
+    appliedAt,
+    bundleHash: bundle.bundleHash,
+    childReconciliations: bundle.childReconciliations.map(
+      (childReconciliation) => ({
+        ...childReconciliation,
+      }),
+    ),
+    commonBaseHash: bundle.commonBaseHash,
+    mergedHeadSyncHash: bundle.mergedHeadSyncHash,
+    mode: bundle.mode,
+    participantHeadHashes: [...bundle.participantHeadHashes],
+    participantHeadSyncHashes: [...bundle.participantHeadSyncHashes],
+    syncSchemaVersion: bundle.syncSchemaVersion,
+  };
+}
+
+function toStoredDocumentSnapshot(
+  document: SharedDocument,
+): SharedDocumentSnapshot {
+  return {
+    currentHeadTransactionId: document.currentHeadTransactionId,
+    deviceId: document.deviceId,
+    events: document.events.map(cloneSharedEventRecord),
+    head: cloneHead(document.head),
+    isOrphanedRestoreWindowOpen: document.isOrphanedRestoreWindowOpen,
+    nextSequence: document.nextSequence,
+    schemaVersion: document.schemaVersion,
+    transactions: document.transactions.map(normalizeTransactionRecord),
+  };
+}
+
+function buildStoredSyncRollbackSnapshot(
+  snapshot: SyncRollbackSnapshot,
+): StoredSyncRollbackSnapshot {
+  return {
+    capturedAt: snapshot.capturedAt,
+    documentSnapshot: toStoredDocumentSnapshot(snapshot.document),
+    projectionHeadHash: snapshot.projectionHeadHash,
+    projectionHeadSyncHash: snapshot.projectionHeadSyncHash,
+  };
+}
+
+function createSharedHeadFromSyncProjectionHead(
+  syncHead: SyncBundle['mergedHead'],
+  localHead: SharedHead,
+): SharedHead {
+  return {
+    activeChildIds: [...syncHead.activeChildIds],
+    archivedChildIds: [...syncHead.archivedChildIds],
+    childrenById: Object.fromEntries(
+      Object.entries(syncHead.childrenById).map(([childId, child]) => [
+        childId,
+        {
+          ...child,
+          archivedAt: child.archivedAt ?? undefined,
+        },
+      ]),
+    ),
+    timerConfig: cloneTimerConfig(localHead.timerConfig),
+    timerState: cloneTimerState(localHead.timerState),
+  };
 }
 
 function getTransactionMap(transactions: TransactionRecord[]) {
@@ -1062,6 +1270,8 @@ function summarizeRestoreTarget(
       return 'Paused Timer';
     case 'timer-reset':
       return 'Reset Timer';
+    case 'sync-applied':
+      return 'Applied Device Sync';
     case 'timer-config-updated':
       return 'Updated Timer Settings';
   }
@@ -1161,6 +1371,8 @@ function summarizeTransactionRow(
       return 'Paused Timer';
     case 'timer-reset':
       return 'Reset Timer';
+    case 'sync-applied':
+      return 'Applied Device Sync';
     case 'timer-config-updated':
       return 'Updated Timer Settings';
   }
@@ -1261,6 +1473,95 @@ function createSharedStoreActions(
   set: (updater: (state: SharedStoreState) => SharedStoreState) => void,
 ) {
   return {
+    applySyncBundle(
+      bundle: SyncBundle,
+      rollbackSnapshot: SyncRollbackSnapshot,
+    ): SharedCommandResult {
+      let result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const currentProjection = deriveSyncProjection(state.document);
+
+        if (
+          currentProjection.headHash !== rollbackSnapshot.projectionHeadHash ||
+          currentProjection.headSyncHash !==
+            rollbackSnapshot.projectionHeadSyncHash
+        ) {
+          logRejectedSharedStoreMutation(
+            'applySyncBundle',
+            'The local shared state changed after the sync bundle was prepared.',
+            {
+              currentHeadHash: currentProjection.headHash,
+              currentHeadSyncHash: currentProjection.headSyncHash,
+              rollbackHeadHash: rollbackSnapshot.projectionHeadHash,
+              rollbackHeadSyncHash: rollbackSnapshot.projectionHeadSyncHash,
+            },
+          );
+          result = {
+            error:
+              'The local shared state changed after the sync bundle was prepared.',
+            ok: false,
+          };
+          return state;
+        }
+
+        const nextHead = createSharedHeadFromSyncProjectionHead(
+          bundle.mergedHead,
+          state.document.head,
+        );
+        const occurredAt = new Date().toISOString();
+        const { affectedChildIds, eventsToAppend } = buildRestoreEvents(
+          state.document,
+          nextHead,
+          occurredAt,
+        );
+        const transaction = createTransactionRecord({
+          affectedChildIds,
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: eventsToAppend.map((event) => event.eventId),
+          kind: 'sync-applied',
+          occurredAt,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          stateAfter: nextHead,
+        });
+        const committedDocument = commitDocumentChange({
+          document: state.document,
+          eventsToAppend,
+          isOrphanedRestoreWindowOpen: false,
+          nextHead,
+          transaction,
+        });
+        const nextDocument = {
+          ...committedDocument,
+          syncState: {
+            lastAppliedSync: buildStoredSyncBundle(bundle, occurredAt),
+            lastRollbackSnapshot:
+              buildStoredSyncRollbackSnapshot(rollbackSnapshot),
+          },
+        } satisfies SharedDocument;
+
+        logSharedStoreMutation('applySyncBundle', {
+          bundleHash: bundle.bundleHash,
+          childReconciliationCount: bundle.childReconciliations.length,
+          eventCount: eventsToAppend.length,
+          mergedHeadSyncHash: bundle.mergedHeadSyncHash,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          bundleHash: bundle.bundleHash,
+          mergedHeadSyncHash: bundle.mergedHeadSyncHash,
+        });
+
+        return {
+          ...state,
+          document: nextDocument,
+        };
+      });
+
+      return result;
+    },
     addChild(name: string): SharedCommandResult {
       const normalizedName = normalizeName(name);
 
@@ -1904,6 +2205,44 @@ function createSharedStoreActions(
             document: state.document,
             transaction,
           }),
+        };
+      });
+
+      return result;
+    },
+    revertLastSync(): SharedCommandResult {
+      let result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const rollbackSnapshot = state.document.syncState?.lastRollbackSnapshot;
+
+        if (!rollbackSnapshot) {
+          logRejectedSharedStoreMutation(
+            'revertLastSync',
+            'There is no applied sync to revert.',
+          );
+          result = {
+            error: 'There is no applied sync to revert.',
+            ok: false,
+          };
+          return state;
+        }
+
+        const revertedDocument = cloneSharedDocument({
+          ...rollbackSnapshot.documentSnapshot,
+          schemaVersion: 4,
+          syncState: null,
+        });
+
+        logSharedStoreMutation('revertLastSync', {
+          rollbackCapturedAt: rollbackSnapshot.capturedAt,
+          rollbackHeadHash: rollbackSnapshot.projectionHeadHash,
+          rollbackHeadSyncHash: rollbackSnapshot.projectionHeadSyncHash,
+        });
+
+        return {
+          ...state,
+          document: revertedDocument,
         };
       });
 
