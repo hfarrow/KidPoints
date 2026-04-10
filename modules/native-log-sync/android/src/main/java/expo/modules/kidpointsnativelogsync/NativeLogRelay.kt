@@ -1,4 +1,4 @@
-package expo.modules.kidpointsnearbysync
+package expo.modules.kidpointsnativelogsync
 
 import android.os.Handler
 import android.os.Looper
@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 private const val NATIVE_LOG_BUFFER_LIMIT = 200
 
-data class NearbySyncNativeLogEntryPayload(
+data class NativeLogEntryPayload(
   val sequence: Long,
   val timestampMs: Long,
   val level: String,
@@ -38,11 +38,17 @@ data class NearbySyncNativeLogEntryPayload(
     }
 }
 
-object NearbySyncNativeLogRelay {
+fun interface NativeLogEmitter {
+  fun emit(entry: NativeLogEntryPayload)
+}
+
+class NativeLogRelay(
+  private val emitter: NativeLogEmitter,
+) {
   private val mainHandler = Handler(Looper.getMainLooper())
   private val nextSequence = AtomicLong(0)
   private val lock = Any()
-  private val buffer = ArrayDeque<NearbySyncNativeLogEntryPayload>()
+  private val buffer = ArrayDeque<NativeLogEntryPayload>()
 
   @Volatile
   private var isJsObservationEnabled = false
@@ -85,7 +91,7 @@ object NearbySyncNativeLogRelay {
     val normalizedLevel = normalizeLevel(level)
     val entry =
       synchronized(lock) {
-        NearbySyncNativeLogEntryPayload(
+        NativeLogEntryPayload(
           sequence = nextSequence.incrementAndGet(),
           timestampMs = System.currentTimeMillis(),
           level = normalizedLevel,
@@ -104,28 +110,26 @@ object NearbySyncNativeLogRelay {
     emitToJavaScript(entry)
   }
 
-  private fun emitToJavaScript(entry: NearbySyncNativeLogEntryPayload) {
+  private fun emitToJavaScript(entry: NativeLogEntryPayload) {
     if (!isJsObservationEnabled) {
       return
     }
 
     mainHandler.post {
-      val moduleInstance = KidPointsNearbySyncModule.instance
-
-      if (!isJsObservationEnabled || moduleInstance == null) {
+      if (!isJsObservationEnabled) {
         return@post
       }
 
-      moduleInstance.emitLog(entry)
+      emitter.emit(entry)
     }
   }
 
-  private fun getBufferedEntries(afterSequence: Long): List<NearbySyncNativeLogEntryPayload> =
+  private fun getBufferedEntries(afterSequence: Long): List<NativeLogEntryPayload> =
     synchronized(lock) {
       buffer.filter { entry -> entry.sequence > afterSequence }
     }
 
-  private fun logToLogcat(entry: NearbySyncNativeLogEntryPayload) {
+  private fun logToLogcat(entry: NativeLogEntryPayload) {
     val renderedMessage =
       entry.contextJson?.let { contextJson ->
         "${entry.message} context=$contextJson"

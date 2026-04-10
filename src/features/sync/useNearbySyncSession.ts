@@ -4,6 +4,7 @@ import {
   createModuleLogger,
   logForwardedNativeEntry,
 } from '../../logging/logger';
+import { createNativeLogReplayController } from '../../logging/nativeLogSync';
 import { useSharedStore } from '../../state/sharedStore';
 import {
   deriveSyncProjection,
@@ -852,44 +853,33 @@ export function useNearbySyncSession() {
     });
 
     let isCancelled = false;
-    let bufferedLogsReplayed = false;
-    const queuedLiveEntries: NearbySyncNativeLogEntry[] = [];
-    const forwardNearbyNativeLog = (entry: NearbySyncNativeLogEntry) => {
-      if (entry.sequence <= lastSeenNativeLogSequenceRef.current) {
-        return;
-      }
-
-      lastSeenNativeLogSequenceRef.current = entry.sequence;
-      logForwardedNativeEntry(
-        nativeLog,
-        entry,
-        entry.contextJson ? { contextJson: entry.contextJson } : {},
-      );
-    };
+    const nativeLogReplayController =
+      createNativeLogReplayController<NearbySyncNativeLogEntry>({
+        getLastSeenSequence: () => lastSeenNativeLogSequenceRef.current,
+        onForward: (entry) => {
+          logForwardedNativeEntry(
+            nativeLog,
+            entry,
+            entry.contextJson ? { contextJson: entry.contextJson } : {},
+          );
+        },
+        setLastSeenSequence: (sequence) => {
+          lastSeenNativeLogSequenceRef.current = sequence;
+        },
+      });
     const logSubscription = addNearbySyncLogListener((entry) => {
       if (isCancelled) {
         return;
       }
 
-      if (!bufferedLogsReplayed) {
-        queuedLiveEntries.push(entry);
-        return;
-      }
-
-      forwardNearbyNativeLog(entry);
+      nativeLogReplayController.handleLiveEntry(entry);
     });
 
     const bufferedEntries = getBufferedNearbySyncLogs(
       lastSeenNativeLogSequenceRef.current,
     );
 
-    bufferedEntries.forEach((entry) => {
-      forwardNearbyNativeLog(entry);
-    });
-    bufferedLogsReplayed = true;
-    queuedLiveEntries.forEach((entry) => {
-      forwardNearbyNativeLog(entry);
-    });
+    nativeLogReplayController.replayBufferedEntries(bufferedEntries);
 
     return () => {
       isCancelled = true;

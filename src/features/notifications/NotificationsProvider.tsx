@@ -14,6 +14,7 @@ import {
   createModuleLogger,
   logForwardedNativeEntry,
 } from '../../logging/logger';
+import { createNativeLogReplayController } from '../../logging/nativeLogSync';
 import { useStartupNavigationStore } from '../../navigation/startupNavigationStore';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useSharedStore, useSharedStoreApi } from '../../state/sharedStore';
@@ -209,11 +210,6 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
 
   const forwardNotificationNativeLog = useCallback(
     (entry: NotificationNativeLogEntry) => {
-      if (entry.sequence <= lastSeenNativeLogSequenceRef.current) {
-        return;
-      }
-
-      lastSeenNativeLogSequenceRef.current = entry.sequence;
       logForwardedNativeEntry(
         nativeLog,
         entry,
@@ -229,36 +225,27 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     }
 
     let isCancelled = false;
-    let hasReplayedBufferedLogs = false;
-    const queuedLiveEntries: NotificationNativeLogEntry[] = [];
+    const nativeLogReplayController =
+      createNativeLogReplayController<NotificationNativeLogEntry>({
+        getLastSeenSequence: () => lastSeenNativeLogSequenceRef.current,
+        onForward: forwardNotificationNativeLog,
+        setLastSeenSequence: (sequence) => {
+          lastSeenNativeLogSequenceRef.current = sequence;
+        },
+      });
     const handleLogEntry = (entry: NotificationNativeLogEntry) => {
       if (isCancelled) {
         return;
       }
 
-      if (!hasReplayedBufferedLogs) {
-        queuedLiveEntries.push(entry);
-        return;
-      }
-
-      forwardNotificationNativeLog(entry);
+      nativeLogReplayController.handleLiveEntry(entry);
     };
     const logSubscription = addNotificationLogListener(handleLogEntry);
     const bufferedLogEntries = getBufferedNotificationLogs(
       lastSeenNativeLogSequenceRef.current,
     );
 
-    bufferedLogEntries
-      .sort(
-        (firstEntry, secondEntry) => firstEntry.sequence - secondEntry.sequence,
-      )
-      .forEach(forwardNotificationNativeLog);
-    hasReplayedBufferedLogs = true;
-    queuedLiveEntries
-      .sort(
-        (firstEntry, secondEntry) => firstEntry.sequence - secondEntry.sequence,
-      )
-      .forEach(forwardNotificationNativeLog);
+    nativeLogReplayController.replayBufferedEntries(bufferedLogEntries);
 
     return () => {
       isCancelled = true;

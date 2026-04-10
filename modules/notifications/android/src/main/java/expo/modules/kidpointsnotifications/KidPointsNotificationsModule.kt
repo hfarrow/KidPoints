@@ -1,5 +1,7 @@
 package expo.modules.kidpointsnotifications
 
+import expo.modules.kidpointsnativelogsync.NativeLogEntryPayload
+import expo.modules.kidpointsnativelogsync.NativeLogRelay
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONObject
@@ -8,6 +10,10 @@ import java.util.concurrent.CountDownLatch
 class KidPointsNotificationsModule : Module() {
   companion object {
     var instance: KidPointsNotificationsModule? = null
+    val nativeLogRelay =
+      NativeLogRelay { entry ->
+        instance?.emitLog(entry)
+      }
   }
 
   override fun definition() = ModuleDefinition {
@@ -24,26 +30,22 @@ class KidPointsNotificationsModule : Module() {
     }
 
     OnStartObserving {
-      NotificationNativeLogRelay.setJsObservationEnabled(true)
+      nativeLogRelay.setJsObservationEnabled(true)
     }
 
     OnStopObserving {
-      NotificationNativeLogRelay.setJsObservationEnabled(false)
+      nativeLogRelay.setJsObservationEnabled(false)
     }
 
     OnDestroy {
       if (instance === this@KidPointsNotificationsModule) {
         instance = null
       }
-      NotificationNativeLogRelay.setJsObservationEnabled(false)
+      nativeLogRelay.setJsObservationEnabled(false)
     }
 
     Function("getBufferedLogs") { afterSequence: Double ->
-      NotificationNativeLogRelay.getBufferedLogs(afterSequence.toLong())
-    }
-
-    Function("getBufferedLogs") { afterSequence: Double ->
-      NotificationNativeLogRelay.getBufferedLogs(afterSequence.toLong())
+      nativeLogRelay.getBufferedLogs(afterSequence.toLong())
     }
 
     AsyncFunction("getDocument") {
@@ -306,7 +308,7 @@ class KidPointsNotificationsModule : Module() {
     )
   }
 
-  fun emitLog(entry: NotificationNativeLogEntryPayload) {
+  fun emitLog(entry: NativeLogEntryPayload) {
     sendEvent("KidPointsNotificationsLog", entry.toEventPayload())
   }
 }

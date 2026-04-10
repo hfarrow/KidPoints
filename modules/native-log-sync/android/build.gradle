@@ -4,11 +4,11 @@ plugins {
   id 'org.jetbrains.kotlin.android'
 }
 
-group = 'expo.modules.kidpointsnearbysync'
+group = 'expo.modules.kidpointsnativelogsync'
 version = '1.0.0'
 
 android {
-  namespace "expo.modules.kidpointsnearbysync"
+  namespace "expo.modules.kidpointsnativelogsync"
   defaultConfig {
     versionCode 1
     versionName "1.0.0"
@@ -18,7 +18,4 @@ android {
 dependencies {
   implementation 'androidx.core:core-ktx:1.17.0'
   implementation 'com.facebook.react:react-android'
-  implementation 'com.google.android.gms:play-services-base:18.10.0'
-  implementation 'com.google.android.gms:play-services-nearby:19.3.0'
-  implementation project(':native-log-sync')
 }

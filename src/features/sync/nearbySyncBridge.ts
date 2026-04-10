@@ -4,10 +4,12 @@ import {
   requireOptionalNativeModule,
 } from 'expo-modules-core';
 import { type Permission, PermissionsAndroid, Platform } from 'react-native';
+import { createModuleLogger } from '../../logging/logger';
 import {
-  createModuleLogger,
-  type ForwardedNativeAppLogLevel,
-} from '../../logging/logger';
+  type NativeLogEntry,
+  parseBufferedNativeLogEntries,
+  parseNativeLogEntry as parseSharedNativeLogEntry,
+} from '../../logging/nativeLogSync';
 
 export type NearbySyncAvailability = {
   isReady: boolean;
@@ -77,23 +79,9 @@ type NearbySyncDiscoveryUpdatedEvent = {
 
 type NearbySyncAvailabilityChangedEvent = NearbySyncAvailability;
 
-type NearbySyncNativeLogEvent = {
-  contextJson?: string | null;
-  level: ForwardedNativeAppLogLevel;
-  message: string;
-  sequence: number;
-  tag: string;
-  timestampMs: number;
-};
+type NearbySyncNativeLogEvent = NativeLogEntry;
 
-export type NearbySyncNativeLogEntry = {
-  contextJson: string | null;
-  level: ForwardedNativeAppLogLevel;
-  message: string;
-  sequence: number;
-  tag: string;
-  timestampMs: number;
-};
+export type NearbySyncNativeLogEntry = NativeLogEntry;
 
 const log = createModuleLogger('nearby-sync-bridge');
 
@@ -365,66 +353,15 @@ export function getBufferedNearbySyncLogs(afterSequence = -1) {
     return [] as NearbySyncNativeLogEntry[];
   }
 
-  let parsedValue: unknown;
-
-  try {
-    parsedValue = JSON.parse(nativeModuleRef.getBufferedLogs(afterSequence));
-  } catch {
-    log.warn('Failed to parse nearby sync buffered native logs payload');
-    return [];
-  }
-
-  if (!Array.isArray(parsedValue)) {
-    log.warn('Ignored nearby sync buffered native logs payload', {
-      reason: 'not-an-array',
-    });
-    return [];
-  }
-
-  return parsedValue
-    .map((entry) => parseNativeLogEntry(entry))
-    .filter((entry): entry is NearbySyncNativeLogEntry => entry != null);
+  return parseBufferedNativeLogEntries({
+    logEntriesJson: nativeModuleRef.getBufferedLogs(afterSequence),
+    logger: log,
+    sourceLabel: 'nearby sync buffered native logs',
+  });
 }
 
 function parseNativeLogEntry(value: unknown): NearbySyncNativeLogEntry | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const entry = value as Partial<NearbySyncNativeLogEntry>;
-
-  if (
-    typeof entry.message !== 'string' ||
-    typeof entry.sequence !== 'number' ||
-    typeof entry.tag !== 'string' ||
-    typeof entry.timestampMs !== 'number'
-  ) {
-    return null;
-  }
-
-  return {
-    contextJson:
-      typeof entry.contextJson === 'string' ? entry.contextJson : null,
-    level: normalizeNearbyNativeLogLevel(entry.level),
-    message: entry.message,
-    sequence: entry.sequence,
-    tag: entry.tag,
-    timestampMs: entry.timestampMs,
-  };
-}
-
-function normalizeNearbyNativeLogLevel(
-  level: unknown,
-): ForwardedNativeAppLogLevel {
-  switch (level) {
-    case 'error':
-    case 'info':
-    case 'temp':
-    case 'warn':
-      return level;
-    default:
-      return 'debug';
-  }
+  return parseSharedNativeLogEntry(value);
 }
 
 export function addAvailabilityChangeListener(

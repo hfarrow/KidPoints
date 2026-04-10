@@ -1432,7 +1432,7 @@ object KidPointsNotificationsEngine {
   }
 
   private fun log(tag: String, message: String, context: JSONObject? = null) {
-    NotificationNativeLogRelay.debug(tag, message, context?.toString())
+    KidPointsNotificationsModule.nativeLogRelay.debug(tag, message, context?.toString())
   }
 }
 

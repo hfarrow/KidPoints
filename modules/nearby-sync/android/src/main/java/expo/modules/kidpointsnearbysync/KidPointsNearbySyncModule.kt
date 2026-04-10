@@ -19,6 +19,8 @@ import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
 import com.google.android.gms.tasks.Tasks
+import expo.modules.kidpointsnativelogsync.NativeLogEntryPayload
+import expo.modules.kidpointsnativelogsync.NativeLogRelay
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONObject
@@ -28,6 +30,10 @@ class KidPointsNearbySyncModule : Module() {
   companion object {
     var instance: KidPointsNearbySyncModule? = null
     private const val TAG = "KidPointsNearbySync"
+    val nativeLogRelay =
+      NativeLogRelay { entry ->
+        instance?.emitLog(entry)
+      }
   }
 
   private val discoveredEndpoints = linkedMapOf<String, String>()
@@ -62,12 +68,12 @@ class KidPointsNearbySyncModule : Module() {
     }
 
     OnStartObserving {
-      NearbySyncNativeLogRelay.setJsObservationEnabled(true)
+      nativeLogRelay.setJsObservationEnabled(true)
       appContext.reactContext?.let { emitAvailabilityChanged(it) }
     }
 
     OnStopObserving {
-      NearbySyncNativeLogRelay.setJsObservationEnabled(false)
+      nativeLogRelay.setJsObservationEnabled(false)
     }
 
     OnDestroy {
@@ -75,14 +81,14 @@ class KidPointsNearbySyncModule : Module() {
         instance = null
       }
 
-      NearbySyncNativeLogRelay.setJsObservationEnabled(false)
+      nativeLogRelay.setJsObservationEnabled(false)
       appContext.reactContext?.let {
         stopAllInternal(it)
       }
     }
 
     Function("getBufferedLogs") { afterSequence: Double ->
-      NearbySyncNativeLogRelay.getBufferedLogs(afterSequence.toLong())
+      nativeLogRelay.getBufferedLogs(afterSequence.toLong())
     }
 
     AsyncFunction("getAvailabilityStatus") {
@@ -95,7 +101,7 @@ class KidPointsNearbySyncModule : Module() {
       advertisedSessionLabel = sessionLabel
       localEndpointName = nextLocalEndpointName
 
-      NearbySyncNativeLogRelay.info(
+      nativeLogRelay.info(
         TAG,
         "Starting advertising",
         buildContextJson(
@@ -124,7 +130,7 @@ class KidPointsNearbySyncModule : Module() {
       stopAllInternal(context)
       localEndpointName = nextLocalEndpointName
 
-      NearbySyncNativeLogRelay.info(
+      nativeLogRelay.info(
         TAG,
         "Starting discovery",
         buildContextJson(
@@ -148,7 +154,7 @@ class KidPointsNearbySyncModule : Module() {
 
     AsyncFunction("requestConnection") { endpointId: String ->
       val context = appContext.reactContext ?: return@AsyncFunction
-      NearbySyncNativeLogRelay.info(
+      nativeLogRelay.info(
         TAG,
         "Requesting connection",
         buildContextJson(
@@ -174,7 +180,7 @@ class KidPointsNearbySyncModule : Module() {
 
     AsyncFunction("acceptConnection") { endpointId: String ->
       val context = appContext.reactContext ?: return@AsyncFunction
-      NearbySyncNativeLogRelay.info(
+      nativeLogRelay.info(
         TAG,
         "Accepting connection",
         buildContextJson("endpointId" to endpointId),
@@ -186,7 +192,7 @@ class KidPointsNearbySyncModule : Module() {
 
     AsyncFunction("rejectConnection") { endpointId: String ->
       val context = appContext.reactContext ?: return@AsyncFunction
-      NearbySyncNativeLogRelay.info(
+      nativeLogRelay.info(
         TAG,
         "Rejecting connection",
         buildContextJson("endpointId" to endpointId),
@@ -204,7 +210,7 @@ class KidPointsNearbySyncModule : Module() {
       val context = appContext.reactContext ?: return@AsyncFunction (-1).toDouble()
       val payload = Payload.fromBytes(envelopeJson.toByteArray(Charsets.UTF_8))
 
-      NearbySyncNativeLogRelay.debug(
+      nativeLogRelay.debug(
         TAG,
         "Sending bytes payload",
         buildContextJson(
@@ -221,7 +227,7 @@ class KidPointsNearbySyncModule : Module() {
       val context = appContext.reactContext ?: return@AsyncFunction (-1).toDouble()
       val filePayload = Payload.fromFile(resolveFile(fileUri))
 
-      NearbySyncNativeLogRelay.info(
+      nativeLogRelay.info(
         TAG,
         "Sending file payload",
         buildContextJson(
@@ -239,12 +245,12 @@ class KidPointsNearbySyncModule : Module() {
       val context = appContext.reactContext ?: return@AsyncFunction
 
       if (endpointId.isNullOrBlank()) {
-        NearbySyncNativeLogRelay.info(TAG, "Disconnecting all endpoints")
+        nativeLogRelay.info(TAG, "Disconnecting all endpoints")
         connectionsClient(context).stopAllEndpoints()
         return@AsyncFunction
       }
 
-      NearbySyncNativeLogRelay.info(
+      nativeLogRelay.info(
         TAG,
         "Disconnecting endpoint",
         buildContextJson("endpointId" to endpointId),
@@ -268,7 +274,7 @@ class KidPointsNearbySyncModule : Module() {
       ) {
         discoveredEndpoints[endpointId] = discoveredEndpointInfo.endpointName
         endpointNamesById[endpointId] = discoveredEndpointInfo.endpointName
-        NearbySyncNativeLogRelay.info(
+        nativeLogRelay.info(
           TAG,
           "Endpoint discovered",
           buildContextJson(
@@ -282,7 +288,7 @@ class KidPointsNearbySyncModule : Module() {
       override fun onEndpointLost(endpointId: String) {
         val endpointName = discoveredEndpoints.remove(endpointId)
         endpointNamesById.remove(endpointId)
-        NearbySyncNativeLogRelay.warn(
+        nativeLogRelay.warn(
           TAG,
           "Endpoint lost",
           buildContextJson(
@@ -299,7 +305,7 @@ class KidPointsNearbySyncModule : Module() {
       override fun onConnectionInitiated(endpointId: String, connectionInfo: ConnectionInfo) {
         endpointNamesById[endpointId] = connectionInfo.endpointName
         pendingConnectionsById[endpointId] = connectionInfo
-        NearbySyncNativeLogRelay.info(
+        nativeLogRelay.info(
           TAG,
           "Connection initiated",
           buildContextJson(
@@ -331,7 +337,7 @@ class KidPointsNearbySyncModule : Module() {
         pendingConnectionsById.remove(endpointId)
 
         if (statusCode == ConnectionsStatusCodes.STATUS_OK) {
-          NearbySyncNativeLogRelay.info(
+          nativeLogRelay.info(
             TAG,
             "Connection established",
             buildContextJson(
@@ -357,7 +363,7 @@ class KidPointsNearbySyncModule : Module() {
             else -> "status-$statusCode"
           }
 
-        NearbySyncNativeLogRelay.warn(
+        nativeLogRelay.warn(
           TAG,
           "Connection result was not successful",
           buildContextJson(
@@ -377,7 +383,7 @@ class KidPointsNearbySyncModule : Module() {
 
       override fun onDisconnected(endpointId: String) {
         val endpointName = endpointNamesById[endpointId] ?: ""
-        NearbySyncNativeLogRelay.warn(
+        nativeLogRelay.warn(
           TAG,
           "Endpoint disconnected",
           buildContextJson(
@@ -400,7 +406,7 @@ class KidPointsNearbySyncModule : Module() {
         when (payload.type) {
           Payload.Type.BYTES -> {
             val envelopeJson = payload.asBytes()?.toString(Charsets.UTF_8) ?: ""
-            NearbySyncNativeLogRelay.debug(
+            nativeLogRelay.debug(
               TAG,
               "Received bytes payload",
               buildContextJson(
@@ -421,7 +427,7 @@ class KidPointsNearbySyncModule : Module() {
           }
           Payload.Type.FILE -> {
             incomingFilePayloads[payload.id] = payload
-            NearbySyncNativeLogRelay.info(
+            nativeLogRelay.info(
               TAG,
               "Received file payload handle",
               buildContextJson(
@@ -440,7 +446,7 @@ class KidPointsNearbySyncModule : Module() {
             )
           }
           else -> {
-            NearbySyncNativeLogRelay.warn(
+            nativeLogRelay.warn(
               TAG,
               "Ignoring unsupported stream payload",
               buildContextJson(
@@ -483,7 +489,7 @@ class KidPointsNearbySyncModule : Module() {
             null
           }
 
-        NearbySyncNativeLogRelay.debug(
+        nativeLogRelay.debug(
           TAG,
           "Payload transfer update",
           buildContextJson(
@@ -516,7 +522,7 @@ class KidPointsNearbySyncModule : Module() {
   }
 
   private fun stopAllInternal(context: Context) {
-    NearbySyncNativeLogRelay.info(
+    nativeLogRelay.info(
       TAG,
       "Stopping all nearby sync activity",
       buildContextJson(
@@ -655,7 +661,7 @@ class KidPointsNearbySyncModule : Module() {
     )
   }
 
-  fun emitLog(entry: NearbySyncNativeLogEntryPayload) {
+  fun emitLog(entry: NativeLogEntryPayload) {
     sendEvent("KidPointsNearbySyncLog", entry.toEventPayload())
   }
 

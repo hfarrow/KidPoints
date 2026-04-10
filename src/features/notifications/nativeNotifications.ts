@@ -4,10 +4,12 @@ import {
   requireOptionalNativeModule,
 } from 'expo-modules-core';
 import { PermissionsAndroid, Platform } from 'react-native';
+import { createModuleLogger } from '../../logging/logger';
 import {
-  createModuleLogger,
-  type ForwardedNativeAppLogLevel,
-} from '../../logging/logger';
+  type NativeLogEntry,
+  parseBufferedNativeLogEntries,
+  parseNativeLogEntry as parseSharedNativeLogEntry,
+} from '../../logging/nativeLogSync';
 import {
   createDefaultNotificationRuntimeStatus,
   type NotificationDocument,
@@ -26,23 +28,9 @@ type NotificationLaunchActionEvent = {
   actionJson: string;
 };
 
-type NotificationNativeLogEvent = {
-  contextJson?: string | null;
-  level: ForwardedNativeAppLogLevel;
-  message: string;
-  sequence: number;
-  tag: string;
-  timestampMs: number;
-};
+type NotificationNativeLogEvent = NativeLogEntry;
 
-export type NotificationNativeLogEntry = {
-  contextJson: string | null;
-  level: ForwardedNativeAppLogLevel;
-  message: string;
-  sequence: number;
-  tag: string;
-  timestampMs: number;
-};
+export type NotificationNativeLogEntry = NativeLogEntry;
 
 const log = createModuleLogger('notifications-bridge');
 
@@ -534,68 +522,15 @@ function normalizeOptionalString(value: unknown): string | null {
 function parseBufferedNotificationLogs(
   logEntriesJson: string,
 ): NotificationNativeLogEntry[] {
-  let parsedValue: unknown;
-
-  try {
-    parsedValue = JSON.parse(logEntriesJson);
-  } catch {
-    log.warn('Failed to parse buffered notification native logs payload');
-    return [];
-  }
-
-  if (!Array.isArray(parsedValue)) {
-    log.warn('Ignored buffered notification native logs payload', {
-      reason: 'not-an-array',
-    });
-    return [];
-  }
-
-  const entries = parsedValue
-    .map((entry) => parseNativeLogEntry(entry))
-    .filter((entry): entry is NotificationNativeLogEntry => entry != null);
-
-  return entries;
+  return parseBufferedNativeLogEntries({
+    logEntriesJson,
+    logger: log,
+    sourceLabel: 'buffered notification native logs',
+  });
 }
 
 function parseNativeLogEntry(
   value: unknown,
 ): NotificationNativeLogEntry | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const entry = value as Partial<NotificationNativeLogEntry>;
-
-  if (
-    typeof entry.message !== 'string' ||
-    typeof entry.sequence !== 'number' ||
-    typeof entry.tag !== 'string' ||
-    typeof entry.timestampMs !== 'number'
-  ) {
-    return null;
-  }
-
-  return {
-    contextJson:
-      typeof entry.contextJson === 'string' ? entry.contextJson : null,
-    level: normalizeNotificationNativeLogLevel(entry.level),
-    message: entry.message,
-    sequence: entry.sequence,
-    tag: entry.tag,
-    timestampMs: entry.timestampMs,
-  };
-}
-
-function normalizeNotificationNativeLogLevel(
-  level: unknown,
-): ForwardedNativeAppLogLevel {
-  switch (level) {
-    case 'error':
-    case 'info':
-    case 'temp':
-    case 'warn':
-      return level;
-    default:
-      return 'debug';
-  }
+  return parseSharedNativeLogEntry(value);
 }
