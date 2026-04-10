@@ -1,3 +1,4 @@
+import { cloneSharedDocument } from './sharedStore';
 import type {
   ChildSnapshot,
   SharedDocument,
@@ -138,6 +139,48 @@ export type ReconcileSyncProjectionsResult =
       message: string;
       ok: false;
       side?: 'left' | 'right';
+    };
+
+export type SyncBundleMode = 'bootstrap' | 'merged';
+
+export type SyncBundle = {
+  bundleHash: string;
+  childReconciliations: SyncPointReconciliation[];
+  commonBaseHash: string | null;
+  mergedHead: SyncProjectionHead;
+  mergedHeadSyncHash: string;
+  mode: SyncBundleMode;
+  participantHeadHashes: string[];
+  participantHeadSyncHashes: string[];
+  syncSchemaVersion: 1;
+};
+
+export type SyncRollbackSnapshot = {
+  capturedAt: string;
+  document: SharedDocument;
+  projectionHeadHash: string;
+  projectionHeadSyncHash: string;
+};
+
+export type PrepareSyncDeviceBundleResult =
+  | {
+      localProjection: SyncProjection;
+      localRollbackSnapshot: SyncRollbackSnapshot;
+      ok: true;
+      sharedBundle: SyncBundle;
+    }
+  | Extract<ReconcileSyncProjectionsResult, { ok: false }>;
+
+export type ConfirmSyncBundleAgreementResult =
+  | {
+      agreedBundleHash: string;
+      agreedHeadSyncHash: string;
+      ok: true;
+    }
+  | {
+      code: 'bundle-hash-mismatch' | 'merged-head-sync-hash-mismatch';
+      message: string;
+      ok: false;
     };
 
 const SYNC_PROJECTION_SCOPE = 'child-ledger' satisfies SyncProjectionScope;
@@ -777,6 +820,120 @@ export function reconcileSyncProjections(args: {
   };
 }
 
+function normalizeSyncBundleMode(
+  mode: Extract<ReconcileSyncProjectionsResult, { ok: true }>['mode'],
+): SyncBundleMode {
+  return mode === 'merged' ? 'merged' : 'bootstrap';
+}
+
+function buildSyncBundle(args: {
+  leftProjection: SyncProjection;
+  reconcileResult: Extract<ReconcileSyncProjectionsResult, { ok: true }>;
+  rightProjection: SyncProjection;
+}): SyncBundle {
+  const { leftProjection, reconcileResult, rightProjection } = args;
+  const bundleCore = {
+    childReconciliations: reconcileResult.childReconciliations,
+    commonBaseHash: reconcileResult.commonBaseHash,
+    mergedHead: reconcileResult.mergedHead,
+    mergedHeadSyncHash: reconcileResult.mergedHeadSyncHash,
+    mode: normalizeSyncBundleMode(reconcileResult.mode),
+    participantHeadHashes: sortIds([
+      leftProjection.headHash,
+      rightProjection.headHash,
+    ]),
+    participantHeadSyncHashes: sortIds([
+      leftProjection.headSyncHash,
+      rightProjection.headSyncHash,
+    ]),
+    syncSchemaVersion: SYNC_SCHEMA_VERSION,
+  } satisfies Omit<SyncBundle, 'bundleHash'>;
+
+  return {
+    ...bundleCore,
+    bundleHash: hashSyncValue(bundleCore),
+  };
+}
+
+export function captureSyncRollbackSnapshot(args: {
+  capturedAt?: string;
+  document: SharedDocument;
+  projection?: SyncProjection;
+}): SyncRollbackSnapshot {
+  const { capturedAt = new Date().toISOString(), document, projection } = args;
+  const resolvedProjection = projection ?? deriveSyncProjection(document);
+
+  return {
+    capturedAt,
+    document: cloneSharedDocument(document),
+    projectionHeadHash: resolvedProjection.headHash,
+    projectionHeadSyncHash: resolvedProjection.headSyncHash,
+  };
+}
+
+export function prepareSyncDeviceBundle(args: {
+  capturedAt?: string;
+  localDocument: SharedDocument;
+  remoteProjection: SyncProjection;
+}): PrepareSyncDeviceBundleResult {
+  const { capturedAt, localDocument, remoteProjection } = args;
+  const localProjection = deriveSyncProjection(localDocument);
+  const reconcileResult = reconcileSyncProjections({
+    leftProjection: localProjection,
+    rightProjection: remoteProjection,
+  });
+
+  if (!reconcileResult.ok) {
+    return reconcileResult;
+  }
+
+  return {
+    localProjection,
+    localRollbackSnapshot: captureSyncRollbackSnapshot({
+      capturedAt,
+      document: localDocument,
+      projection: localProjection,
+    }),
+    ok: true,
+    sharedBundle: buildSyncBundle({
+      leftProjection: localProjection,
+      reconcileResult,
+      rightProjection: remoteProjection,
+    }),
+  };
+}
+
+export function confirmSyncBundleAgreement(args: {
+  leftBundle: SyncBundle;
+  rightBundle: SyncBundle;
+}): ConfirmSyncBundleAgreementResult {
+  const { leftBundle, rightBundle } = args;
+
+  if (leftBundle.mergedHeadSyncHash !== rightBundle.mergedHeadSyncHash) {
+    return {
+      code: 'merged-head-sync-hash-mismatch',
+      message:
+        'The devices derived different merged sync head hashes and must not commit the sync.',
+      ok: false,
+    };
+  }
+
+  if (leftBundle.bundleHash !== rightBundle.bundleHash) {
+    return {
+      code: 'bundle-hash-mismatch',
+      message:
+        'The devices derived different sync bundles and must not commit the sync.',
+      ok: false,
+    };
+  }
+
+  return {
+    agreedBundleHash: leftBundle.bundleHash,
+    agreedHeadSyncHash: leftBundle.mergedHeadSyncHash,
+    ok: true,
+  };
+}
+
 export function serializeSyncProjection(projection: SyncProjection) {
   const canonicalEntries = projection.entries.map((entry) => ({
     affectedChildIds: entry.affectedChildIds,
@@ -799,5 +956,19 @@ export function serializeSyncProjection(projection: SyncProjection) {
     headSyncHash: projection.headSyncHash,
     scope: projection.scope,
     syncSchemaVersion: projection.syncSchemaVersion,
+  });
+}
+
+export function serializeSyncBundle(bundle: SyncBundle) {
+  return toCanonicalJson({
+    bundleHash: bundle.bundleHash,
+    childReconciliations: bundle.childReconciliations,
+    commonBaseHash: bundle.commonBaseHash,
+    mergedHead: bundle.mergedHead,
+    mergedHeadSyncHash: bundle.mergedHeadSyncHash,
+    mode: bundle.mode,
+    participantHeadHashes: bundle.participantHeadHashes,
+    participantHeadSyncHashes: bundle.participantHeadSyncHashes,
+    syncSchemaVersion: bundle.syncSchemaVersion,
   });
 }

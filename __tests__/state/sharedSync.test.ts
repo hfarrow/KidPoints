@@ -4,9 +4,13 @@ import {
   createSharedStore,
 } from '../../src/state/sharedStore';
 import {
+  captureSyncRollbackSnapshot,
+  confirmSyncBundleAgreement,
   deriveSyncProjection,
+  prepareSyncDeviceBundle,
   reconcileSyncProjections,
   resolveCommonSyncBase,
+  serializeSyncBundle,
   serializeSyncProjection,
   validateSyncProjection,
 } from '../../src/state/sharedSync';
@@ -557,6 +561,193 @@ describe('sharedSync phase 3 reconciliation', () => {
         'The left device has unsupported post-base transaction kind child-archived.',
       ok: false,
       side: 'left',
+    });
+  });
+});
+
+describe('sharedSync phase 4 agreement bundle', () => {
+  it('lets both devices derive the same shared bundle and agree on the merged head hash', () => {
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-phase4-seed',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(seedStore.getState().document);
+    expect(seedStore.getState().setPoints(childId, 5).ok).toBe(true);
+
+    const leftDocument = cloneDocumentForDevice(
+      seedStore.getState().document,
+      'device-sync-phase4-left',
+    );
+    const rightDocument = cloneDocumentForDevice(
+      seedStore.getState().document,
+      'device-sync-phase4-right',
+    );
+    const leftStore = createSharedStore({
+      initialDocument: leftDocument,
+      storage: createMemoryStorage(),
+    });
+    const rightStore = createSharedStore({
+      initialDocument: rightDocument,
+      storage: createMemoryStorage(),
+    });
+
+    expect(leftStore.getState().setPoints(childId, 10).ok).toBe(true);
+    expect(rightStore.getState().setPoints(childId, 10).ok).toBe(true);
+
+    const leftPlan = prepareSyncDeviceBundle({
+      capturedAt: '2026-04-09T20:00:00.000Z',
+      localDocument: leftStore.getState().document,
+      remoteProjection: deriveSyncProjection(rightStore.getState().document),
+    });
+    const rightPlan = prepareSyncDeviceBundle({
+      capturedAt: '2026-04-09T20:00:01.000Z',
+      localDocument: rightStore.getState().document,
+      remoteProjection: deriveSyncProjection(leftStore.getState().document),
+    });
+
+    if (!leftPlan.ok || !rightPlan.ok) {
+      throw new Error('Expected both devices to prepare valid sync bundles.');
+    }
+
+    expect(leftPlan.sharedBundle.mergedHead.childrenById[childId]?.points).toBe(
+      15,
+    );
+    expect(leftPlan.sharedBundle).toEqual(rightPlan.sharedBundle);
+    expect(serializeSyncBundle(leftPlan.sharedBundle)).toBe(
+      serializeSyncBundle(rightPlan.sharedBundle),
+    );
+    expect(
+      confirmSyncBundleAgreement({
+        leftBundle: leftPlan.sharedBundle,
+        rightBundle: rightPlan.sharedBundle,
+      }),
+    ).toEqual({
+      agreedBundleHash: leftPlan.sharedBundle.bundleHash,
+      agreedHeadSyncHash: leftPlan.sharedBundle.mergedHeadSyncHash,
+      ok: true,
+    });
+  });
+
+  it('rejects agreement when merged head hashes differ', () => {
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-phase4-mismatch',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(seedStore.getState().document);
+    expect(seedStore.getState().adjustPoints(childId, 1).ok).toBe(true);
+
+    const leftPlan = prepareSyncDeviceBundle({
+      localDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-phase4-mismatch-left',
+      ),
+      remoteProjection: deriveSyncProjection(
+        cloneDocumentForDevice(
+          seedStore.getState().document,
+          'device-sync-phase4-mismatch-right',
+        ),
+      ),
+    });
+
+    if (!leftPlan.ok) {
+      throw new Error('Expected the left device plan to succeed.');
+    }
+
+    const tamperedBundle = {
+      ...leftPlan.sharedBundle,
+      mergedHeadSyncHash: 'sync-tampered-head',
+    };
+
+    expect(
+      confirmSyncBundleAgreement({
+        leftBundle: leftPlan.sharedBundle,
+        rightBundle: tamperedBundle,
+      }),
+    ).toEqual({
+      code: 'merged-head-sync-hash-mismatch',
+      message:
+        'The devices derived different merged sync head hashes and must not commit the sync.',
+      ok: false,
+    });
+  });
+
+  it('rejects agreement when the shared bundle hash differs despite the same merged head hash', () => {
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-phase4-bundle-mismatch',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+
+    const leftPlan = prepareSyncDeviceBundle({
+      localDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-phase4-bundle-left',
+      ),
+      remoteProjection: deriveSyncProjection(
+        cloneDocumentForDevice(
+          seedStore.getState().document,
+          'device-sync-phase4-bundle-right',
+        ),
+      ),
+    });
+
+    if (!leftPlan.ok) {
+      throw new Error('Expected the left device plan to succeed.');
+    }
+
+    const tamperedBundle = {
+      ...leftPlan.sharedBundle,
+      bundleHash: 'sync-tampered-bundle',
+    };
+
+    expect(
+      confirmSyncBundleAgreement({
+        leftBundle: leftPlan.sharedBundle,
+        rightBundle: tamperedBundle,
+      }),
+    ).toEqual({
+      code: 'bundle-hash-mismatch',
+      message:
+        'The devices derived different sync bundles and must not commit the sync.',
+      ok: false,
+    });
+  });
+
+  it('captures an exact rollback snapshot of the local document before sync', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-phase4-rollback',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(store.getState().document);
+    expect(store.getState().setPoints(childId, 4).ok).toBe(true);
+
+    const snapshot = captureSyncRollbackSnapshot({
+      capturedAt: '2026-04-09T21:00:00.000Z',
+      document: store.getState().document,
+    });
+
+    expect(snapshot).toEqual({
+      capturedAt: '2026-04-09T21:00:00.000Z',
+      document: cloneSharedDocument(store.getState().document),
+      projectionHeadHash: deriveSyncProjection(store.getState().document)
+        .headHash,
+      projectionHeadSyncHash: deriveSyncProjection(store.getState().document)
+        .headSyncHash,
     });
   });
 });
