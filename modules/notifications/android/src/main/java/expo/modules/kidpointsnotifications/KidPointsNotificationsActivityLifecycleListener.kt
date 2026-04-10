@@ -18,12 +18,14 @@ class KidPointsNotificationsActivityLifecycleListener(
 
     appContext = activity.applicationContext
     KidPointsNotificationsEngine.setAppInForeground(true)
+    KidPointsNotificationsEngine.configureActivityWindowForIntent(activity, activity.intent)
     KidPointsNotificationsEngine.handleActivityIntent(activity, activity.intent)
   }
 
   override fun onResume(activity: Activity?) {
     if (activity != null) {
       appContext = activity.applicationContext
+      KidPointsNotificationsEngine.configureActivityWindowForIntent(activity, activity.intent)
     }
     KidPointsNotificationsEngine.setAppInForeground(true)
   }
@@ -37,6 +39,10 @@ class KidPointsNotificationsActivityLifecycleListener(
   }
 
   override fun onNewIntent(intent: Intent?): Boolean {
+    KidPointsNotificationsModule.instance?.appContext?.currentActivity?.let { activity ->
+      activity.intent = intent
+      KidPointsNotificationsEngine.configureActivityWindowForIntent(activity, intent)
+    }
     val context = appContext ?: KidPointsNotificationsModule.instance?.appContext?.reactContext
     if (context != null) {
       KidPointsNotificationsEngine.handleActivityIntent(context, intent)

@@ -1,8 +1,10 @@
 package expo.modules.kidpointsnotifications
 
 import android.Manifest
+import android.app.Activity
 import android.app.AlarmManager
 import android.app.ActivityOptions
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -17,6 +19,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.WindowManager
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -729,11 +732,9 @@ object KidPointsNotificationsEngine {
     val launchSource = intent?.getStringExtra(EXTRA_LAUNCH_SOURCE)
     logIntent(
       "Received activity intent",
-      createLogContext(
-        "intent" to describeIntent(intent),
-        "launchSource" to launchSource,
-        "moduleAttached" to (KidPointsNotificationsModule.instance != null),
-      ),
+      createIntentEnvironmentLogContext(context, intent).apply {
+        put("moduleAttached", KidPointsNotificationsModule.instance != null)
+      },
     )
     val actionJson = intent?.getStringExtra(EXTRA_LAUNCH_ACTION_JSON)
 
@@ -761,12 +762,58 @@ object KidPointsNotificationsEngine {
 
     logIntent(
       "Handled activity launch intent",
-      createLogContext(
-        "emittedEvent" to (KidPointsNotificationsModule.instance != null),
-        "launchSource" to launchSource,
-        "notificationId" to notificationId,
-        "payload" to parseJsonObjectOrRaw(emittedActionJson),
-      ),
+      createIntentEnvironmentLogContext(context, intent).apply {
+        put("emittedEvent", KidPointsNotificationsModule.instance != null)
+        put("notificationId", notificationId ?: JSONObject.NULL)
+        put("payload", parseJsonObjectOrRaw(emittedActionJson) ?: JSONObject.NULL)
+      },
+    )
+  }
+
+  fun shouldShowActivityOverLockScreen(intent: Intent?): Boolean =
+    intent?.getStringExtra(EXTRA_LAUNCH_SOURCE) == LAUNCH_SOURCE_FULL_SCREEN_INTENT &&
+      intent.getStringExtra(EXTRA_LAUNCH_ACTION_JSON) != null
+
+  fun configureActivityWindowForIntent(activity: Activity, intent: Intent?) {
+    val shouldShowOverLockScreen = shouldShowActivityOverLockScreen(intent)
+
+    logIntent(
+      "Configuring activity window for intent",
+      createActivityLaunchLogContext(activity, intent).apply {
+        put("shouldShowOverLockScreen", shouldShowOverLockScreen)
+      },
+    )
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+      activity.setShowWhenLocked(shouldShowOverLockScreen)
+      activity.setTurnScreenOn(shouldShowOverLockScreen)
+      logIntent(
+        "Applied activity lock-screen flags",
+        createActivityLaunchLogContext(activity, intent).apply {
+          put("apiPath", "setShowWhenLocked/setTurnScreenOn")
+          put("shouldShowOverLockScreen", shouldShowOverLockScreen)
+        },
+      )
+      return
+    }
+
+    val lockScreenFlags =
+      WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+
+    if (shouldShowOverLockScreen) {
+      activity.window.addFlags(lockScreenFlags)
+    } else {
+      activity.window.clearFlags(lockScreenFlags)
+    }
+
+    logIntent(
+      "Applied activity lock-screen flags",
+      createActivityLaunchLogContext(activity, intent).apply {
+        put("apiPath", "windowFlags")
+        put("shouldShowOverLockScreen", shouldShowOverLockScreen)
+      },
     )
   }
 
@@ -1079,6 +1126,53 @@ object KidPointsNotificationsEngine {
 
     return "intent.action=${intent.action} intent.flags=${intent.flags} hasLaunchPayload=${launchPayload != null} launchPayload=$launchPayload"
   }
+
+  private fun createIntentEnvironmentLogContext(
+    context: Context?,
+    intent: Intent?,
+  ): JSONObject =
+    createLogContext(
+      "canUseFullScreenIntent" to context?.let(::canUseFullScreenIntent),
+      "deviceLocked" to context?.let(::isDeviceLocked),
+      "intent" to describeIntent(intent),
+      "isAppInForeground" to isAppInForeground,
+      "keyguardLocked" to context?.let(::isKeyguardLocked),
+      "launchSource" to intent?.getStringExtra(EXTRA_LAUNCH_SOURCE),
+      "settingsResolvable" to context?.let(::canOpenFullScreenIntentSettings),
+      "shouldShowOverLockScreen" to shouldShowActivityOverLockScreen(intent),
+    )
+
+  private fun createActivityLaunchLogContext(
+    activity: Activity,
+    intent: Intent?,
+  ): JSONObject =
+    createIntentEnvironmentLogContext(activity, intent).apply {
+      put("activityClass", activity.javaClass.name)
+      put("hasWindowFocus", activity.hasWindowFocus())
+      put(
+        "isDestroyed",
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+          activity.isDestroyed
+        } else {
+          JSONObject.NULL
+        },
+      )
+      put("isFinishing", activity.isFinishing)
+      put("isTaskRoot", activity.isTaskRoot)
+    }
+
+  private fun getKeyguardManager(context: Context): KeyguardManager? =
+    ContextCompat.getSystemService(context, KeyguardManager::class.java)
+
+  private fun isDeviceLocked(context: Context): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+      getKeyguardManager(context)?.isDeviceLocked ?: false
+    } else {
+      isKeyguardLocked(context)
+    }
+
+  private fun isKeyguardLocked(context: Context): Boolean =
+    getKeyguardManager(context)?.isKeyguardLocked ?: false
 
   private fun prefs(context: Context) =
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
