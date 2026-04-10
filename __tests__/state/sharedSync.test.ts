@@ -5,10 +5,12 @@ import {
 } from '../../src/state/sharedStore';
 import {
   deriveSyncProjection,
+  reconcileSyncProjections,
   resolveCommonSyncBase,
   serializeSyncProjection,
   validateSyncProjection,
 } from '../../src/state/sharedSync';
+import type { SharedDocument } from '../../src/state/sharedTypes';
 import { createMemoryStorage } from '../testUtils/memoryStorage';
 
 function expectChildId(
@@ -21,6 +23,13 @@ function expectChildId(
   }
 
   return childId;
+}
+
+function cloneDocumentForDevice(document: SharedDocument, deviceId: string) {
+  return {
+    ...cloneSharedDocument(document),
+    deviceId,
+  } satisfies SharedDocument;
 }
 
 describe('sharedSync phase 1 projection', () => {
@@ -185,11 +194,17 @@ describe('sharedSync phase 2 common base detection', () => {
     expect(seedStore.getState().adjustPoints(childId, 1).ok).toBe(true);
 
     const leftStore = createSharedStore({
-      initialDocument: cloneSharedDocument(seedStore.getState().document),
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-base-left',
+      ),
       storage: createMemoryStorage(),
     });
     const rightStore = createSharedStore({
-      initialDocument: cloneSharedDocument(seedStore.getState().document),
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-base-right',
+      ),
       storage: createMemoryStorage(),
     });
 
@@ -321,6 +336,227 @@ describe('sharedSync phase 2 common base detection', () => {
       code: 'invalid-left-projection',
       message: 'Sync entry 1 has an unexpected parent hash.',
       ok: false,
+    });
+  });
+});
+
+describe('sharedSync phase 3 reconciliation', () => {
+  it('merges point totals from the common base by summing both sides deltas', () => {
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-reconcile-seed',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(seedStore.getState().document);
+    expect(seedStore.getState().setPoints(childId, 5).ok).toBe(true);
+
+    const leftStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-reconcile-left',
+      ),
+      storage: createMemoryStorage(),
+    });
+    const rightStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-reconcile-right',
+      ),
+      storage: createMemoryStorage(),
+    });
+
+    expect(leftStore.getState().setPoints(childId, 10).ok).toBe(true);
+    expect(rightStore.getState().setPoints(childId, 10).ok).toBe(true);
+
+    const result = reconcileSyncProjections({
+      leftProjection: deriveSyncProjection(leftStore.getState().document),
+      rightProjection: deriveSyncProjection(rightStore.getState().document),
+    });
+
+    expect(result).toMatchObject({
+      mode: 'merged',
+      ok: true,
+    });
+    if (!result.ok || result.mode !== 'merged') {
+      throw new Error('Expected merged sync reconciliation result.');
+    }
+    expect(result.mergedHead.childrenById[childId]?.points).toBe(15);
+    expect(result.childReconciliations).toEqual([
+      {
+        basePoints: 5,
+        childId,
+        childName: 'Ava',
+        leftDelta: 5,
+        leftPoints: 10,
+        mergedPoints: 15,
+        rightDelta: 5,
+        rightPoints: 10,
+      },
+    ]);
+  });
+
+  it('supports one-sided and negative point changes across multiple children', () => {
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-reconcile-multi',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+    expect(seedStore.getState().addChild('Noah').ok).toBe(true);
+    const [avaId, noahId] = seedStore.getState().document.head.activeChildIds;
+
+    if (!avaId || !noahId) {
+      throw new Error(
+        'Expected multi-child reconciliation fixture to create two children.',
+      );
+    }
+
+    expect(seedStore.getState().setPoints(avaId, 10).ok).toBe(true);
+    expect(seedStore.getState().setPoints(noahId, 2).ok).toBe(true);
+
+    const leftStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-reconcile-multi-left',
+      ),
+      storage: createMemoryStorage(),
+    });
+    const rightStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-reconcile-multi-right',
+      ),
+      storage: createMemoryStorage(),
+    });
+
+    expect(leftStore.getState().setPoints(avaId, 8).ok).toBe(true);
+    expect(rightStore.getState().setPoints(avaId, 7).ok).toBe(true);
+    expect(rightStore.getState().adjustPoints(noahId, 4).ok).toBe(true);
+
+    const result = reconcileSyncProjections({
+      leftProjection: deriveSyncProjection(leftStore.getState().document),
+      rightProjection: deriveSyncProjection(rightStore.getState().document),
+    });
+
+    expect(result).toMatchObject({
+      mode: 'merged',
+      ok: true,
+    });
+    if (!result.ok || result.mode !== 'merged') {
+      throw new Error('Expected merged sync reconciliation result.');
+    }
+
+    expect(result.mergedHead.childrenById[avaId]?.points).toBe(5);
+    expect(result.mergedHead.childrenById[noahId]?.points).toBe(6);
+    expect(result.childReconciliations).toEqual(
+      [
+        {
+          basePoints: 10,
+          childId: avaId,
+          childName: 'Ava',
+          leftDelta: -2,
+          leftPoints: 8,
+          mergedPoints: 5,
+          rightDelta: -3,
+          rightPoints: 7,
+        },
+        {
+          basePoints: 2,
+          childId: noahId,
+          childName: 'Noah',
+          leftDelta: 0,
+          leftPoints: 2,
+          mergedPoints: 6,
+          rightDelta: 4,
+          rightPoints: 6,
+        },
+      ].sort((left, right) => left.childId.localeCompare(right.childId)),
+    );
+  });
+
+  it('returns the populated side during bootstrap reconciliation', () => {
+    const populatedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-reconcile-bootstrap',
+      }),
+      storage: createMemoryStorage(),
+    });
+    const emptyStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-reconcile-empty',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(populatedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(populatedStore.getState().document);
+    expect(populatedStore.getState().adjustPoints(childId, 3).ok).toBe(true);
+
+    const result = reconcileSyncProjections({
+      leftProjection: deriveSyncProjection(populatedStore.getState().document),
+      rightProjection: deriveSyncProjection(emptyStore.getState().document),
+    });
+
+    expect(result).toEqual({
+      childReconciliations: [],
+      commonBaseHash: null,
+      mergedHead: deriveSyncProjection(populatedStore.getState().document).head,
+      mergedHeadSyncHash: deriveSyncProjection(
+        populatedStore.getState().document,
+      ).headSyncHash,
+      mode: 'bootstrap-left-to-right',
+      ok: true,
+    });
+  });
+
+  it('rejects unsupported post-base child lifecycle mutations', () => {
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-reconcile-unsupported',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(seedStore.getState().document);
+
+    const leftStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-reconcile-unsupported-left',
+      ),
+      storage: createMemoryStorage(),
+    });
+    const rightStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-reconcile-unsupported-right',
+      ),
+      storage: createMemoryStorage(),
+    });
+
+    expect(leftStore.getState().archiveChild(childId).ok).toBe(true);
+    expect(rightStore.getState().adjustPoints(childId, 1).ok).toBe(true);
+
+    const leftProjection = deriveSyncProjection(leftStore.getState().document);
+    const result = reconcileSyncProjections({
+      leftProjection,
+      rightProjection: deriveSyncProjection(rightStore.getState().document),
+    });
+
+    expect(result).toEqual({
+      code: 'unsupported-post-base-transaction',
+      entryHash: leftProjection.entries.at(-1)?.hash,
+      entryKind: 'child-archived',
+      message:
+        'The left device has unsupported post-base transaction kind child-archived.',
+      ok: false,
+      side: 'left',
     });
   });
 });

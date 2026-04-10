@@ -104,6 +104,42 @@ export type ResolveCommonSyncBaseResult =
       ok: false;
     };
 
+export type SyncPointReconciliation = {
+  basePoints: number;
+  childId: string;
+  childName: string;
+  leftDelta: number;
+  leftPoints: number;
+  mergedPoints: number;
+  rightDelta: number;
+  rightPoints: number;
+};
+
+export type ReconcileSyncProjectionsResult =
+  | {
+      childReconciliations: SyncPointReconciliation[];
+      commonBaseHash: string | null;
+      mergedHead: SyncProjectionHead;
+      mergedHeadSyncHash: string;
+      mode: 'bootstrap-left-to-right' | 'bootstrap-right-to-left' | 'merged';
+      ok: true;
+    }
+  | {
+      code:
+        | 'child-shape-mismatch'
+        | 'independent-lineages'
+        | 'invalid-bootstrap-target'
+        | 'invalid-left-projection'
+        | 'invalid-right-projection'
+        | 'unsupported-post-base-transaction';
+      childId?: string;
+      entryHash?: string;
+      entryKind?: SyncableTransactionKind;
+      message: string;
+      ok: false;
+      side?: 'left' | 'right';
+    };
+
 const SYNC_PROJECTION_SCOPE = 'child-ledger' satisfies SyncProjectionScope;
 const SYNC_SCHEMA_VERSION = 1 as const;
 const SYNCABLE_TRANSACTION_KINDS = new Set<TransactionKind>([
@@ -256,6 +292,7 @@ function buildSyncEntryHash(args: {
   parentHash: string | null;
   pointsAfter: number | null;
   pointsBefore: number | null;
+  sourceTransactionId: string;
   stateHash: string;
 }) {
   const {
@@ -266,6 +303,7 @@ function buildSyncEntryHash(args: {
     parentHash,
     pointsAfter,
     pointsBefore,
+    sourceTransactionId,
     stateHash,
   } = args;
 
@@ -277,6 +315,7 @@ function buildSyncEntryHash(args: {
     parentHash,
     pointsAfter,
     pointsBefore,
+    sourceTransactionId,
     stateHash,
   });
 }
@@ -299,6 +338,7 @@ export function deriveSyncProjection(document: SharedDocument): SyncProjection {
       parentHash,
       pointsAfter: transaction.pointsAfter ?? null,
       pointsBefore: transaction.pointsBefore ?? null,
+      sourceTransactionId: transaction.id,
       stateHash,
     });
 
@@ -376,6 +416,7 @@ function validateProjectionEntryChain(
       parentHash: entry.parentHash,
       pointsAfter: entry.pointsAfter,
       pointsBefore: entry.pointsBefore,
+      sourceTransactionId: entry.sourceTransactionId,
       stateHash: entry.stateHash,
     });
 
@@ -393,6 +434,35 @@ function validateProjectionEntryChain(
   }
 
   return { ok: true };
+}
+
+function areSyncChildrenEquivalentIgnoringPoints(
+  left: SyncProjectionChild | null,
+  right: SyncProjectionChild | null,
+) {
+  if (!left && !right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    left.archivedAt === right.archivedAt &&
+    left.createdAt === right.createdAt &&
+    left.id === right.id &&
+    left.name === right.name &&
+    left.status === right.status
+  );
+}
+
+function createEmptySyncProjectionHead(): SyncProjectionHead {
+  return {
+    activeChildIds: [],
+    archivedChildIds: [],
+    childrenById: {},
+  };
 }
 
 export function validateSyncProjection(
@@ -556,6 +626,157 @@ export function resolveCommonSyncBase(args: {
   };
 }
 
+export function reconcileSyncProjections(args: {
+  leftProjection: SyncProjection;
+  rightProjection: SyncProjection;
+}): ReconcileSyncProjectionsResult {
+  const { leftProjection, rightProjection } = args;
+  const commonBaseResult = resolveCommonSyncBase({
+    leftProjection,
+    rightProjection,
+  });
+
+  if (!commonBaseResult.ok) {
+    return commonBaseResult;
+  }
+
+  if (commonBaseResult.mode === 'bootstrap-left-to-right') {
+    return {
+      childReconciliations: [],
+      commonBaseHash: null,
+      mergedHead: leftProjection.head,
+      mergedHeadSyncHash: leftProjection.headSyncHash,
+      mode: commonBaseResult.mode,
+      ok: true,
+    };
+  }
+
+  if (commonBaseResult.mode === 'bootstrap-right-to-left') {
+    return {
+      childReconciliations: [],
+      commonBaseHash: null,
+      mergedHead: rightProjection.head,
+      mergedHeadSyncHash: rightProjection.headSyncHash,
+      mode: commonBaseResult.mode,
+      ok: true,
+    };
+  }
+
+  const leftPostBaseEntries = leftProjection.entries.slice(
+    (commonBaseResult.leftBaseIndex ?? -1) + 1,
+  );
+  const rightPostBaseEntries = rightProjection.entries.slice(
+    (commonBaseResult.rightBaseIndex ?? -1) + 1,
+  );
+
+  for (const [side, entries] of [
+    ['left', leftPostBaseEntries] as const,
+    ['right', rightPostBaseEntries] as const,
+  ]) {
+    const unsupportedEntry = entries.find(
+      (entry) =>
+        entry.kind !== 'points-adjusted' && entry.kind !== 'points-set',
+    );
+
+    if (unsupportedEntry) {
+      return {
+        code: 'unsupported-post-base-transaction',
+        entryHash: unsupportedEntry.hash,
+        entryKind: unsupportedEntry.kind,
+        message: `The ${side} device has unsupported post-base transaction kind ${unsupportedEntry.kind}.`,
+        ok: false,
+        side,
+      };
+    }
+  }
+
+  const baseHead =
+    commonBaseResult.commonBaseEntry?.stateAfter ??
+    createEmptySyncProjectionHead();
+  const mergedChildIds = sortIds([
+    ...new Set([
+      ...Object.keys(baseHead.childrenById),
+      ...Object.keys(leftProjection.head.childrenById),
+      ...Object.keys(rightProjection.head.childrenById),
+    ]),
+  ]);
+  const childReconciliations: SyncPointReconciliation[] = [];
+  const childrenById: Record<string, SyncProjectionChild> = {};
+
+  for (const childId of mergedChildIds) {
+    const baseChild = baseHead.childrenById[childId] ?? null;
+    const leftChild = leftProjection.head.childrenById[childId] ?? null;
+    const rightChild = rightProjection.head.childrenById[childId] ?? null;
+
+    if (
+      !areSyncChildrenEquivalentIgnoringPoints(baseChild, leftChild) ||
+      !areSyncChildrenEquivalentIgnoringPoints(baseChild, rightChild) ||
+      !areSyncChildrenEquivalentIgnoringPoints(leftChild, rightChild)
+    ) {
+      return {
+        childId,
+        code: 'child-shape-mismatch',
+        message:
+          'The devices disagree about a child outside of point totals, which Phase 3 does not reconcile.',
+        ok: false,
+      };
+    }
+
+    if (!baseChild || !leftChild || !rightChild) {
+      return {
+        childId,
+        code: 'child-shape-mismatch',
+        message:
+          'The devices disagree about child membership outside of point totals, which Phase 3 does not reconcile.',
+        ok: false,
+      };
+    }
+
+    const basePoints = baseChild.points;
+    const leftPoints = leftChild.points;
+    const rightPoints = rightChild.points;
+    const leftDelta = leftPoints - basePoints;
+    const rightDelta = rightPoints - basePoints;
+    const mergedPoints = basePoints + leftDelta + rightDelta;
+
+    childReconciliations.push({
+      basePoints,
+      childId,
+      childName: baseChild.name,
+      leftDelta,
+      leftPoints,
+      mergedPoints,
+      rightDelta,
+      rightPoints,
+    });
+    childrenById[childId] = {
+      ...baseChild,
+      points: mergedPoints,
+      updatedAt:
+        sortIds([
+          baseChild.updatedAt,
+          leftChild.updatedAt,
+          rightChild.updatedAt,
+        ]).at(-1) ?? baseChild.updatedAt,
+    };
+  }
+
+  const mergedHead: SyncProjectionHead = {
+    activeChildIds: [...baseHead.activeChildIds],
+    archivedChildIds: [...baseHead.archivedChildIds],
+    childrenById,
+  };
+
+  return {
+    childReconciliations,
+    commonBaseHash: commonBaseResult.commonBaseHash,
+    mergedHead,
+    mergedHeadSyncHash: hashSyncValue(mergedHead),
+    mode: 'merged',
+    ok: true,
+  };
+}
+
 export function serializeSyncProjection(projection: SyncProjection) {
   const canonicalEntries = projection.entries.map((entry) => ({
     affectedChildIds: entry.affectedChildIds,
@@ -566,6 +787,7 @@ export function serializeSyncProjection(projection: SyncProjection) {
     parentHash: entry.parentHash,
     pointsAfter: entry.pointsAfter,
     pointsBefore: entry.pointsBefore,
+    sourceTransactionId: entry.sourceTransactionId,
     stateAfter: entry.stateAfter,
     stateHash: entry.stateHash,
   }));
