@@ -16,6 +16,7 @@ function RootNavigator() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="sync" />
         <Stack.Screen name="logs" />
         <Stack.Screen name="transactions" />
         <Stack.Screen

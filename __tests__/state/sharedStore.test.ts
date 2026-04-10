@@ -958,4 +958,74 @@ describe('sharedStore sync integration', () => {
       syncState: null,
     });
   });
+
+  it('treats reapplying the same sync bundle hash as an idempotent no-op', () => {
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-store-idempotent-seed',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(seedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = seedStore.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error('Expected idempotent fixture to create a child.');
+    }
+
+    const leftStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-store-idempotent-left',
+      ),
+      storage: createMemoryStorage(),
+    });
+    const rightStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-store-idempotent-right',
+      ),
+      storage: createMemoryStorage(),
+    });
+
+    expect(leftStore.getState().adjustPoints(childId, 2).ok).toBe(true);
+    expect(rightStore.getState().adjustPoints(childId, 3).ok).toBe(true);
+
+    const preparedBundle = prepareSyncDeviceBundle({
+      capturedAt: '2026-04-09T22:20:00.000Z',
+      localDocument: leftStore.getState().document,
+      remoteProjection: deriveSyncProjection(rightStore.getState().document),
+    });
+
+    if (!preparedBundle.ok) {
+      throw new Error('Expected idempotent bundle preparation to succeed.');
+    }
+
+    expect(
+      leftStore
+        .getState()
+        .applySyncBundle(
+          preparedBundle.sharedBundle,
+          preparedBundle.localRollbackSnapshot,
+        ).ok,
+    ).toBe(true);
+
+    const transactionCount = leftStore.getState().document.transactions.length;
+
+    expect(
+      leftStore
+        .getState()
+        .applySyncBundle(
+          preparedBundle.sharedBundle,
+          preparedBundle.localRollbackSnapshot,
+        ).ok,
+    ).toBe(true);
+    expect(leftStore.getState().document.transactions).toHaveLength(
+      transactionCount,
+    );
+    expect(
+      leftStore.getState().document.syncState?.lastAppliedSync?.bundleHash,
+    ).toBe(preparedBundle.sharedBundle.bundleHash);
+  });
 });

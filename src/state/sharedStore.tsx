@@ -1481,6 +1481,17 @@ function createSharedStoreActions(
 
       set((state) => {
         const currentProjection = deriveSyncProjection(state.document);
+        const previouslyAppliedBundleHash =
+          state.document.syncState?.lastAppliedSync?.bundleHash ?? null;
+
+        if (previouslyAppliedBundleHash === bundle.bundleHash) {
+          logSharedStoreMutation('applySyncBundle', {
+            action: 'applySyncBundle',
+            alreadyApplied: true,
+            bundleHash: bundle.bundleHash,
+          });
+          return state;
+        }
 
         if (
           currentProjection.headHash !== rollbackSnapshot.projectionHeadHash ||

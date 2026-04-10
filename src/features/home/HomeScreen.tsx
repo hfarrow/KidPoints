@@ -265,6 +265,11 @@ export function HomeScreen() {
                 }}
               />
               <ActionPill
+                label="Sync Devices"
+                onPress={() => router.push('/sync')}
+                tone="primary"
+              />
+              <ActionPill
                 label="Transactions"
                 onPress={() => router.push('/transactions')}
               />
