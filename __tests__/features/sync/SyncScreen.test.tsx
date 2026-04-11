@@ -190,15 +190,24 @@ describe('SyncScreen', () => {
     mockSession.state.review = {
       children: [
         {
+          basePoints: 5,
           change: 'unchanged',
           childId: 'child-1',
           childName: 'Ava',
+          localNewContributionPoints: 5,
           points: 12,
+          remoteNewContributionPoints: 2,
         },
       ],
       outcome: 'merged',
       outcomeCopy: 'The histories of both devices have been merged.',
       transactions: [
+        {
+          id: 'base-change-1',
+          origin: 'base',
+          summaryText: 'Ava Set Points [0 > 5]',
+          timestampLabel: 'Apr 11, 9:00 AM',
+        },
         {
           id: 'change-1',
           origin: 'local',
@@ -211,9 +220,15 @@ describe('SyncScreen', () => {
     render(<SyncScreen />);
 
     expect(screen.getByText('Review Sync')).toBeTruthy();
+    expect(screen.queryByText('Instructions')).toBeNull();
     expect(
       screen.getByText('The histories of both devices have been merged.'),
     ).toBeTruthy();
+    expect(
+      screen.getByText('5 (base) + 5 (yours) + 2 (theirs) = 12'),
+    ).toBeTruthy();
+    expect(screen.getByText('Ava Set Points [0 > 5]')).toBeTruthy();
+    expect(screen.getByText('Base')).toBeTruthy();
     fireEvent.press(screen.getAllByText('Confirm Sync')[0]);
 
     expect(mockSession.confirmMergeAndPrepareCommit).toHaveBeenCalled();

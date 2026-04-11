@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { StateStorage } from 'zustand/middleware';
 
 import { ListScaffold } from '../../components/ListScaffold';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
-import { ScreenScaffold } from '../../components/ScreenScaffold';
 import {
   ActionPill,
   ActionPillRow,
@@ -22,7 +28,8 @@ import {
   useSharedStoreApi,
 } from '../../state/sharedStore';
 import type { SharedDocument } from '../../state/sharedTypes';
-import { type useAppTheme, useThemedStyles } from '../theme/appTheme';
+import { useParentSession } from '../parent/parentSessionContext';
+import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import { TransactionsScreenContent } from '../transactions/TransactionsScreenContent';
 import { SyncBaseTransactionSelectorModal } from './SyncBaseTransactionSelectorModal';
 import {
@@ -46,6 +53,7 @@ import {
 import { useNearbySyncSession } from './useNearbySyncSession';
 
 const log = createModuleLogger('sync-testbed-screen');
+const SYNC_TESTBED_WIDE_BREAKPOINT = 900;
 
 const SCENARIO_ITEMS: {
   id: SyncTestbedScenarioId;
@@ -193,6 +201,11 @@ function SyncTestbedScene({
   setFixtureStrategyId: (strategyId: SyncTestbedFixtureStrategyId) => void;
 }) {
   const styles = useThemedStyles(createStyles);
+  const { getScreenSurface } = useAppTheme();
+  const { isParentUnlocked } = useParentSession();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const isWideLayout = windowWidth >= SYNC_TESTBED_WIDE_BREAKPOINT;
   const previewStore = useSharedStoreApi();
   const session = useNearbySyncSession();
   const sessionStateRef = useRef(session.state);
@@ -378,274 +391,354 @@ function SyncTestbedScene({
   }
 
   return (
-    <ScreenScaffold footer={<ScreenBackFooter />}>
-      <ScreenHeader title="Sync Testbed" />
-
-      <Tile
-        accessory={
-          <StatusBadge
-            label={getSyncPhaseLabel(session.state.phase)}
-            tone={getSyncPhaseTone(session.state.phase)}
-          />
-        }
-        title="Testbed Controls"
+    <View
+      style={[
+        styles.screen,
+        { backgroundColor: getScreenSurface(isParentUnlocked) },
+      ]}
+    >
+      <View
+        style={[
+          styles.content,
+          {
+            paddingTop: insets.top + 8,
+          },
+        ]}
       >
-        <Text style={styles.body}>
-          Use the simulator controls to drive the live sync preview below
-          without needing a second device.
-        </Text>
-        <CompactSurface>
-          <SectionLabel>Fixture</SectionLabel>
-          <ActionPillRow>
-            {FIXTURE_STRATEGIES.map((strategy) => (
-              <ActionPill
-                key={strategy.id}
-                label={strategy.label}
-                onPress={() => {
-                  setFixtureStrategyId(strategy.id);
-                  setStatusMessage(
-                    `Fixture strategy set to ${strategy.label.toLowerCase()}.`,
-                  );
-                }}
-                tone={fixtureStrategyId === strategy.id ? 'primary' : 'neutral'}
-              />
-            ))}
-          </ActionPillRow>
-          <Text style={styles.helper}>
-            Left bootstrap uses local preview history with an empty remote.
-            Right bootstrap uses an empty local preview with seeded remote
-            history. Shared base branches both sides from a selected syncable
-            transaction.
-          </Text>
-          <Text style={styles.helper}>
-            The simulator keeps the hidden host and join work internal and
-            derives it from the selected fixture.
-          </Text>
-          {fixtureStrategyId === 'shared-base' ? (
-            <>
-              <ActionPillRow>
-                <ActionPill
-                  label={
-                    selectedCommonBaseOption
-                      ? 'Choose Shared Base'
-                      : 'No Shared Base'
-                  }
-                  onPress={() => {
-                    if (commonBaseOptions.length === 0) {
-                      return;
-                    }
+        <ScreenHeader title="Sync Testbed" />
 
-                    setBaseSelectorVisible(true);
-                  }}
-                  tone={selectedCommonBaseOption ? 'primary' : 'neutral'}
-                />
-              </ActionPillRow>
-              <Text style={styles.helper}>
-                {selectedCommonBaseOption
-                  ? `Selected base: ${selectedCommonBaseOption.summaryText}`
-                  : 'No merge-safe shared base is currently available from the local syncable history.'}
-              </Text>
-            </>
-          ) : null}
-        </CompactSurface>
-        <CompactSurface>
-          <SectionLabel>Session</SectionLabel>
-          <ActionPillRow>
-            <ActionPill
-              label="Sync Now"
-              onPress={() => {
-                void startCurrentMode();
-              }}
-              tone="primary"
-            />
-            <ActionPill
-              label="Confirm Merge"
-              onPress={() => {
-                void session.confirmMergeAndPrepareCommit();
-              }}
-            />
-            <ActionPill
-              label="Cancel Session"
-              onPress={() => {
-                void session.cancelSession();
-              }}
-              tone="critical"
-            />
-            <ActionPill
-              label="Reset Preview"
-              onPress={() => {
-                void resetPreview();
-              }}
-            />
-          </ActionPillRow>
-        </CompactSurface>
-        <CompactSurface>
-          <SectionLabel>Inspect</SectionLabel>
-          <ActionPillRow>
-            <ActionPill
-              label="View Preview History"
-              onPress={() => {
-                setPreviewHistoryVisible(true);
-              }}
-            />
-          </ActionPillRow>
-          <Text style={styles.helper}>
-            Opens the sandboxed transaction log so you can review the simulated
-            merge result without leaving the testbed.
-          </Text>
-        </CompactSurface>
-        <Text style={styles.helper}>
-          Fixture: {fixtureStrategyId}. Scenario:{' '}
-          {simulatorState.scenarioId ?? 'manual'}.
-        </Text>
-        <Text style={styles.helper}>{statusMessage}</Text>
-      </Tile>
+        <View
+          style={[
+            styles.splitBody,
+            isWideLayout ? styles.splitBodyWide : styles.splitBodyNarrow,
+          ]}
+          testID="sync-testbed-split-body"
+        >
+          <View
+            style={styles.layoutModeMarker}
+            testID={
+              isWideLayout
+                ? 'sync-testbed-layout-wide'
+                : 'sync-testbed-layout-narrow'
+            }
+          />
+          <View style={styles.pane}>
+            <ScrollView
+              contentContainerStyle={styles.controlsScrollContent}
+              showsVerticalScrollIndicator={false}
+              style={styles.scrollPane}
+              testID="sync-testbed-controls-scroll"
+            >
+              <Tile
+                accessory={
+                  <StatusBadge
+                    label={getSyncPhaseLabel(session.state.phase)}
+                    tone={getSyncPhaseTone(session.state.phase)}
+                  />
+                }
+                title="Testbed Controls"
+              >
+                <Text style={styles.body}>
+                  Use the simulator controls to drive the live sync preview
+                  below without needing a second device.
+                </Text>
+                <CompactSurface>
+                  <SectionLabel>Fixture</SectionLabel>
+                  <ActionPillRow>
+                    {FIXTURE_STRATEGIES.map((strategy) => (
+                      <ActionPill
+                        key={strategy.id}
+                        label={strategy.label}
+                        onPress={() => {
+                          setFixtureStrategyId(strategy.id);
+                          setStatusMessage(
+                            `Fixture strategy set to ${strategy.label.toLowerCase()}.`,
+                          );
+                        }}
+                        tone={
+                          fixtureStrategyId === strategy.id
+                            ? 'primary'
+                            : 'neutral'
+                        }
+                      />
+                    ))}
+                  </ActionPillRow>
+                  <Text style={styles.helper}>
+                    Left bootstrap uses local preview history with an empty
+                    remote. Right bootstrap uses an empty local preview with
+                    seeded remote history. Shared base branches both sides from
+                    a selected syncable transaction.
+                  </Text>
+                  <Text style={styles.helper}>
+                    The simulator keeps the hidden host and join work internal
+                    and derives it from the selected fixture.
+                  </Text>
+                  {fixtureStrategyId === 'shared-base' ? (
+                    <>
+                      <ActionPillRow>
+                        <ActionPill
+                          label={
+                            selectedCommonBaseOption
+                              ? 'Choose Shared Base'
+                              : 'No Shared Base'
+                          }
+                          onPress={() => {
+                            if (commonBaseOptions.length === 0) {
+                              return;
+                            }
 
-      <Tile collapsible initiallyCollapsed title="Scenario Presets">
-        <Text style={styles.body}>
-          Each preset runs the live session and simulated remote responses until
-          the target state is visible in the preview.
-        </Text>
-        <ActionPillRow>
-          {SCENARIO_ITEMS.map((item) => (
-            <ActionPill
-              key={item.id}
-              label={item.label}
-              onPress={() => {
-                void runScenario(item.id);
-              }}
-              tone={
-                simulatorState.scenarioId === item.id ? 'primary' : 'neutral'
-              }
-            />
-          ))}
-        </ActionPillRow>
-        {isRunningScenario ? (
-          <Text style={styles.helper}>Running preset automation...</Text>
-        ) : null}
-      </Tile>
+                            setBaseSelectorVisible(true);
+                          }}
+                          tone={
+                            selectedCommonBaseOption ? 'primary' : 'neutral'
+                          }
+                        />
+                      </ActionPillRow>
+                      <Text style={styles.helper}>
+                        {selectedCommonBaseOption
+                          ? `Selected base: ${selectedCommonBaseOption.summaryText}`
+                          : 'No merge-safe shared base is currently available from the local syncable history.'}
+                      </Text>
+                    </>
+                  ) : null}
+                </CompactSurface>
+                <CompactSurface>
+                  <SectionLabel>Session</SectionLabel>
+                  <ActionPillRow>
+                    <ActionPill
+                      label="Sync Now"
+                      onPress={() => {
+                        void startCurrentMode();
+                      }}
+                      tone="primary"
+                    />
+                    <ActionPill
+                      label="Confirm Merge"
+                      onPress={() => {
+                        void session.confirmMergeAndPrepareCommit();
+                      }}
+                    />
+                    <ActionPill
+                      label="Cancel Session"
+                      onPress={() => {
+                        void session.cancelSession();
+                      }}
+                      tone="critical"
+                    />
+                    <ActionPill
+                      label="Reset Preview"
+                      onPress={() => {
+                        void resetPreview();
+                      }}
+                    />
+                  </ActionPillRow>
+                </CompactSurface>
+                <CompactSurface>
+                  <SectionLabel>Inspect</SectionLabel>
+                  <ActionPillRow>
+                    <ActionPill
+                      label="View Preview History"
+                      onPress={() => {
+                        setPreviewHistoryVisible(true);
+                      }}
+                    />
+                  </ActionPillRow>
+                  <Text style={styles.helper}>
+                    Opens the sandboxed transaction log so you can review the
+                    simulated merge result without leaving the testbed.
+                  </Text>
+                </CompactSurface>
+                <Text style={styles.helper}>
+                  Fixture: {fixtureStrategyId}. Scenario:{' '}
+                  {simulatorState.scenarioId ?? 'manual'}.
+                </Text>
+                <Text style={styles.helper}>{statusMessage}</Text>
+              </Tile>
 
-      <Tile collapsible initiallyCollapsed title="Manual Remote Steps">
-        <ActionPillRow>
-          <ActionPill
-            label="Show Discovery"
-            onPress={() => {
-              controller.emitDiscoveryUpdated();
-              setStatusMessage('Discovery list emitted.');
-            }}
-          />
-          <ActionPill
-            label="Incoming Pair"
-            onPress={() => {
-              controller.emitConnectionRequested();
-              setStatusMessage('Incoming pairing request emitted.');
-            }}
-          />
-          <ActionPill
-            label="Remote Hello"
-            onPress={() => {
-              controller.emitRemoteHello();
-              setStatusMessage('Remote hello emitted.');
-            }}
-          />
-          <ActionPill
-            label="Remote Summary"
-            onPress={() => {
-              controller.emitRemoteSummary();
-              setStatusMessage('Remote summary emitted.');
-            }}
-          />
-          <ActionPill
-            label="Remote History"
-            onPress={() => {
-              controller.emitRemoteHistoryTransfer();
-              setStatusMessage('Remote file transfer emitted.');
-            }}
-          />
-          <ActionPill
-            label="Unreadable File"
-            onPress={() => {
-              controller.emitRemoteHistoryTransfer({ invalidFile: true });
-              setStatusMessage('Unreadable file emitted.');
-            }}
-            tone="critical"
-          />
-          <ActionPill
-            label="Remote Merge"
-            onPress={() => {
-              controller.emitRemoteMergeResult();
-              setStatusMessage('Remote merge result emitted.');
-            }}
-          />
-          <ActionPill
-            label="Peer Confirm"
-            onPress={() => {
-              controller.emitRemotePrepareAck();
-              setStatusMessage('Peer confirmation emitted.');
-            }}
-          />
-          <ActionPill
-            label="Remote Commit"
-            onPress={() => {
-              controller.emitRemoteCommit();
-              setStatusMessage('Remote commit emitted.');
-            }}
-          />
-          <ActionPill
-            label="Commit Ack"
-            onPress={() => {
-              controller.emitRemoteCommitAck();
-              setStatusMessage('Commit ack emitted.');
-            }}
-          />
-          <ActionPill
-            label="Ack Mismatch"
-            onPress={() => {
-              controller.emitRemoteCommitAck({
-                bundleHash: 'sim-manual-mismatch',
-              });
-              setStatusMessage('Mismatched commit ack emitted.');
-            }}
-            tone="critical"
-          />
-          <ActionPill
-            label="Reject Response"
-            onPress={() => {
-              controller.emitRemoteSyncResponse({
-                accepted: false,
-                reason: 'Manual simulated rejection.',
-              });
-              setStatusMessage('Rejected sync response emitted.');
-            }}
-            tone="critical"
-          />
-          <ActionPill
-            label="Disconnect"
-            onPress={() => {
-              controller.emitDisconnect('Manual simulated disconnect.');
-              setStatusMessage('Disconnect emitted.');
-            }}
-            tone="critical"
-          />
-          <ActionPill
-            label="Remote Error"
-            onPress={() => {
-              controller.emitRemoteError(
-                'manual-simulated-error',
-                'Manual simulated remote error.',
-              );
-              setStatusMessage('Remote error emitted.');
-            }}
-            tone="critical"
-          />
-        </ActionPillRow>
-      </Tile>
+              <Tile collapsible initiallyCollapsed title="Scenario Presets">
+                <Text style={styles.body}>
+                  Each preset runs the live session and simulated remote
+                  responses until the target state is visible in the preview.
+                </Text>
+                <ActionPillRow>
+                  {SCENARIO_ITEMS.map((item) => (
+                    <ActionPill
+                      key={item.id}
+                      label={item.label}
+                      onPress={() => {
+                        void runScenario(item.id);
+                      }}
+                      tone={
+                        simulatorState.scenarioId === item.id
+                          ? 'primary'
+                          : 'neutral'
+                      }
+                    />
+                  ))}
+                </ActionPillRow>
+                {isRunningScenario ? (
+                  <Text style={styles.helper}>
+                    Running preset automation...
+                  </Text>
+                ) : null}
+              </Tile>
 
-      <View style={styles.previewColumn}>
-        <SectionLabel>Live Preview</SectionLabel>
-        <View style={styles.previewSurface}>
-          <SyncScreenContent session={session} />
+              <Tile collapsible initiallyCollapsed title="Manual Remote Steps">
+                <ActionPillRow>
+                  <ActionPill
+                    label="Show Discovery"
+                    onPress={() => {
+                      controller.emitDiscoveryUpdated();
+                      setStatusMessage('Discovery list emitted.');
+                    }}
+                  />
+                  <ActionPill
+                    label="Incoming Pair"
+                    onPress={() => {
+                      controller.emitConnectionRequested();
+                      setStatusMessage('Incoming pairing request emitted.');
+                    }}
+                  />
+                  <ActionPill
+                    label="Remote Hello"
+                    onPress={() => {
+                      controller.emitRemoteHello();
+                      setStatusMessage('Remote hello emitted.');
+                    }}
+                  />
+                  <ActionPill
+                    label="Remote Summary"
+                    onPress={() => {
+                      controller.emitRemoteSummary();
+                      setStatusMessage('Remote summary emitted.');
+                    }}
+                  />
+                  <ActionPill
+                    label="Remote History"
+                    onPress={() => {
+                      controller.emitRemoteHistoryTransfer();
+                      setStatusMessage('Remote file transfer emitted.');
+                    }}
+                  />
+                  <ActionPill
+                    label="Unreadable File"
+                    onPress={() => {
+                      controller.emitRemoteHistoryTransfer({
+                        invalidFile: true,
+                      });
+                      setStatusMessage('Unreadable file emitted.');
+                    }}
+                    tone="critical"
+                  />
+                  <ActionPill
+                    label="Remote Merge"
+                    onPress={() => {
+                      controller.emitRemoteMergeResult();
+                      setStatusMessage('Remote merge result emitted.');
+                    }}
+                  />
+                  <ActionPill
+                    label="Peer Confirm"
+                    onPress={() => {
+                      controller.emitRemotePrepareAck();
+                      setStatusMessage('Peer confirmation emitted.');
+                    }}
+                  />
+                  <ActionPill
+                    label="Remote Commit"
+                    onPress={() => {
+                      controller.emitRemoteCommit();
+                      setStatusMessage('Remote commit emitted.');
+                    }}
+                  />
+                  <ActionPill
+                    label="Commit Ack"
+                    onPress={() => {
+                      controller.emitRemoteCommitAck();
+                      setStatusMessage('Commit ack emitted.');
+                    }}
+                  />
+                  <ActionPill
+                    label="Ack Mismatch"
+                    onPress={() => {
+                      controller.emitRemoteCommitAck({
+                        bundleHash: 'sim-manual-mismatch',
+                      });
+                      setStatusMessage('Mismatched commit ack emitted.');
+                    }}
+                    tone="critical"
+                  />
+                  <ActionPill
+                    label="Reject Response"
+                    onPress={() => {
+                      controller.emitRemoteSyncResponse({
+                        accepted: false,
+                        reason: 'Manual simulated rejection.',
+                      });
+                      setStatusMessage('Rejected sync response emitted.');
+                    }}
+                    tone="critical"
+                  />
+                  <ActionPill
+                    label="Disconnect"
+                    onPress={() => {
+                      controller.emitDisconnect('Manual simulated disconnect.');
+                      setStatusMessage('Disconnect emitted.');
+                    }}
+                    tone="critical"
+                  />
+                  <ActionPill
+                    label="Remote Error"
+                    onPress={() => {
+                      controller.emitRemoteError(
+                        'manual-simulated-error',
+                        'Manual simulated remote error.',
+                      );
+                      setStatusMessage('Remote error emitted.');
+                    }}
+                    tone="critical"
+                  />
+                </ActionPillRow>
+              </Tile>
+            </ScrollView>
+          </View>
+
+          <View
+            style={[
+              styles.splitDivider,
+              isWideLayout
+                ? styles.splitDividerWide
+                : styles.splitDividerNarrow,
+            ]}
+          />
+
+          <View style={styles.pane}>
+            <View style={styles.previewColumn}>
+              <SectionLabel>Live Preview</SectionLabel>
+              <View style={styles.previewSurface}>
+                <ScrollView
+                  contentContainerStyle={styles.previewScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  style={styles.scrollPane}
+                  testID="sync-testbed-preview-scroll"
+                >
+                  <SyncScreenContent session={session} />
+                </ScrollView>
+              </View>
+            </View>
+          </View>
         </View>
+      </View>
+
+      <View
+        style={[
+          styles.footer,
+          {
+            paddingBottom: insets.bottom + 10,
+          },
+        ]}
+      >
+        <ScreenBackFooter />
       </View>
 
       <SyncBaseTransactionSelectorModal
@@ -668,7 +761,7 @@ function SyncTestbedScene({
       >
         <TransactionsScreenContent />
       </ListScaffold>
-    </ScreenScaffold>
+    </View>
   );
 }
 
@@ -755,21 +848,83 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       fontSize: 14,
       lineHeight: 20,
     },
+    content: {
+      flex: 1,
+      gap: 10,
+      paddingBottom: 16,
+      paddingHorizontal: 12,
+    },
+    controlsScrollContent: {
+      gap: 10,
+      paddingBottom: 4,
+    },
+    footer: {
+      backgroundColor: tokens.tabBarBackground,
+      borderTopColor: tokens.border,
+      borderTopWidth: 1,
+      paddingHorizontal: 14,
+      paddingTop: 10,
+    },
     helper: {
       color: tokens.textMuted,
       fontSize: 12,
       lineHeight: 17,
     },
+    layoutModeMarker: {
+      height: 0,
+      position: 'absolute',
+      width: 0,
+    },
+    pane: {
+      flex: 1,
+      minHeight: 0,
+    },
     previewColumn: {
+      flex: 1,
       gap: 8,
+      minHeight: 0,
     },
     previewSurface: {
       borderColor: tokens.border,
       borderRadius: 18,
       borderWidth: 1,
-      gap: 10,
-      minHeight: 320,
+      flex: 1,
+      minHeight: 0,
       padding: 10,
       position: 'relative',
+    },
+    previewScrollContent: {
+      gap: 10,
+      paddingBottom: 4,
+    },
+    screen: {
+      flex: 1,
+    },
+    scrollPane: {
+      flex: 1,
+    },
+    splitDivider: {
+      backgroundColor: tokens.border,
+      opacity: 0.9,
+    },
+    splitDividerNarrow: {
+      height: 1,
+      width: '100%',
+    },
+    splitDividerWide: {
+      height: '100%',
+      width: 1,
+    },
+    splitBody: {
+      flex: 1,
+      gap: 12,
+      minHeight: 0,
+      position: 'relative',
+    },
+    splitBodyNarrow: {
+      flexDirection: 'column',
+    },
+    splitBodyWide: {
+      flexDirection: 'row',
     },
   });

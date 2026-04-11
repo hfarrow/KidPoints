@@ -10,15 +10,18 @@ export type SyncReviewOutcome =
   | 'outgoing-bootstrap';
 
 export type SyncReviewChildRow = {
+  basePoints: number;
   change: 'added' | 'removed' | 'unchanged';
   childId: string;
   childName: string;
+  localNewContributionPoints: number;
   points: number;
+  remoteNewContributionPoints: number;
 };
 
 export type SyncReviewTransactionItem = {
   id: string;
-  origin: 'local' | 'remote';
+  origin: 'base' | 'local' | 'remote';
   summaryText: string;
   timestampLabel: string;
 };
@@ -166,6 +169,17 @@ function getPostBaseEntries(
     : projection.entries;
 }
 
+function findEntryByHash(
+  projection: SyncProjection,
+  entryHash: string | null,
+): SyncEntry | null {
+  if (!entryHash) {
+    return null;
+  }
+
+  return projection.entries.find((entry) => entry.hash === entryHash) ?? null;
+}
+
 function buildReviewTransactionItems(args: {
   bundle: SyncBundle;
   localDeviceId: string;
@@ -209,8 +223,19 @@ function buildReviewTransactionItems(args: {
       entry,
     ]),
   );
+  const baseEntry =
+    findEntryByHash(localProjection, bundle.commonBaseHash) ??
+    findEntryByHash(remoteProjection, bundle.commonBaseHash);
+  const baseTransaction = baseEntry
+    ? {
+        id: `base-${baseEntry.hash}`,
+        origin: 'base' as const,
+        summaryText: summarizeSyncEntry(baseEntry, entriesById),
+        timestampLabel: formatSyncTimestamp(baseEntry.occurredAt),
+      }
+    : null;
 
-  return [...localEntries, ...remoteEntries]
+  const postBaseTransactions = [...localEntries, ...remoteEntries]
     .map((entry) => ({
       entry,
       origin:
@@ -235,43 +260,71 @@ function buildReviewTransactionItems(args: {
       summaryText: summarizeSyncEntry(entry, entriesById),
       timestampLabel: formatSyncTimestamp(entry.occurredAt),
     }));
+
+  return baseTransaction
+    ? [...postBaseTransactions, baseTransaction]
+    : postBaseTransactions;
 }
 
 function buildReviewChildren(args: {
+  bundle: SyncBundle;
   localProjection: SyncProjection;
+  remoteProjection: SyncProjection;
   mergedHead: SyncBundle['mergedHead'];
 }) {
-  const { localProjection, mergedHead } = args;
+  const { bundle, localProjection, mergedHead, remoteProjection } = args;
   const localChildIds = new Set(Object.keys(localProjection.head.childrenById));
   const mergedChildIds = new Set(Object.keys(mergedHead.childrenById));
+  const reconciliationsByChildId = new Map(
+    bundle.childReconciliations.map((reconciliation) => [
+      reconciliation.childId,
+      reconciliation,
+    ]),
+  );
   const mergedChildren: SyncReviewChildRow[] = Object.entries(
     mergedHead.childrenById,
   )
     .sort(([, leftChild], [, rightChild]) =>
       leftChild.name.localeCompare(rightChild.name),
     )
-    .map(([childId, child]) => ({
-      change: localChildIds.has(childId)
-        ? ('unchanged' as const)
-        : ('added' as const),
-      childId,
-      childName: child.name,
-      points: child.points,
-    }));
+    .map(([childId, child]) => {
+      const localPoints =
+        localProjection.head.childrenById[childId]?.points ?? 0;
+      const remotePoints =
+        remoteProjection.head.childrenById[childId]?.points ?? 0;
+      const reconciliation = reconciliationsByChildId.get(childId);
+
+      return {
+        basePoints: reconciliation?.basePoints ?? 0,
+        change: localChildIds.has(childId)
+          ? ('unchanged' as const)
+          : ('added' as const),
+        childId,
+        childName: child.name,
+        localNewContributionPoints: reconciliation?.leftDelta ?? localPoints,
+        points: child.points,
+        remoteNewContributionPoints: reconciliation?.rightDelta ?? remotePoints,
+      };
+    });
   const removedChildren = [...localChildIds]
     .filter((childId) => !mergedChildIds.has(childId))
     .map((childId) => {
       const localChild = localProjection.head.childrenById[childId];
+      const remoteChild = remoteProjection.head.childrenById[childId];
 
       if (!localChild) {
         return null;
       }
 
       return {
+        basePoints: localChild.points,
         change: 'removed' as const,
         childId,
         childName: localChild.name,
+        localNewContributionPoints: 0,
         points: localChild.points,
+        remoteNewContributionPoints:
+          (remoteChild?.points ?? 0) - localChild.points,
       };
     })
     .filter(Boolean) as SyncReviewChildRow[];
@@ -325,8 +378,10 @@ export function buildSyncReviewModel(args: {
   return {
     ...outcome,
     children: buildReviewChildren({
+      bundle,
       localProjection,
       mergedHead: bundle.mergedHead,
+      remoteProjection,
     }),
     transactions: buildReviewTransactionItems({
       bundle,

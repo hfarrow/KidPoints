@@ -5,6 +5,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react-native';
+import * as ReactNative from 'react-native';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import { SyncTestbedScreen } from '../../../src/features/sync/SyncTestbedScreen';
@@ -15,6 +16,38 @@ import {
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockFileContents = new Map<string, string>();
+
+function setWindowDimensions(width: number, height: number) {
+  const setDimensions = ReactNative.Dimensions.set as unknown as (dims: {
+    screen: {
+      fontScale: number;
+      height: number;
+      scale: number;
+      width: number;
+    };
+    window: {
+      fontScale: number;
+      height: number;
+      scale: number;
+      width: number;
+    };
+  }) => void;
+
+  setDimensions({
+    screen: {
+      fontScale: 1,
+      height,
+      scale: 1,
+      width,
+    },
+    window: {
+      fontScale: 1,
+      height,
+      scale: 1,
+      width,
+    },
+  });
+}
 
 jest.mock('expo-file-system', () => {
   class MockFile {
@@ -90,6 +123,7 @@ async function renderSyncTestbed() {
 describe('SyncTestbedScreen', () => {
   beforeEach(() => {
     mockFileContents.clear();
+    setWindowDimensions(390, 844);
   });
 
   it('renders controls above the shared sync preview without the route shell', async () => {
@@ -99,6 +133,21 @@ describe('SyncTestbedScreen', () => {
     expect(screen.getByText('Testbed Controls')).toBeTruthy();
     expect(screen.getByText('Instructions')).toBeTruthy();
     expect(screen.queryByText('Device Sync')).toBeNull();
+    expect(screen.getByTestId('sync-testbed-split-body')).toBeTruthy();
+    expect(screen.getByTestId('sync-testbed-layout-narrow')).toBeTruthy();
+    expect(screen.getByTestId('sync-testbed-controls-scroll')).toBeTruthy();
+    expect(screen.getByTestId('sync-testbed-preview-scroll')).toBeTruthy();
+  });
+
+  it('switches to the wide split layout on larger screens', async () => {
+    setWindowDimensions(1200, 900);
+
+    await renderSyncTestbed();
+
+    expect(screen.getByTestId('sync-testbed-split-body')).toBeTruthy();
+    expect(screen.getByTestId('sync-testbed-layout-wide')).toBeTruthy();
+    expect(screen.getByTestId('sync-testbed-controls-scroll')).toBeTruthy();
+    expect(screen.getByTestId('sync-testbed-preview-scroll')).toBeTruthy();
   });
 
   it('hides internal sync roles and runs presets into review and error states', async () => {
@@ -113,6 +162,7 @@ describe('SyncTestbedScreen', () => {
     fireEvent.press(screen.getByLabelText('Expand Scenario Presets'));
     fireEvent.press(screen.getByText('Happy Review'));
     await waitFor(() => expect(screen.getByText('Review Sync')).toBeTruthy());
+    expect(screen.queryByText('Instructions')).toBeNull();
 
     fireEvent.press(screen.getByText('Unavailable'));
     await waitFor(() =>

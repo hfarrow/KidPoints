@@ -195,6 +195,9 @@ describe('syncTestbedFixtures', () => {
     expect(review.transactions.some((item) => item.origin === 'local')).toBe(
       true,
     );
+    expect(review.transactions.some((item) => item.origin === 'base')).toBe(
+      true,
+    );
     expect(review.transactions.some((item) => item.origin === 'remote')).toBe(
       true,
     );
@@ -249,5 +252,6 @@ describe('syncTestbedFixtures', () => {
       'remote',
       'local',
     ]);
+    expect(adjacentOrigins.at(-1)).toBe('base');
   });
 });

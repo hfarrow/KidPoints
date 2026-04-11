@@ -126,6 +126,24 @@ function getReviewStatusCopy(state: NearbySyncSessionController['state']) {
   return 'Review the updated history, then confirm on both phones to finish syncing.';
 }
 
+function formatChildPointsContribution(args: {
+  basePoints: number;
+  localNewContributionPoints: number;
+  points: number;
+  remoteNewContributionPoints: number;
+}) {
+  const {
+    basePoints,
+    localNewContributionPoints,
+    points,
+    remoteNewContributionPoints,
+  } = args;
+  const localOperator = localNewContributionPoints < 0 ? '-' : '+';
+  const remoteOperator = remoteNewContributionPoints < 0 ? '-' : '+';
+
+  return `${basePoints} (base) ${localOperator} ${Math.abs(localNewContributionPoints)} (yours) ${remoteOperator} ${Math.abs(remoteNewContributionPoints)} (theirs) = ${points}`;
+}
+
 function SyncTileActionRail({
   isApplied,
   isAwaitingPeerPrepare,
@@ -375,7 +393,18 @@ function SyncReviewTile({
                   <StatusBadge label="- Removed" size="mini" tone="warning" />
                 ) : null}
               </View>
-              <Text style={styles.childPoints}>{child.points} points</Text>
+              <Text style={styles.childPoints}>
+                {child.change === 'removed'
+                  ? `${child.points} points`
+                  : formatChildPointsContribution({
+                      basePoints: child.basePoints,
+                      localNewContributionPoints:
+                        child.localNewContributionPoints,
+                      points: child.points,
+                      remoteNewContributionPoints:
+                        child.remoteNewContributionPoints,
+                    })}
+              </Text>
             </CompactSurface>
           ))}
         </View>
@@ -386,8 +415,22 @@ function SyncReviewTile({
           Synced History
         </Text>
         <View style={styles.transactionOriginHeader}>
-          <Text style={styles.transactionOriginLabel}>Yours</Text>
-          <Text style={styles.transactionOriginLabel}>Theirs</Text>
+          <Text
+            style={[
+              styles.transactionOriginLabel,
+              styles.transactionOriginLabelLeft,
+            ]}
+          >
+            Yours
+          </Text>
+          <Text
+            style={[
+              styles.transactionOriginLabel,
+              styles.transactionOriginLabelRight,
+            ]}
+          >
+            Theirs
+          </Text>
         </View>
         {review.transactions.length === 0 ? (
           <Text style={styles.helper}>
@@ -397,23 +440,32 @@ function SyncReviewTile({
           <View style={styles.transactionColumn}>
             {review.transactions.map((transaction) => {
               const isLocalOrigin = transaction.origin === 'local';
+              const isBaseOrigin = transaction.origin === 'base';
 
               return (
                 <View
                   key={transaction.id}
                   style={[
                     styles.reviewTransactionWrap,
-                    isLocalOrigin
-                      ? styles.reviewTransactionWrapLocal
-                      : styles.reviewTransactionWrapRemote,
+                    isBaseOrigin
+                      ? styles.reviewTransactionWrapBase
+                      : isLocalOrigin
+                        ? styles.reviewTransactionWrapLocal
+                        : styles.reviewTransactionWrapRemote,
                   ]}
                 >
+                  {isBaseOrigin ? (
+                    <Text style={styles.reviewBaseLabel}>Base</Text>
+                  ) : null}
                   <View
+                    testID={`review-transaction-${transaction.id}`}
                     style={[
                       styles.reviewTransactionBubble,
-                      isLocalOrigin
-                        ? styles.reviewTransactionBubbleLocal
-                        : styles.reviewTransactionBubbleRemote,
+                      isBaseOrigin
+                        ? styles.reviewTransactionBubbleBase
+                        : isLocalOrigin
+                          ? styles.reviewTransactionBubbleLocal
+                          : styles.reviewTransactionBubbleRemote,
                     ]}
                   >
                     <Text style={styles.reviewTransactionSummary}>
@@ -469,9 +521,12 @@ export function SyncScreenContent({
     setCelebrationTick((currentValue) => currentValue + 1);
   }, [connectedEndpointId, hapticsEnabled]);
 
+  const shouldShowInstructions =
+    state.phase !== 'review' && state.phase !== 'success';
+
   return (
     <>
-      <SyncInstructionsTile />
+      {shouldShowInstructions ? <SyncInstructionsTile /> : null}
 
       {state.phase === 'error' ? (
         <SyncErrorTile
@@ -638,6 +693,10 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       paddingVertical: 7,
       width: '90%',
     },
+    reviewTransactionBubbleBase: {
+      backgroundColor: tokens.floatingLabelSurface,
+      borderColor: tokens.accent,
+    },
     reviewTransactionBubbleLocal: {
       backgroundColor: tokens.transactionLocalSurface,
     },
@@ -657,6 +716,9 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     },
     reviewTransactionWrap: {
       width: '100%',
+    },
+    reviewTransactionWrapBase: {
+      alignItems: 'center',
     },
     reviewTransactionWrapLocal: {
       alignItems: 'flex-start',
@@ -700,9 +762,24 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     },
     transactionOriginLabel: {
       color: tokens.textMuted,
+      flex: 1,
       fontSize: 11,
       fontWeight: '800',
       letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    transactionOriginLabelLeft: {
+      textAlign: 'left',
+    },
+    transactionOriginLabelRight: {
+      textAlign: 'right',
+    },
+    reviewBaseLabel: {
+      color: tokens.accent,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+      marginBottom: 6,
       textTransform: 'uppercase',
     },
     transactionColumn: {
