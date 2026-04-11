@@ -11,6 +11,7 @@ Use these notes as project references before generating or changing code:
 - Theming reference: `.ai/knowledge/theming.md`
 - UI composition reference: `.ai/knowledge/ui-composition.md`
 - Logging reference: `.ai/knowledge/logging.md`
+- Sync simulation reference: `.ai/knowledge/sync-and-simulation.md`
 
 When generating React or React Native code for this repo:
 
@@ -22,6 +23,7 @@ When generating React or React Native code for this repo:
 - Follow the theming guidance in `.ai/knowledge/theming.md` for theme-aware UI.
 - Follow the UI composition guidance in `.ai/knowledge/ui-composition.md` for screens, tiles, action rows, badges, and logged interactions.
 - Follow the logging guidance in `.ai/knowledge/logging.md` for app and module logging.
+- Follow the sync guidance in `.ai/knowledge/sync-and-simulation.md` for the nearby sync runtime seam, the in-app sync testbed, and simulator parity expectations.
 - Prefer the shared logging helpers in `src/logging/logger.ts` over repeating fixed log messages and levels inline.
 - Use `temp` only for temporary debug logging that helps while actively investigating an issue, and remove or downgrade those logs before shipping unless there is a clear reason to keep them.
 - Prefer idiomatic React patterns over clever shortcuts.
@@ -37,4 +39,5 @@ Workflow rules for this repo:
 - If `yarn check` fails with fixable Biome or ESLint issues, run `yarn check-fix` and then re-read any files that were modified by those fixes before continuing.
 - Always run `yarn test` after completing testable features.
 - Always add tests for new functionality.
+- Treat the sync simulator and `/sync-testbed` route as maintained product tooling. Changes to the real sync flow, protocol, state machine, or runtime contract should be reviewed for corresponding simulator, fixture, and testbed updates in the same change whenever practical.
 - Before a commit, prefer running `yarn clean:cache` and then `yarn verify`.

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { StateStorage } from 'zustand/middleware';
 
+import { ListScaffold } from '../../components/ListScaffold';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
@@ -22,6 +23,7 @@ import {
 } from '../../state/sharedStore';
 import type { SharedDocument } from '../../state/sharedTypes';
 import { type useAppTheme, useThemedStyles } from '../theme/appTheme';
+import { TransactionsScreenContent } from '../transactions/TransactionsScreenContent';
 import { SyncBaseTransactionSelectorModal } from './SyncBaseTransactionSelectorModal';
 import {
   getSyncPhaseLabel,
@@ -201,6 +203,7 @@ function SyncTestbedScene({
     controller.getSnapshot(),
   );
   const [isBaseSelectorVisible, setBaseSelectorVisible] = useState(false);
+  const [isPreviewHistoryVisible, setPreviewHistoryVisible] = useState(false);
   const [isRunningScenario, setIsRunningScenario] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Ready to simulate.');
 
@@ -510,6 +513,21 @@ function SyncTestbedScene({
             />
           </ActionPillRow>
         </CompactSurface>
+        <CompactSurface>
+          <SectionLabel>Inspect</SectionLabel>
+          <ActionPillRow>
+            <ActionPill
+              label="View Preview History"
+              onPress={() => {
+                setPreviewHistoryVisible(true);
+              }}
+            />
+          </ActionPillRow>
+          <Text style={styles.helper}>
+            Opens the sandboxed transaction log so you can review the simulated
+            merge result without leaving the testbed.
+          </Text>
+        </CompactSurface>
         <Text style={styles.helper}>
           Mode: {simulatorState.mode}. Fixture: {fixtureStrategyId}. Scenario:{' '}
           {simulatorState.scenarioId ?? 'manual'}.
@@ -675,6 +693,15 @@ function SyncTestbedScene({
         selectedTransactionId={commonBaseTransactionId}
         visible={isBaseSelectorVisible}
       />
+      <ListScaffold
+        closeButtonPlacement="footer"
+        onRequestClose={() => setPreviewHistoryVisible(false)}
+        subtitle="Showing the transaction ledger inside the sync testbed sandbox."
+        title="Preview Transactions"
+        visible={isPreviewHistoryVisible}
+      >
+        <TransactionsScreenContent />
+      </ListScaffold>
     </ScreenScaffold>
   );
 }

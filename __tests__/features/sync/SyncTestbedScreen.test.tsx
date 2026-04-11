@@ -124,4 +124,20 @@ describe('SyncTestbedScreen', () => {
       ).toBeTruthy(),
     );
   });
+
+  it('can open the sandbox preview transaction log after a simulated success', async () => {
+    await renderSyncTestbed();
+
+    fireEvent.press(screen.getByLabelText('Expand Scenario Presets'));
+    fireEvent.press(screen.getByText('Happy Success'));
+
+    await waitFor(() => expect(screen.getByText('Sync Complete')).toBeTruthy());
+
+    fireEvent.press(screen.getByText('View Preview History'));
+
+    await waitFor(() =>
+      expect(screen.getByText('Preview Transactions')).toBeTruthy(),
+    );
+    expect(screen.getByText('Applied Device Sync')).toBeTruthy();
+  });
 });
