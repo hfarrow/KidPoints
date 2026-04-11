@@ -126,6 +126,7 @@ describe('syncSimulatorRuntime', () => {
       endpointId: 'sim-host-endpoint',
       envelopeJson: serializeSyncEnvelope(
         createHelloEnvelope({
+          bootstrapToken: 'sim-bootstrap-test',
           deviceInstanceId: 'local-device',
           sessionId: 'local-session',
         }),

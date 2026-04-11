@@ -37,6 +37,7 @@ function createFixtureBundle() {
 describe('syncProtocol', () => {
   it('parses a HELLO envelope with the expected protocol version', () => {
     const envelope = createHelloEnvelope({
+      bootstrapToken: 'bootstrap-token-1',
       deviceInstanceId: 'device-sync-protocol',
       sessionId: 'sync-session-1',
     });

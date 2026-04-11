@@ -33,7 +33,6 @@ import {
 import { SyncRuntimeProvider } from './syncRuntimeContext';
 import type {
   SyncSimulatorController,
-  SyncSimulatorMode,
   SyncTestbedScenarioId,
 } from './syncSimulatorRuntime';
 import { createSimulatorNearbySyncRuntime } from './syncSimulatorRuntime';
@@ -55,6 +54,8 @@ const SCENARIO_ITEMS: {
   { id: 'happy-path-review', label: 'Happy Review' },
   { id: 'happy-path-success', label: 'Happy Success' },
   { id: 'availability-unavailable', label: 'Unavailable' },
+  { id: 'nfc-unsupported', label: 'No NFC' },
+  { id: 'nfc-bootstrap-timeout', label: 'NFC Timeout' },
   { id: 'permissions-denied', label: 'Permissions' },
   { id: 'connection-rejected', label: 'Rejected' },
   { id: 'payload-transfer-failed', label: 'Payload Fail' },
@@ -64,6 +65,7 @@ const SCENARIO_ITEMS: {
   { id: 'sync-response-rejected', label: 'Response Reject' },
   { id: 'commit-ack-bundle-mismatch', label: 'Ack Mismatch' },
   { id: 'disconnect-during-transfer', label: 'Disconnect' },
+  { id: 'wrong-peer-bootstrap-token', label: 'Wrong Peer' },
 ];
 
 const FIXTURE_STRATEGIES: {
@@ -281,15 +283,10 @@ function SyncTestbedScene({
   }
 
   async function startCurrentMode() {
-    if (simulatorState.mode === 'host') {
-      await session.startHostFlow();
-      setStatusMessage('Local preview started in host mode.');
-      return;
-    }
-
-    await session.startJoinFlow();
-    controller.emitDiscoveryUpdated();
-    setStatusMessage('Local preview started in joiner mode.');
+    await session.startSyncFlow();
+    setStatusMessage(
+      `Local preview started in ${simulatorState.mode} mode with NFC bootstrap.`,
+    );
   }
 
   async function runScenario(scenarioId: SyncTestbedScenarioId) {
@@ -307,38 +304,32 @@ function SyncTestbedScene({
       );
       controller.applyScenario(scenarioId);
 
-      if (scenarioId === 'availability-unavailable') {
-        await startModeForScenario(simulatorState.mode, session, controller);
-        setStatusMessage('Reached availability error state.');
+      if (
+        scenarioId === 'availability-unavailable' ||
+        scenarioId === 'permissions-denied' ||
+        scenarioId === 'nfc-unsupported'
+      ) {
+        await startModeForScenario(session);
+        setStatusMessage('Reached startup validation error state.');
         return;
       }
 
-      if (scenarioId === 'permissions-denied') {
-        await startModeForScenario(simulatorState.mode, session, controller);
-        setStatusMessage('Reached permissions error state.');
+      await startModeForScenario(session);
+
+      if (scenarioId === 'nfc-bootstrap-timeout') {
+        await waitForCondition(() => sessionStateRef.current.phase === 'error');
+        setStatusMessage('Reached NFC timeout state.');
         return;
       }
 
-      await startModeForScenario(simulatorState.mode, session, controller);
-
-      if (simulatorState.mode === 'host') {
-        controller.emitConnectionRequested();
-      } else {
-        await waitForCondition(
-          () => sessionStateRef.current.discoveredEndpoints.length > 0,
-        );
-        await session.connectToEndpoint(controller.getDefaultRemoteEndpoint());
-      }
-
-      await waitForCondition(() => sessionStateRef.current.phase === 'pairing');
-
-      if (scenarioId === 'connection-rejected') {
-        await session.acceptPairingCode();
-        setStatusMessage('Reached rejected connection state.');
+      if (
+        scenarioId === 'connection-rejected' ||
+        scenarioId === 'wrong-peer-bootstrap-token'
+      ) {
+        await waitForCondition(() => sessionStateRef.current.phase === 'error');
+        setStatusMessage('Reached connection validation error state.');
         return;
       }
-
-      await session.acceptPairingCode();
 
       if (scenarioId === 'disconnect-during-transfer') {
         await waitForCondition(() => sessionStateRef.current.phase === 'error');
@@ -480,17 +471,11 @@ function SyncTestbedScene({
           <SectionLabel>Session</SectionLabel>
           <ActionPillRow>
             <ActionPill
-              label={`Start ${capitalize(simulatorState.mode)}`}
+              label={`Sync ${capitalize(simulatorState.mode)}`}
               onPress={() => {
                 void startCurrentMode();
               }}
               tone="primary"
-            />
-            <ActionPill
-              label="Accept Pair"
-              onPress={() => {
-                void session.acceptPairingCode();
-              }}
             />
             <ActionPill
               label="Confirm Merge"
@@ -725,17 +710,9 @@ async function resetPreviewToSeed(
 }
 
 async function startModeForScenario(
-  mode: SyncSimulatorMode,
   session: ReturnType<typeof useNearbySyncSession>,
-  controller: SyncSimulatorController,
 ) {
-  if (mode === 'host') {
-    await session.startHostFlow();
-    return;
-  }
-
-  await session.startJoinFlow();
-  controller.emitDiscoveryUpdated();
+  await session.startSyncFlow();
 }
 
 async function waitForCondition(

@@ -2,7 +2,10 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import { SyncScreen } from '../../../src/features/sync/SyncScreen';
-import type { SyncSessionState } from '../../../src/features/sync/syncSessionMachine';
+import {
+  createInitialSyncSessionState,
+  type SyncSessionState,
+} from '../../../src/features/sync/syncSessionMachine';
 
 type MockSyncSession = {
   acceptPairingCode: jest.Mock;
@@ -14,6 +17,7 @@ type MockSyncSession = {
   revertLastAppliedSync: jest.Mock;
   startHostFlow: jest.Mock;
   startJoinFlow: jest.Mock;
+  startSyncFlow: jest.Mock;
   state: SyncSessionState;
 };
 
@@ -27,36 +31,28 @@ const mockSession: MockSyncSession = {
   revertLastAppliedSync: jest.fn(),
   startHostFlow: jest.fn(),
   startJoinFlow: jest.fn(),
+  startSyncFlow: jest.fn(),
   state: {
-    authToken: null,
+    ...createInitialSyncSessionState(),
     availability: {
       isReady: true,
       isSupported: true,
       playServicesStatus: 0,
       reason: 'ready' as const,
     },
-    connectedEndpoint: null,
-    discoveredEndpoints: [],
-    errorCode: null,
-    errorMessage: null,
-    isAwaitingPeerPrepare: false,
-    localPrepareConfirmed: false,
+    nfcAvailability: {
+      hasAdapter: true,
+      isEnabled: true,
+      isReady: true,
+      reason: 'ready' as const,
+      supportsHce: true,
+      supportsReaderMode: true,
+    },
     permissions: {
       allGranted: true,
       deniedPermissions: [],
       requiredPermissions: [],
       results: {},
-    },
-    phase: 'idle' as const,
-    review: null,
-    role: null,
-    sessionId: null,
-    sessionLabel: null,
-    transferProgress: {
-      bytesTransferred: null,
-      payloadId: null,
-      status: 'idle' as const,
-      totalBytes: null,
     },
   },
 };
@@ -150,15 +146,13 @@ describe('SyncScreen', () => {
     jest.clearAllMocks();
   });
 
-  it('renders host and join actions from the idle state', () => {
+  it('renders the NFC-first sync action from the idle state', () => {
     render(<SyncScreen />);
 
     expect(screen.getByText('Device Sync')).toBeTruthy();
-    fireEvent.press(screen.getByText('Host Sync'));
-    fireEvent.press(screen.getByText('Join Sync'));
+    fireEvent.press(screen.getByText('Sync Now'));
 
-    expect(mockSession.startHostFlow).toHaveBeenCalled();
-    expect(mockSession.startJoinFlow).toHaveBeenCalled();
+    expect(mockSession.startSyncFlow).toHaveBeenCalled();
   });
 
   it('renders the merge summary and confirm action in review state', () => {

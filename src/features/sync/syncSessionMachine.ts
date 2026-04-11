@@ -1,4 +1,9 @@
 import type { SyncBundle } from '../../state/sharedSync';
+import type {
+  NfcBootstrapAvailability,
+  NfcBootstrapRole,
+  NfcBootstrapStateChangedEvent,
+} from './nfcSyncBridge';
 import {
   buildSyncLoggerContext,
   type SyncMergeReviewSummary,
@@ -6,6 +11,7 @@ import {
 
 export type SyncRole = 'host' | 'join' | null;
 export type SyncSessionPhase =
+  | 'bootstrapping'
   | 'committing'
   | 'connecting'
   | 'discovering'
@@ -47,6 +53,21 @@ export type SyncTransferProgress = {
   totalBytes: number | null;
 };
 
+export type SyncNfcBootstrapState = {
+  attemptId: string | null;
+  failureReason: string | null;
+  message: string | null;
+  phase:
+    | 'completed'
+    | 'error'
+    | 'hce-active'
+    | 'idle'
+    | 'reader-active'
+    | 'starting'
+    | 'waiting-for-activity';
+  role: NfcBootstrapRole;
+};
+
 export type SyncSessionState = {
   authToken: string | null;
   availability: SyncTransportAvailability;
@@ -56,6 +77,8 @@ export type SyncSessionState = {
   errorMessage: string | null;
   isAwaitingPeerPrepare: boolean;
   localPrepareConfirmed: boolean;
+  nfcAvailability: NfcBootstrapAvailability;
+  nfcBootstrap: SyncNfcBootstrapState;
   permissions: SyncPermissionsState;
   phase: SyncSessionPhase;
   review:
@@ -75,8 +98,16 @@ export type SyncSessionAction =
       type: 'availabilityUpdated';
     }
   | {
+      availability: NfcBootstrapAvailability;
+      type: 'nfcAvailabilityUpdated';
+    }
+  | {
       permissions: SyncPermissionsState;
       type: 'permissionsUpdated';
+    }
+  | {
+      nfcBootstrap: NfcBootstrapStateChangedEvent;
+      type: 'nfcBootstrapStateChanged';
     }
   | {
       role: Exclude<SyncRole, null>;
@@ -100,6 +131,9 @@ export type SyncSessionAction =
   | {
       endpoint: SyncNearbyEndpoint;
       type: 'connected';
+    }
+  | {
+      type: 'automaticConnectingStarted';
     }
   | {
       progress: SyncTransferProgress;
@@ -153,6 +187,23 @@ const defaultTransferProgress: SyncTransferProgress = {
   totalBytes: null,
 };
 
+const defaultNfcAvailability: NfcBootstrapAvailability = {
+  hasAdapter: false,
+  isEnabled: false,
+  isReady: false,
+  reason: 'module-unavailable',
+  supportsHce: false,
+  supportsReaderMode: false,
+};
+
+const defaultNfcBootstrap: SyncNfcBootstrapState = {
+  attemptId: null,
+  failureReason: null,
+  message: null,
+  phase: 'idle',
+  role: null,
+};
+
 export function createInitialSyncSessionState(): SyncSessionState {
   return {
     authToken: null,
@@ -163,6 +214,8 @@ export function createInitialSyncSessionState(): SyncSessionState {
     errorMessage: null,
     isAwaitingPeerPrepare: false,
     localPrepareConfirmed: false,
+    nfcAvailability: defaultNfcAvailability,
+    nfcBootstrap: defaultNfcBootstrap,
     permissions: defaultPermissions,
     phase: 'idle',
     review: null,
@@ -186,6 +239,7 @@ function resetSessionProgress(
     errorMessage: null,
     isAwaitingPeerPrepare: false,
     localPrepareConfirmed: false,
+    nfcBootstrap: defaultNfcBootstrap,
     phase: 'idle',
     review: null,
     role: null,
@@ -211,6 +265,36 @@ export function reduceSyncSessionState(
         ...state,
         permissions: action.permissions,
       };
+    case 'nfcAvailabilityUpdated':
+      return {
+        ...state,
+        nfcAvailability: action.availability,
+      };
+    case 'nfcBootstrapStateChanged':
+      return {
+        ...state,
+        errorCode:
+          action.nfcBootstrap.phase === 'error'
+            ? action.nfcBootstrap.failureReason
+            : state.errorCode,
+        errorMessage:
+          action.nfcBootstrap.phase === 'error'
+            ? action.nfcBootstrap.message
+            : state.errorMessage,
+        nfcBootstrap: {
+          attemptId: action.nfcBootstrap.attemptId,
+          failureReason: action.nfcBootstrap.failureReason,
+          message: action.nfcBootstrap.message,
+          phase: action.nfcBootstrap.phase,
+          role: action.nfcBootstrap.role,
+        },
+        phase:
+          action.nfcBootstrap.phase === 'error'
+            ? 'error'
+            : action.nfcBootstrap.phase === 'completed'
+              ? state.phase
+              : 'bootstrapping',
+      };
     case 'sessionStarted':
       return {
         ...state,
@@ -221,6 +305,7 @@ export function reduceSyncSessionState(
         errorMessage: null,
         isAwaitingPeerPrepare: false,
         localPrepareConfirmed: false,
+        nfcBootstrap: defaultNfcBootstrap,
         phase: action.role === 'host' ? 'hosting' : 'discovering',
         review: null,
         role: action.role,
@@ -269,6 +354,14 @@ export function reduceSyncSessionState(
         errorCode: null,
         errorMessage: null,
         phase: 'transferring',
+      };
+    case 'automaticConnectingStarted':
+      return {
+        ...state,
+        authToken: null,
+        errorCode: null,
+        errorMessage: null,
+        phase: 'connecting',
       };
     case 'transferUpdated':
       return {
@@ -325,11 +418,21 @@ export function reduceSyncSessionState(
         errorCode: action.code,
         errorMessage: action.message,
         isAwaitingPeerPrepare: false,
+        nfcBootstrap: {
+          ...state.nfcBootstrap,
+          failureReason: action.code,
+          message: action.message,
+          phase:
+            state.phase === 'bootstrapping'
+              ? 'error'
+              : state.nfcBootstrap.phase,
+        },
         phase: 'error',
       };
     case 'sessionReset':
       return resetSessionProgress(state, {
         availability: state.availability,
+        nfcAvailability: state.nfcAvailability,
         permissions: state.permissions,
       });
   }

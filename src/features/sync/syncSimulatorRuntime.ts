@@ -21,8 +21,16 @@ import type {
   NearbySyncRuntime,
   SyncRuntimeSubscription,
 } from './nearbySyncRuntime';
+import type {
+  NfcBootstrapAvailability,
+  NfcBootstrapCompletedEvent,
+  NfcBootstrapStateChangedEvent,
+  NfcSyncNativeLogEntry,
+} from './nfcSyncBridge';
 import { exportSyncProjectionToFile } from './syncFileTransfer';
 import {
+  createBootstrapBoundSessionId,
+  createBootstrapSessionLabel,
   createCommitAckEnvelope,
   createHelloEnvelope,
   createHistoryFileMetaEnvelope,
@@ -30,7 +38,6 @@ import {
   createPrepareAckEnvelope,
   createSummaryEnvelope,
   createSyncResponseEnvelope,
-  createSyncSessionId,
   parseSyncEnvelope,
   serializeSyncEnvelope,
 } from './syncProtocol';
@@ -49,10 +56,13 @@ export type SyncTestbedScenarioId =
   | 'happy-path-review'
   | 'happy-path-success'
   | 'merged-head-mismatch'
+  | 'nfc-bootstrap-timeout'
+  | 'nfc-unsupported'
   | 'payload-transfer-failed'
   | 'permissions-denied'
   | 'sync-response-rejected'
-  | 'unreadable-remote-projection';
+  | 'unreadable-remote-projection'
+  | 'wrong-peer-bootstrap-token';
 
 type SyncSimulatorSnapshot = {
   authToken: string;
@@ -60,6 +70,7 @@ type SyncSimulatorSnapshot = {
   commonBaseTransactionId: string | null;
   fixtureStrategyId: SyncTestbedFixtureStrategyId;
   mode: SyncSimulatorMode;
+  nfcAvailability: NfcBootstrapAvailability;
   permissions: NearbySyncPermissionStatus;
   remoteEndpoint: NearbySyncEndpoint;
   scenarioId: SyncTestbedScenarioId | null;
@@ -135,20 +146,33 @@ export function createSimulatorNearbySyncRuntime(args: {
   >();
   const errorListeners = new Set<(event: NearbySyncErrorEvent) => void>();
   const logListeners = new Set<(entry: NearbySyncNativeLogEntry) => void>();
+  const nfcBootstrapStateListeners = new Set<
+    (event: NfcBootstrapStateChangedEvent) => void
+  >();
+  const nfcBootstrapCompletedListeners = new Set<
+    (event: NfcBootstrapCompletedEvent) => void
+  >();
+  const nfcLogListeners = new Set<(entry: NfcSyncNativeLogEntry) => void>();
   const memoryStorage = createMemoryStorage();
 
   const defaultAvailability = createReadyAvailability();
+  const defaultNfcAvailability = createReadyNfcAvailability();
   const defaultPermissions = createGrantedPermissions();
+  const initialBootstrapToken = createSimulatorBootstrapToken();
   const state = {
+    advertisedSessionLabel: null as string | null,
     authToken: 'SIM42',
     availability: defaultAvailability,
     cachedPreparedBundle: null as PrepareSyncDeviceBundleResult | null,
     commonBaseTransactionId: args.initialCommonBaseTransactionId ?? null,
     fixtureStrategyId:
       args.initialFixtureStrategyId ?? ('independent-lineages' as const),
+    localBootstrapToken: initialBootstrapToken,
     mode: args.initialMode ?? ('host' as SyncSimulatorMode),
+    nfcAvailability: defaultNfcAvailability,
     nextPayloadId: 1,
     permissions: defaultPermissions,
+    remoteBootstrapToken: initialBootstrapToken,
     remoteProjection: createSyncTestbedRemoteProjection({
       commonBaseTransactionId: args.initialCommonBaseTransactionId ?? null,
       localDocument: args.getLocalDocument(),
@@ -156,7 +180,7 @@ export function createSimulatorNearbySyncRuntime(args: {
       strategyId:
         args.initialFixtureStrategyId ?? ('independent-lineages' as const),
     }),
-    remoteSessionId: createSyncSessionId(),
+    remoteSessionId: createBootstrapBoundSessionId(initialBootstrapToken),
     scenarioId: null as SyncTestbedScenarioId | null,
   };
 
@@ -236,6 +260,24 @@ export function createSimulatorNearbySyncRuntime(args: {
     });
   }
 
+  function emitNfcBootstrapState(event: NfcBootstrapStateChangedEvent) {
+    nfcBootstrapStateListeners.forEach((listener) => {
+      listener(event);
+    });
+  }
+
+  function emitNfcBootstrapCompleted(event: NfcBootstrapCompletedEvent) {
+    nfcBootstrapCompletedListeners.forEach((listener) => {
+      listener(event);
+    });
+  }
+
+  function emitNfcLog(entry: NfcSyncNativeLogEntry) {
+    nfcLogListeners.forEach((listener) => {
+      listener(entry);
+    });
+  }
+
   function addListener<T>(
     listeners: Set<(value: T) => void>,
     listener: (value: T) => void,
@@ -250,17 +292,27 @@ export function createSimulatorNearbySyncRuntime(args: {
   }
 
   function refreshScenarioState(scenarioId: SyncTestbedScenarioId | null) {
+    const bootstrapToken = createSimulatorBootstrapToken();
+    const remoteBootstrapToken =
+      scenarioId === 'wrong-peer-bootstrap-token'
+        ? createSimulatorBootstrapToken()
+        : bootstrapToken;
+
     state.scenarioId = scenarioId;
+    state.advertisedSessionLabel = createBootstrapSessionLabel(bootstrapToken);
     state.availability = createReadyAvailability();
     state.cachedPreparedBundle = null;
+    state.localBootstrapToken = bootstrapToken;
+    state.nfcAvailability = createReadyNfcAvailability();
     state.permissions = createGrantedPermissions();
+    state.remoteBootstrapToken = remoteBootstrapToken;
     state.remoteProjection = createSyncTestbedRemoteProjection({
       commonBaseTransactionId: state.commonBaseTransactionId,
       localDocument: args.getLocalDocument(),
       storage: memoryStorage,
       strategyId: state.fixtureStrategyId,
     });
-    state.remoteSessionId = createSyncSessionId();
+    state.remoteSessionId = createBootstrapBoundSessionId(remoteBootstrapToken);
     state.authToken = 'SIM42';
 
     if (scenarioId === 'availability-unavailable') {
@@ -269,6 +321,17 @@ export function createSimulatorNearbySyncRuntime(args: {
         isSupported: false,
         playServicesStatus: null,
         reason: 'module-unavailable',
+      };
+    }
+
+    if (scenarioId === 'nfc-unsupported') {
+      state.nfcAvailability = {
+        hasAdapter: false,
+        isEnabled: false,
+        isReady: false,
+        reason: 'nfc-unavailable',
+        supportsHce: false,
+        supportsReaderMode: false,
       };
     }
 
@@ -319,6 +382,7 @@ export function createSimulatorNearbySyncRuntime(args: {
     emitRemoteEnvelopeWithPayload(
       serializeSyncEnvelope(
         createHelloEnvelope({
+          bootstrapToken: state.remoteBootstrapToken,
           deviceInstanceId: 'sync-simulator-remote-device',
           sessionId: state.remoteSessionId,
         }),
@@ -670,20 +734,33 @@ export function createSimulatorNearbySyncRuntime(args: {
       commonBaseTransactionId: state.commonBaseTransactionId,
       fixtureStrategyId: state.fixtureStrategyId,
       mode: state.mode,
+      nfcAvailability: state.nfcAvailability,
       permissions: state.permissions,
       remoteEndpoint: getRemoteEndpoint(),
       scenarioId: state.scenarioId,
     }),
     reset: () => {
+      const bootstrapToken = createSimulatorBootstrapToken();
+
       state.nextPayloadId = 1;
+      state.advertisedSessionLabel =
+        createBootstrapSessionLabel(bootstrapToken);
       state.cachedPreparedBundle = null;
+      state.localBootstrapToken = bootstrapToken;
+      state.nfcAvailability = createReadyNfcAvailability();
+      state.remoteBootstrapToken =
+        state.scenarioId === 'wrong-peer-bootstrap-token'
+          ? createSimulatorBootstrapToken()
+          : bootstrapToken;
       state.remoteProjection = createSyncTestbedRemoteProjection({
         commonBaseTransactionId: state.commonBaseTransactionId,
         localDocument: args.getLocalDocument(),
         storage: memoryStorage,
         strategyId: state.fixtureStrategyId,
       });
-      state.remoteSessionId = createSyncSessionId();
+      state.remoteSessionId = createBootstrapBoundSessionId(
+        state.remoteBootstrapToken,
+      );
       emitAvailability();
       emitDiscovery([]);
       notifyControllerListeners();
@@ -766,8 +843,89 @@ export function createSimulatorNearbySyncRuntime(args: {
     addNearbySyncLogListener: (listener) => addListener(logListeners, listener),
     addPayloadProgressListener: (listener) =>
       addListener(payloadListeners, listener),
+    addNfcBootstrapCompletedListener: (listener) =>
+      addListener(nfcBootstrapCompletedListeners, listener),
+    addNfcBootstrapStateChangedListener: (listener) =>
+      addListener(nfcBootstrapStateListeners, listener),
+    addNfcSyncLogListener: (listener) => addListener(nfcLogListeners, listener),
+    beginNfcBootstrap: async () => {
+      const attemptId = `sim-nfc-${Date.now().toString(36)}`;
+      const role = state.mode === 'host' ? 'host' : 'join';
+
+      if (!state.nfcAvailability.isReady) {
+        emitNfcBootstrapState({
+          attemptId,
+          failureReason: state.nfcAvailability.reason,
+          message: 'The simulated device cannot start NFC sync.',
+          phase: 'error',
+          role: null,
+        });
+        return;
+      }
+
+      emitNfcLog({
+        contextJson: JSON.stringify({ attemptId, role }),
+        level: 'info',
+        message: 'Simulator NFC bootstrap started',
+        sequence: state.nextPayloadId,
+        tag: 'sync-simulator-runtime',
+        timestampMs: Date.now(),
+      });
+      emitNfcBootstrapState({
+        attemptId,
+        failureReason: null,
+        message: 'Hold both phones together to simulate the NFC tap.',
+        phase: 'starting',
+        role: null,
+      });
+
+      queue(() => {
+        emitNfcBootstrapState({
+          attemptId,
+          failureReason: null,
+          message:
+            role === 'host'
+              ? 'Simulated device is listening for the tap.'
+              : 'Simulated device is scanning for its partner.',
+          phase: role === 'host' ? 'hce-active' : 'reader-active',
+          role: null,
+        });
+
+        if (state.scenarioId === 'nfc-bootstrap-timeout') {
+          queue(() => {
+            emitNfcBootstrapState({
+              attemptId,
+              failureReason: 'timeout',
+              message: 'The simulated NFC tap timed out.',
+              phase: 'error',
+              role: null,
+            });
+          });
+          return;
+        }
+
+        queue(() => {
+          emitNfcBootstrapState({
+            attemptId,
+            failureReason: null,
+            message: 'Phones matched. Starting nearby sync.',
+            phase: 'completed',
+            role,
+          });
+          emitNfcBootstrapCompleted({
+            attemptId,
+            bootstrapToken: state.localBootstrapToken,
+            peerDeviceHash: 'sim-peer-hash',
+            role,
+          });
+        });
+      });
+    },
+    cancelNfcBootstrap: async () => undefined,
     disconnect: async () => undefined,
     getBufferedNearbySyncLogs: () => [],
+    getBufferedNfcSyncLogs: () => [],
+    getNfcBootstrapAvailability: async () => state.nfcAvailability,
     isAvailable: async () => state.availability,
     requestConnection: async () => {
       state.cachedPreparedBundle = null;
@@ -806,8 +964,21 @@ export function createSimulatorNearbySyncRuntime(args: {
       return payloadId;
     },
     sendFile: async () => nextPayloadId(),
-    startDiscovery: async () => undefined,
-    startHosting: async () => undefined,
+    startDiscovery: async () => {
+      emitDiscovery([
+        {
+          endpointId: getRemoteEndpoint().endpointId,
+          endpointName:
+            state.advertisedSessionLabel ?? getRemoteEndpoint().endpointName,
+        },
+      ]);
+    },
+    startHosting: async ({ sessionLabel }) => {
+      state.advertisedSessionLabel = sessionLabel;
+      queue(() => {
+        controller.emitConnectionRequested();
+      });
+    },
     stopAll: async () => undefined,
   };
 
@@ -824,6 +995,21 @@ function createReadyAvailability(): NearbySyncAvailability {
     playServicesStatus: 0,
     reason: 'ready',
   };
+}
+
+function createReadyNfcAvailability(): NfcBootstrapAvailability {
+  return {
+    hasAdapter: true,
+    isEnabled: true,
+    isReady: true,
+    reason: 'ready',
+    supportsHce: true,
+    supportsReaderMode: true,
+  };
+}
+
+function createSimulatorBootstrapToken() {
+  return `sim-bootstrap-${Math.random().toString(36).slice(2, 14)}`;
 }
 
 function createGrantedPermissions(): NearbySyncPermissionStatus {

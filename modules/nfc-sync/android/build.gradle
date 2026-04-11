@@ -1,0 +1,23 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+  id 'org.jetbrains.kotlin.android'
+}
+
+group = 'expo.modules.kidpointsnfcsync'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.kidpointsnfcsync"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  implementation 'androidx.core:core-ktx:1.17.0'
+  implementation 'com.facebook.react:react-android'
+  implementation project(':native-log-sync')
+  testImplementation 'junit:junit:4.13.2'
+}

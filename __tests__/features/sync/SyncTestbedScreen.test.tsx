@@ -97,7 +97,7 @@ describe('SyncTestbedScreen', () => {
 
     expect(screen.getByText('Sync Testbed')).toBeTruthy();
     expect(screen.getByText('Testbed Controls')).toBeTruthy();
-    expect(screen.getByText('Nearby Status')).toBeTruthy();
+    expect(screen.getByText('Sync Status')).toBeTruthy();
     expect(screen.queryByText('Device Sync')).toBeNull();
   });
 
@@ -118,10 +118,10 @@ describe('SyncTestbedScreen', () => {
     fireEvent.press(screen.getByText('Unavailable'));
     await waitFor(() =>
       expect(
-        screen.getByText(
+        screen.getAllByText(
           'Nearby sync is unavailable because Google Play services could not be used on this device.',
-        ),
-      ).toBeTruthy(),
+        ).length,
+      ).toBeGreaterThan(0),
     );
   });
 

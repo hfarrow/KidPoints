@@ -20,6 +20,7 @@ export type SyncEnvelopeType =
 
 export type SyncHelloEnvelope = {
   appVersion: string;
+  bootstrapToken: string;
   capabilities: string[];
   deviceInstanceId: string;
   protocolVersion: typeof SYNC_PROTOCOL_VERSION;
@@ -205,6 +206,14 @@ export function createParticipantLabel(deviceInstanceId: string) {
   return `Parent-${deviceInstanceId.slice(-4).toUpperCase()}`;
 }
 
+export function createBootstrapBoundSessionId(bootstrapToken: string) {
+  return `sync-nfc-${bootstrapToken.slice(0, 20)}`;
+}
+
+export function createBootstrapSessionLabel(bootstrapToken: string) {
+  return `${SESSION_LABEL_PREFIX}-${bootstrapToken.slice(0, 8).toUpperCase()}`;
+}
+
 export function getAppVersionLabel() {
   return (
     Constants.expoConfig?.version ??
@@ -214,12 +223,18 @@ export function getAppVersionLabel() {
 }
 
 export function createHelloEnvelope(args: {
+  bootstrapToken: string;
   deviceInstanceId: string;
   sessionId: string;
 }): SyncHelloEnvelope {
   return {
     appVersion: getAppVersionLabel(),
-    capabilities: ['projection-file-transfer', 'bundle-hash-agreement'],
+    bootstrapToken: args.bootstrapToken,
+    capabilities: [
+      'bootstrap-bound-hello',
+      'projection-file-transfer',
+      'bundle-hash-agreement',
+    ],
     deviceInstanceId: args.deviceInstanceId,
     protocolVersion: SYNC_PROTOCOL_VERSION,
     sentAt: new Date().toISOString(),
@@ -415,6 +430,7 @@ export function parseSyncEnvelope(
     case 'HELLO':
       if (
         isString(envelope.appVersion) &&
+        isString(envelope.bootstrapToken) &&
         Array.isArray(envelope.capabilities) &&
         envelope.capabilities.every(isString) &&
         isString(envelope.deviceInstanceId) &&

@@ -16,6 +16,11 @@ import type {
   NearbySyncNativeLogEntry,
   NearbySyncPayloadProgressEvent,
 } from './nearbySyncBridge';
+import type {
+  NfcBootstrapAvailability,
+  NfcBootstrapCompletedEvent,
+  NfcSyncNativeLogEntry,
+} from './nfcSyncBridge';
 import {
   exportSyncProjectionToFile,
   loadSyncProjectionFromFile,
@@ -25,6 +30,8 @@ import {
   buildSyncLoggerContext,
   type CommitAckEnvelope,
   type CommitEnvelope,
+  createBootstrapBoundSessionId,
+  createBootstrapSessionLabel,
   createCommitAckEnvelope,
   createCommitEnvelope,
   createHelloEnvelope,
@@ -66,6 +73,7 @@ export type NearbySyncSessionController = {
   revertLastAppliedSync: () => Promise<SharedCommandResult>;
   startHostFlow: () => Promise<void>;
   startJoinFlow: () => Promise<void>;
+  startSyncFlow: () => Promise<void>;
   state: SyncSessionState;
 };
 
@@ -97,6 +105,23 @@ function createPermissionsRejectedMessage(args: {
 
 function createAvailabilityRejectedMessage() {
   return 'Nearby sync is unavailable because Google Play services could not be used on this device.';
+}
+
+function createNfcRejectedMessage(availability: NfcBootstrapAvailability) {
+  switch (availability.reason) {
+    case 'nfc-disabled':
+      return 'Turn on NFC on both phones before starting sync.';
+    case 'hce-unsupported':
+      return 'This device cannot use NFC sync because host card emulation is unavailable.';
+    case 'reader-mode-unsupported':
+      return 'This device cannot use NFC sync because Android reader mode is unavailable.';
+    case 'nfc-unavailable':
+      return 'This device cannot use NFC sync because it has no NFC adapter.';
+    case 'activity-unavailable':
+      return 'Keep the sync screen open in the foreground while NFC prepares.';
+    default:
+      return 'NFC sync is unavailable on this device.';
+  }
 }
 
 function getErrorMessage(error: unknown) {
@@ -153,6 +178,7 @@ export function useNearbySyncSession(): NearbySyncSessionController {
   const remoteMergeResultRef = useRef<MergeResultEnvelope | null>(null);
   const localPreparedBundleRef = useRef<PreparedBundle | null>(null);
   const lastSeenNativeLogSequenceRef = useRef(-1);
+  const lastSeenNfcNativeLogSequenceRef = useRef(-1);
   const localHelloSentRef = useRef(false);
   const localSummarySentRef = useRef(false);
   const historyRequestSentRef = useRef(false);
@@ -164,6 +190,11 @@ export function useNearbySyncSession(): NearbySyncSessionController {
   const pairingDecisionInFlightRef = useRef(false);
   const commitSucceededRef = useRef(false);
   const stopAllInFlightRef = useRef(false);
+  const isAutomaticSyncFlowRef = useRef(false);
+  const automaticDiscoveryConnectInFlightRef = useRef(false);
+  const automaticallyAcceptedEndpointIdsRef = useRef(new Set<string>());
+  const sessionBootstrapTokenRef = useRef<string | null>(null);
+  const expectedSessionLabelRef = useRef<string | null>(null);
   const historyMetaByPayloadIdRef = useRef(
     new Map<string, HistoryFileMetaEnvelope>(),
   );
@@ -194,6 +225,11 @@ export function useNearbySyncSession(): NearbySyncSessionController {
     remoteSummaryRef.current = null;
     remoteMergeResultRef.current = null;
     localPreparedBundleRef.current = null;
+    isAutomaticSyncFlowRef.current = false;
+    automaticDiscoveryConnectInFlightRef.current = false;
+    automaticallyAcceptedEndpointIdsRef.current.clear();
+    sessionBootstrapTokenRef.current = null;
+    expectedSessionLabelRef.current = null;
     localHelloSentRef.current = false;
     localSummarySentRef.current = false;
     historyRequestSentRef.current = false;
@@ -216,6 +252,11 @@ export function useNearbySyncSession(): NearbySyncSessionController {
 
     stopAllInFlightRef.current = true;
     try {
+      try {
+        await runtime.cancelNfcBootstrap();
+      } catch {
+        // Best effort only.
+      }
       await runtime.stopAll();
     } catch (error) {
       log.warn('Failed to stop nearby sync activity cleanly', {
@@ -231,9 +272,18 @@ export function useNearbySyncSession(): NearbySyncSessionController {
   }
 
   async function refreshAvailability() {
+    const [availability, nfcAvailability] = await Promise.all([
+      runtime.isAvailable(),
+      runtime.getNfcBootstrapAvailability(),
+    ]);
+
     dispatch({
-      availability: await runtime.isAvailable(),
+      availability,
       type: 'availabilityUpdated',
+    });
+    dispatch({
+      availability: nfcAvailability,
+      type: 'nfcAvailabilityUpdated',
     });
   }
 
@@ -316,11 +366,15 @@ export function useNearbySyncSession(): NearbySyncSessionController {
       return;
     }
 
+    const bootstrapToken =
+      sessionBootstrapTokenRef.current ?? stateRef.current.sessionId;
+
     localHelloSentRef.current = true;
     await sendProtocolEnvelope(
       endpointId,
       serializeSyncEnvelope(
         createHelloEnvelope({
+          bootstrapToken,
           deviceInstanceId: documentRef.current.deviceId,
           sessionId: stateRef.current.sessionId,
         }),
@@ -756,6 +810,71 @@ export function useNearbySyncSession(): NearbySyncSessionController {
   const handleEnvelopeReceivedRef = useRef(
     async (_event: NearbySyncEnvelopeReceivedEvent) => {},
   );
+  const startAutomaticNearbyTransportRef = useRef(
+    async (_event: NfcBootstrapCompletedEvent) => {},
+  );
+
+  async function startAutomaticNearbyTransport(
+    event: NfcBootstrapCompletedEvent,
+  ) {
+    const sessionId = createBootstrapBoundSessionId(event.bootstrapToken);
+    const sessionLabel = createBootstrapSessionLabel(event.bootstrapToken);
+    const localEndpointName = createParticipantLabel(
+      documentRef.current.deviceId,
+    );
+
+    isAutomaticSyncFlowRef.current = true;
+    sessionBootstrapTokenRef.current = event.bootstrapToken;
+    expectedSessionLabelRef.current = sessionLabel;
+    automaticDiscoveryConnectInFlightRef.current = false;
+    automaticallyAcceptedEndpointIdsRef.current.clear();
+
+    dispatch({
+      role: event.role,
+      sessionId,
+      sessionLabel,
+      type: 'sessionStarted',
+    });
+    dispatch({ type: 'automaticConnectingStarted' });
+
+    try {
+      if (event.role === 'host') {
+        await runtime.startHosting({
+          localEndpointName,
+          sessionLabel,
+        });
+      } else {
+        await runtime.startDiscovery({ localEndpointName });
+      }
+
+      log.info('Nearby sync automatic transport started', {
+        ...buildSyncLoggerContext({
+          phase: 'connecting',
+          sessionId,
+        }),
+        localEndpointName,
+        role: event.role,
+        sessionLabel,
+      });
+    } catch (error) {
+      const message = createSessionStartFailureMessage(
+        event.role === 'host' ? 'host' : 'join',
+        error,
+      );
+
+      await bestEffortStopAll();
+      resetEphemeralSessionRefs();
+      await failSession({
+        code:
+          event.role === 'host'
+            ? 'start-hosting-failed'
+            : 'start-discovery-failed',
+        message,
+      });
+    }
+  }
+
+  startAutomaticNearbyTransportRef.current = startAutomaticNearbyTransport;
 
   handleEnvelopeReceivedRef.current = async (
     event: NearbySyncEnvelopeReceivedEvent,
@@ -785,6 +904,32 @@ export function useNearbySyncSession(): NearbySyncSessionController {
 
     switch (envelope.type) {
       case 'HELLO':
+        if (
+          isAutomaticSyncFlowRef.current &&
+          sessionBootstrapTokenRef.current &&
+          envelope.bootstrapToken !== sessionBootstrapTokenRef.current
+        ) {
+          await failSession({
+            code: 'bootstrap-token-mismatch',
+            message:
+              'The nearby connection did not match the NFC tap that started this sync.',
+            sendRemoteError: true,
+          });
+          return;
+        }
+        if (
+          isAutomaticSyncFlowRef.current &&
+          stateRef.current.sessionId &&
+          envelope.sessionId !== stateRef.current.sessionId
+        ) {
+          await failSession({
+            code: 'bootstrap-session-mismatch',
+            message:
+              'The nearby connection used a different sync session than the NFC bootstrap expected.',
+            sendRemoteError: true,
+          });
+          return;
+        }
         remoteHelloRef.current = envelope;
         await sendSummaryIfNeeded(event.endpointId);
         break;
@@ -857,12 +1002,64 @@ export function useNearbySyncSession(): NearbySyncSessionController {
     );
     const discoverySubscription = runtime.addDiscoveryUpdatedListener(
       (event) => {
+        const expectedSessionLabel = expectedSessionLabelRef.current;
+        const endpoints =
+          isAutomaticSyncFlowRef.current && expectedSessionLabel
+            ? event.endpoints.filter(
+                (endpoint) => endpoint.endpointName === expectedSessionLabel,
+              )
+            : event.endpoints;
+
         dispatch({
-          endpoints: event.endpoints,
+          endpoints,
           type: 'discoveryUpdated',
         });
+
+        if (
+          !isAutomaticSyncFlowRef.current ||
+          !expectedSessionLabel ||
+          automaticDiscoveryConnectInFlightRef.current
+        ) {
+          return;
+        }
+
+        const matchingEndpoint = endpoints[0];
+
+        if (
+          !matchingEndpoint ||
+          stateRef.current.connectedEndpoint?.endpointId ===
+            matchingEndpoint.endpointId
+        ) {
+          return;
+        }
+
+        automaticDiscoveryConnectInFlightRef.current = true;
+        dispatch({
+          endpoint: matchingEndpoint,
+          type: 'pairingStarted',
+        });
+        void runtime
+          .requestConnection(matchingEndpoint.endpointId)
+          .catch(async (error) => {
+            automaticDiscoveryConnectInFlightRef.current = false;
+            await effectOpsRef.current.failSession({
+              code: 'request-connection-failed',
+              message: `The nearby sync connection could not be requested automatically. ${getErrorMessage(error)}`,
+            });
+          });
       },
     );
+    const nfcBootstrapStateSubscription =
+      runtime.addNfcBootstrapStateChangedListener((event) => {
+        dispatch({
+          nfcBootstrap: event,
+          type: 'nfcBootstrapStateChanged',
+        });
+      });
+    const nfcBootstrapCompletedSubscription =
+      runtime.addNfcBootstrapCompletedListener((event) => {
+        void startAutomaticNearbyTransportRef.current(event);
+      });
     const connectionRequestedSubscription =
       runtime.addConnectionRequestedListener((event) => {
         log.debug('Nearby sync connection request received', {
@@ -873,12 +1070,43 @@ export function useNearbySyncSession(): NearbySyncSessionController {
           }),
           endpointName: event.endpointName,
         });
+
+        if (isAutomaticSyncFlowRef.current) {
+          dispatch({
+            endpoint: toEndpoint(event),
+            type: 'pairingStarted',
+          });
+          return;
+        }
+
         dispatch({
           endpoint: toEndpoint(event),
           type: 'pairingStarted',
         });
       });
     const authTokenSubscription = runtime.addAuthTokenReadyListener((event) => {
+      if (isAutomaticSyncFlowRef.current) {
+        automaticDiscoveryConnectInFlightRef.current = false;
+        dispatch({
+          endpoint: toEndpoint(event),
+          type: 'pairingStarted',
+        });
+
+        if (automaticallyAcceptedEndpointIdsRef.current.has(event.endpointId)) {
+          return;
+        }
+
+        automaticallyAcceptedEndpointIdsRef.current.add(event.endpointId);
+        void runtime.acceptConnection(event.endpointId).catch(async (error) => {
+          automaticallyAcceptedEndpointIdsRef.current.delete(event.endpointId);
+          await effectOpsRef.current.failSession({
+            code: 'accept-connection-failed',
+            message: `The nearby sync connection could not be accepted automatically. ${getErrorMessage(error)}`,
+          });
+        });
+        return;
+      }
+
       log.info('Nearby sync pairing token ready', {
         ...buildSyncLoggerContext({
           endpointId: event.endpointId,
@@ -909,6 +1137,7 @@ export function useNearbySyncSession(): NearbySyncSessionController {
           });
 
           if (event.state === 'connected') {
+            automaticDiscoveryConnectInFlightRef.current = false;
             dispatch({
               endpoint: toEndpoint(event),
               type: 'connected',
@@ -1074,10 +1303,22 @@ export function useNearbySyncSession(): NearbySyncSessionController {
           lastSeenNativeLogSequenceRef.current = sequence;
         },
       });
+    const removeNfcNativeLogSync =
+      connectNativeLogReceiver<NfcSyncNativeLogEntry>({
+        addLogListener: runtime.addNfcSyncLogListener,
+        getBufferedEntries: runtime.getBufferedNfcSyncLogs,
+        getLastSeenSequence: () => lastSeenNfcNativeLogSequenceRef.current,
+        parseContextJson: (contextJson) => (contextJson ? { contextJson } : {}),
+        setLastSeenSequence: (sequence) => {
+          lastSeenNfcNativeLogSequenceRef.current = sequence;
+        },
+      });
 
     return () => {
       availabilitySubscription?.remove();
       discoverySubscription?.remove();
+      nfcBootstrapStateSubscription?.remove();
+      nfcBootstrapCompletedSubscription?.remove();
       connectionRequestedSubscription?.remove();
       authTokenSubscription?.remove();
       connectionStateSubscription?.remove();
@@ -1085,6 +1326,7 @@ export function useNearbySyncSession(): NearbySyncSessionController {
       envelopeSubscription?.remove();
       errorSubscription?.remove();
       removeNativeLogSync();
+      removeNfcNativeLogSync();
 
       if (
         stateRef.current.phase !== 'idle' &&
@@ -1129,6 +1371,7 @@ export function useNearbySyncSession(): NearbySyncSessionController {
     );
 
     resetEphemeralSessionRefs();
+    sessionBootstrapTokenRef.current = sessionId;
     try {
       if (role === 'host') {
         await runtime.startHosting({
@@ -1178,6 +1421,64 @@ export function useNearbySyncSession(): NearbySyncSessionController {
         code:
           role === 'host' ? 'start-hosting-failed' : 'start-discovery-failed',
         message,
+      });
+    }
+  }
+
+  async function startSyncFlow() {
+    const [availability, nfcAvailability] = await Promise.all([
+      runtime.isAvailable(),
+      runtime.getNfcBootstrapAvailability(),
+    ]);
+
+    dispatch({ availability, type: 'availabilityUpdated' });
+    dispatch({
+      availability: nfcAvailability,
+      type: 'nfcAvailabilityUpdated',
+    });
+
+    if (!availability.isReady) {
+      await failSession({
+        code: availability.reason,
+        message: createAvailabilityRejectedMessage(),
+      });
+      return;
+    }
+
+    if (!nfcAvailability.isReady) {
+      await failSession({
+        code: nfcAvailability.reason,
+        message: createNfcRejectedMessage(nfcAvailability),
+      });
+      return;
+    }
+
+    const permissions = await runtime.requestPermissions();
+    dispatch({ permissions, type: 'permissionsUpdated' });
+
+    if (!permissions.allGranted) {
+      await failSession({
+        code: 'permissions-denied',
+        message: createPermissionsRejectedMessage({
+          deniedPermissions: permissions.deniedPermissions,
+        }),
+      });
+      return;
+    }
+
+    resetEphemeralSessionRefs();
+    isAutomaticSyncFlowRef.current = true;
+
+    try {
+      await runtime.beginNfcBootstrap({
+        localDeviceId: documentRef.current.deviceId,
+        timeoutMs: 30_000,
+      });
+    } catch (error) {
+      resetEphemeralSessionRefs();
+      await failSession({
+        code: 'nfc-bootstrap-start-failed',
+        message: `NFC sync could not start. ${getErrorMessage(error)}`,
       });
     }
   }
@@ -1274,6 +1575,7 @@ export function useNearbySyncSession(): NearbySyncSessionController {
   }
 
   async function cancelSession() {
+    await runtime.cancelNfcBootstrap();
     if (stateRef.current.connectedEndpoint?.endpointId) {
       await runtime.disconnect(stateRef.current.connectedEndpoint.endpointId);
     }
@@ -1324,6 +1626,7 @@ export function useNearbySyncSession(): NearbySyncSessionController {
     revertLastAppliedSync,
     startHostFlow,
     startJoinFlow,
+    startSyncFlow,
     state,
   };
 }

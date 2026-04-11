@@ -31,6 +31,19 @@ import {
   startHosting,
   stopAll,
 } from './nearbySyncBridge';
+import {
+  addNfcBootstrapCompletedListener,
+  addNfcBootstrapStateChangedListener,
+  addNfcSyncLogListener,
+  beginNfcBootstrap,
+  cancelNfcBootstrap,
+  getBufferedNfcSyncLogs,
+  getNfcBootstrapAvailability,
+  type NfcBootstrapAvailability,
+  type NfcBootstrapCompletedEvent,
+  type NfcBootstrapStateChangedEvent,
+  type NfcSyncNativeLogEntry,
+} from './nfcSyncBridge';
 
 export type SyncRuntimeSubscription = {
   remove: () => void;
@@ -65,10 +78,26 @@ export type NearbySyncRuntime = {
   addPayloadProgressListener: (
     listener: (event: NearbySyncPayloadProgressEvent) => void,
   ) => SyncRuntimeSubscription | null;
+  addNfcBootstrapCompletedListener: (
+    listener: (event: NfcBootstrapCompletedEvent) => void,
+  ) => SyncRuntimeSubscription | null;
+  addNfcBootstrapStateChangedListener: (
+    listener: (event: NfcBootstrapStateChangedEvent) => void,
+  ) => SyncRuntimeSubscription | null;
+  addNfcSyncLogListener: (
+    listener: (entry: NfcSyncNativeLogEntry) => void,
+  ) => SyncRuntimeSubscription | null;
+  beginNfcBootstrap: (args: {
+    localDeviceId: string;
+    timeoutMs: number;
+  }) => Promise<void>;
+  cancelNfcBootstrap: () => Promise<void>;
   disconnect: (endpointId?: string | null) => Promise<void>;
   getBufferedNearbySyncLogs: (
     afterSequence?: number,
   ) => NearbySyncNativeLogEntry[];
+  getBufferedNfcSyncLogs: (afterSequence?: number) => NfcSyncNativeLogEntry[];
+  getNfcBootstrapAvailability: () => Promise<NfcBootstrapAvailability>;
   isAvailable: () => Promise<NearbySyncAvailability>;
   requestConnection: (endpointId: string) => Promise<void>;
   rejectConnection: (endpointId: string) => Promise<void>;
@@ -96,9 +125,16 @@ export function createNativeNearbySyncRuntime(): NearbySyncRuntime {
     addDiscoveryUpdatedListener,
     addEnvelopeReceivedListener,
     addErrorListener,
+    addNfcBootstrapCompletedListener,
+    addNfcBootstrapStateChangedListener,
+    addNfcSyncLogListener,
     addNearbySyncLogListener,
     addPayloadProgressListener,
+    beginNfcBootstrap,
+    cancelNfcBootstrap,
     disconnect,
+    getBufferedNfcSyncLogs,
+    getNfcBootstrapAvailability,
     getBufferedNearbySyncLogs,
     isAvailable,
     requestConnection,

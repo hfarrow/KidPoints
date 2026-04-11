@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { SingleSelectList } from '../../components/SingleSelectList';
 import {
   ActionPill,
   ActionPillRow,
@@ -16,16 +14,16 @@ export function getSyncPhaseLabel(
   phase: NearbySyncSessionController['state']['phase'],
 ) {
   switch (phase) {
+    case 'bootstrapping':
+      return 'Tap Phones';
     case 'hosting':
-      return 'Hosting';
     case 'discovering':
-      return 'Discovering';
     case 'connecting':
       return 'Connecting';
     case 'pairing':
-      return 'Pairing';
+      return 'Connecting';
     case 'transferring':
-      return 'Transferring';
+      return 'Exchanging Data';
     case 'review':
       return 'Ready To Confirm';
     case 'committing':
@@ -46,7 +44,6 @@ export function getSyncPhaseTone(
     case 'success':
       return 'good';
     case 'error':
-    case 'pairing':
     case 'review':
       return 'warning';
     default:
@@ -60,59 +57,105 @@ export function canStartNewSyncSession(
   return phase === 'idle' || phase === 'error' || phase === 'success';
 }
 
+function getNearbyAvailabilityLabel(
+  state: NearbySyncSessionController['state'],
+) {
+  if (state.availability.isReady) {
+    return 'Nearby Ready';
+  }
+
+  if (state.availability.reason === 'play-services-missing') {
+    return 'Play Services Missing';
+  }
+
+  if (state.availability.reason === 'play-services-error') {
+    return 'Play Services Error';
+  }
+
+  return 'Nearby Unavailable';
+}
+
+function getNfcAvailabilityLabel(state: NearbySyncSessionController['state']) {
+  if (state.nfcAvailability.isReady) {
+    return 'NFC Ready';
+  }
+
+  switch (state.nfcAvailability.reason) {
+    case 'nfc-disabled':
+      return 'NFC Off';
+    case 'hce-unsupported':
+      return 'HCE Unsupported';
+    case 'reader-mode-unsupported':
+      return 'Reader Unsupported';
+    case 'nfc-unavailable':
+      return 'No NFC';
+    default:
+      return 'NFC Unavailable';
+  }
+}
+
+function getSessionBody(state: NearbySyncSessionController['state']) {
+  switch (state.phase) {
+    case 'bootstrapping':
+      return (
+        state.nfcBootstrap.message ??
+        'Hold both phones together while KidPoints confirms the tap and prepares a private nearby session.'
+      );
+    case 'connecting':
+    case 'hosting':
+    case 'discovering':
+    case 'pairing':
+      return state.connectedEndpoint
+        ? `Phones matched. Connecting with ${state.connectedEndpoint.endpointName}.`
+        : 'Phones matched. KidPoints is establishing a nearby link and skipping the old host and join steps for you.';
+    case 'transferring':
+      return 'The two phones are exchanging sync summaries, history exports, and merge proofs.';
+    case 'review':
+      return 'The merge result is ready. Review it on both phones and confirm to continue.';
+    case 'committing':
+      return 'Both phones agreed on the same merge result and are now applying it.';
+    case 'success':
+      return 'This phone applied the agreed sync bundle successfully.';
+    case 'error':
+      return (
+        state.errorMessage ??
+        'Sync stopped before completion. Review the status above and try again.'
+      );
+    default:
+      return 'Both parents should open this screen, tap Sync Now, and hold their phones together until the review appears.';
+  }
+}
+
 export function SyncScreenContent({
   session,
 }: {
   session: NearbySyncSessionController;
 }) {
-  const styles = useThemedStyles(createStyles);
-  const [isDevicePickerVisible, setDevicePickerVisible] = useState(false);
   const { state } = session;
-
-  useEffect(() => {
-    if (state.phase === 'discovering') {
-      setDevicePickerVisible(true);
-      return;
-    }
-
-    if (
-      state.phase !== 'connecting' &&
-      state.phase !== 'pairing' &&
-      state.phase !== 'transferring'
-    ) {
-      setDevicePickerVisible(false);
-    }
-  }, [state.phase]);
-
-  const availabilityLabel = state.availability.isReady
-    ? 'Nearby Ready'
-    : state.availability.reason === 'play-services-missing'
-      ? 'Play Services Missing'
-      : state.availability.reason === 'play-services-error'
-        ? 'Play Services Error'
-        : 'Unavailable';
   const hasRollbackAvailable = state.phase === 'success';
 
   return (
     <>
-      <SyncNearbyStatusTile
-        availabilityLabel={availabilityLabel}
-        availabilityReady={state.availability.isReady}
-        permissionsReady={state.permissions.allGranted}
+      <SyncStatusTile state={state} />
+
+      <SyncStartTile
+        canStart={canStartNewSyncSession(state.phase)}
+        onCancel={() => {
+          void session.cancelSession();
+        }}
+        onStart={() => {
+          void session.startSyncFlow();
+        }}
         phase={state.phase}
       />
 
-      <SyncStartTile
-        onHost={() => {
-          void session.startHostFlow();
-        }}
-        onJoin={() => {
-          void session.startJoinFlow();
-        }}
-      />
-
       <SyncSessionTile
-        onOpenDevicePicker={() => setDevicePickerVisible(true)}
+        onCancel={() => {
+          void session.cancelSession();
+        }}
+        onRetry={() => {
+          void session.startSyncFlow();
+        }}
         state={state}
       />
 
@@ -140,78 +183,46 @@ export function SyncScreenContent({
           }}
         />
       ) : null}
-
-      <SingleSelectList
-        emptyState={
-          <Text style={styles.helper}>
-            No nearby KidPoints host was found yet. Keep the host screen open
-            and wait a moment, then try again.
-          </Text>
-        }
-        getItemDescription={(item) =>
-          `Tap to connect to ${item.endpointName} and verify the shared code.`
-        }
-        getItemLabel={(item) => item.endpointName}
-        items={state.discoveredEndpoints}
-        keyExtractor={(item) => item.endpointId}
-        onRequestClose={() => setDevicePickerVisible(false)}
-        onSelect={(item) => {
-          setDevicePickerVisible(false);
-          void session.connectToEndpoint(item);
-        }}
-        selectedItemId={state.connectedEndpoint?.endpointId ?? null}
-        subtitle="Choose the nearby parent device you want to sync with."
-        title="Nearby Devices"
-        visible={isDevicePickerVisible}
-      />
-
-      <SyncPairingOverlay
-        authToken={state.authToken}
-        onAccept={() => {
-          void session.acceptPairingCode();
-        }}
-        onReject={() => {
-          void session.rejectPairingCode();
-        }}
-        visible={state.phase === 'pairing' && Boolean(state.authToken)}
-      />
     </>
   );
 }
 
-function SyncNearbyStatusTile({
-  availabilityLabel,
-  availabilityReady,
-  permissionsReady,
-  phase,
+function SyncStatusTile({
+  state,
 }: {
-  availabilityLabel: string;
-  availabilityReady: boolean;
-  permissionsReady: boolean;
-  phase: NearbySyncSessionController['state']['phase'];
+  state: NearbySyncSessionController['state'];
 }) {
   const styles = useThemedStyles(createStyles);
+  const nearbyReady = state.availability.isReady;
+  const nfcReady = state.nfcAvailability.isReady;
+  const permissionsReady = state.permissions.allGranted;
 
   return (
     <Tile
       accessory={
         <StatusBadge
-          label={getSyncPhaseLabel(phase)}
-          tone={getSyncPhaseTone(phase)}
+          label={getSyncPhaseLabel(state.phase)}
+          tone={getSyncPhaseTone(state.phase)}
         />
       }
-      title="Nearby Status"
+      title="Sync Status"
     >
       <Text style={styles.body}>
-        This flow syncs child-ledger state directly between two nearby parent
-        devices without a server.
+        KidPoints uses NFC to bootstrap a private nearby connection, then keeps
+        the existing review and confirm steps before commit.
       </Text>
       <ActionPillRow>
         <ActionPill
           accessibilityLabel="Nearby transport availability"
           disableLogging
-          label={availabilityLabel}
-          tone={availabilityReady ? 'primary' : 'critical'}
+          label={getNearbyAvailabilityLabel(state)}
+          tone={nearbyReady ? 'primary' : 'critical'}
+        />
+        <ActionPill
+          accessibilityLabel="NFC bootstrap availability"
+          disableLogging
+          label={getNfcAvailabilityLabel(state)}
+          tone={nfcReady ? 'primary' : 'critical'}
         />
         <ActionPill
           accessibilityLabel="Nearby permissions status"
@@ -220,10 +231,16 @@ function SyncNearbyStatusTile({
           tone={permissionsReady ? 'primary' : 'critical'}
         />
       </ActionPillRow>
-      {!availabilityReady ? (
+      {!nearbyReady ? (
         <Text style={styles.helper}>
-          Google Play services must be available on both devices for Nearby
-          Connections to work in this build.
+          Google Play services must be available on both devices for the nearby
+          transport to work.
+        </Text>
+      ) : null}
+      {!nfcReady ? (
+        <Text style={styles.helper}>
+          Both phones need Android NFC support, host card emulation, and NFC
+          turned on before the tap step can succeed.
         </Text>
       ) : null}
     </Tile>
@@ -231,36 +248,53 @@ function SyncNearbyStatusTile({
 }
 
 function SyncStartTile({
-  onHost,
-  onJoin,
+  canStart,
+  onCancel,
+  onStart,
+  phase,
 }: {
-  onHost: () => void;
-  onJoin: () => void;
+  canStart: boolean;
+  onCancel: () => void;
+  onStart: () => void;
+  phase: NearbySyncSessionController['state']['phase'];
 }) {
   const styles = useThemedStyles(createStyles);
 
   return (
     <Tile title="Start Sync">
       <Text style={styles.body}>
-        Choose one parent to host and the other to join. Both parents will
-        confirm the same pairing code and the same merge summary before commit.
+        Both parents open this screen, tap the same button, then hold the phones
+        together. KidPoints handles the hidden host and join work behind the
+        scenes.
       </Text>
       <ActionPillRow>
-        <ActionPill label="Host Sync" onPress={onHost} tone="primary" />
-        <ActionPill label="Join Sync" onPress={onJoin} tone="neutral" />
+        {canStart ? (
+          <ActionPill label="Sync Now" onPress={onStart} tone="primary" />
+        ) : (
+          <ActionPill label="Cancel Sync" onPress={onCancel} tone="critical" />
+        )}
       </ActionPillRow>
+      {phase === 'error' ? (
+        <Text style={styles.helper}>
+          Retry from here after fixing the NFC or Nearby issue shown below.
+        </Text>
+      ) : null}
     </Tile>
   );
 }
 
 function SyncSessionTile({
-  onOpenDevicePicker,
+  onCancel,
+  onRetry,
   state,
 }: {
-  onOpenDevicePicker: () => void;
+  onCancel: () => void;
+  onRetry: () => void;
   state: NearbySyncSessionController['state'];
 }) {
   const styles = useThemedStyles(createStyles);
+  const isBootstrapError =
+    state.phase === 'error' && state.nfcBootstrap.phase === 'error';
 
   return (
     <Tile
@@ -275,43 +309,11 @@ function SyncSessionTile({
       title="Session"
     >
       {state.sessionLabel ? (
-        <Text style={styles.body}>
-          Hosting as <Text style={styles.emphasis}>{state.sessionLabel}</Text>
+        <Text style={styles.helper}>
+          Hidden session label: {state.sessionLabel}
         </Text>
       ) : null}
-      {state.phase === 'discovering' ? (
-        <>
-          <Text style={styles.body}>
-            Searching for nearby KidPoints sessions on this local network and
-            radio range.
-          </Text>
-          <ActionPillRow>
-            <ActionPill
-              label={`Pick Device (${state.discoveredEndpoints.length})`}
-              onPress={onOpenDevicePicker}
-              tone="primary"
-            />
-          </ActionPillRow>
-        </>
-      ) : null}
-      {state.phase === 'hosting' ? (
-        <Text style={styles.body}>
-          Waiting for another parent device to discover this session and request
-          a connection.
-        </Text>
-      ) : null}
-      {state.phase === 'connecting' || state.phase === 'pairing' ? (
-        <Text style={styles.body}>
-          {state.connectedEndpoint
-            ? `Working with ${state.connectedEndpoint.endpointName}.`
-            : 'Preparing the nearby connection.'}
-        </Text>
-      ) : null}
-      {state.phase === 'transferring' ? (
-        <Text style={styles.body}>
-          Exchanging sync summaries, history exports, and bundle hashes.
-        </Text>
-      ) : null}
+      <Text style={styles.body}>{getSessionBody(state)}</Text>
       {state.transferProgress.payloadId != null ? (
         <Text style={styles.helper}>
           Payload {state.transferProgress.payloadId} is{' '}
@@ -323,6 +325,12 @@ function SyncSessionTile({
       ) : null}
       {state.errorMessage ? (
         <Text style={styles.error}>{state.errorMessage}</Text>
+      ) : null}
+      {isBootstrapError ? (
+        <ActionPillRow>
+          <ActionPill label="Retry Tap" onPress={onRetry} tone="primary" />
+          <ActionPill label="Cancel" onPress={onCancel} tone="critical" />
+        </ActionPillRow>
       ) : null}
     </Tile>
   );
@@ -347,8 +355,7 @@ function SyncReviewTile({
       title="Merge Summary"
     >
       <Text style={styles.body}>
-        Both parents must confirm the same merged result before the host can
-        issue commit.
+        Both parents must confirm the same merged result before commit.
       </Text>
       <View style={styles.summaryGrid}>
         <View style={styles.summaryCard}>
@@ -423,122 +430,12 @@ function SyncSuccessTile({
   );
 }
 
-function SyncPairingOverlay({
-  authToken,
-  onAccept,
-  onReject,
-  visible,
-}: {
-  authToken: string | null;
-  onAccept: () => void;
-  onReject: () => void;
-  visible: boolean;
-}) {
-  const styles = useThemedStyles(createStyles);
-
-  if (!visible || !authToken) {
-    return null;
-  }
-
-  return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      <View style={styles.modalScrim}>
-        <View style={styles.authCard}>
-          <Text style={styles.authEyebrow}>Verify Pairing Code</Text>
-          <Text style={styles.authTitle}>Both screens must match</Text>
-          <Text style={styles.body}>
-            Confirm the same code is visible on both parent devices before
-            accepting the connection.
-          </Text>
-          <View style={styles.authTokenRow}>
-            {buildAuthTokenCells(authToken).map(({ character, key }) => (
-              <View key={key} style={styles.authTokenCell}>
-                <Text style={styles.authTokenValue}>{character}</Text>
-              </View>
-            ))}
-          </View>
-          <ActionPillRow>
-            <ActionPill label="Reject" onPress={onReject} tone="critical" />
-            <ActionPill
-              label="Confirm Match"
-              onPress={onAccept}
-              tone="primary"
-            />
-          </ActionPillRow>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function buildAuthTokenCells(authToken: string) {
-  const countsByCharacter = new Map<string, number>();
-
-  return authToken.split('').map((character) => {
-    const nextCount = countsByCharacter.get(character) ?? 0;
-
-    countsByCharacter.set(character, nextCount + 1);
-
-    return {
-      character,
-      key: `${authToken}-${character}-${nextCount}`,
-    };
-  });
-}
-
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
-    authCard: {
-      backgroundColor: tokens.modalSurface,
-      borderColor: tokens.border,
-      borderRadius: 24,
-      borderWidth: 1,
-      gap: 12,
-      maxWidth: 380,
-      paddingHorizontal: 18,
-      paddingVertical: 18,
-      width: '92%',
-    },
-    authEyebrow: {
-      color: tokens.accent,
-      fontSize: 11,
-      fontWeight: '800',
-      letterSpacing: 1,
-      textTransform: 'uppercase',
-    },
-    authTitle: {
-      color: tokens.textPrimary,
-      fontSize: 24,
-      fontWeight: '900',
-    },
-    authTokenCell: {
-      alignItems: 'center',
-      backgroundColor: tokens.inputSurface,
-      borderColor: tokens.accent,
-      borderRadius: 16,
-      borderWidth: 2,
-      flex: 1,
-      justifyContent: 'center',
-      minHeight: 66,
-    },
-    authTokenRow: {
-      flexDirection: 'row',
-      gap: 10,
-    },
-    authTokenValue: {
-      color: tokens.textPrimary,
-      fontSize: 28,
-      fontWeight: '900',
-      letterSpacing: 1,
-    },
     body: {
       color: tokens.textMuted,
       fontSize: 14,
       lineHeight: 20,
-    },
-    emphasis: {
-      color: tokens.textPrimary,
-      fontWeight: '800',
     },
     error: {
       color: tokens.critical,
@@ -549,13 +446,6 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       color: tokens.textMuted,
       fontSize: 12,
       lineHeight: 17,
-    },
-    modalScrim: {
-      ...StyleSheet.absoluteFillObject,
-      alignItems: 'center',
-      backgroundColor: tokens.modalBackdrop,
-      justifyContent: 'center',
-      paddingHorizontal: 16,
     },
     summaryCard: {
       backgroundColor: tokens.controlSurface,
