@@ -406,7 +406,6 @@ export function logForwardedNativeEntry(
   const loggerInstance = createModuleLogger(entry.tag);
   const forwardedDetails = {
     ...details,
-    nativeTimestamp: formatAppLogTimestamp(new Date(entry.timestampMs)),
   };
 
   Object.defineProperty(forwardedDetails, forwardedNativeLogMarker, {

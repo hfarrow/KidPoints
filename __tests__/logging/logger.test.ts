@@ -171,7 +171,7 @@ describe('logger', () => {
     );
     expect(capturedLogs[0]?.renderedMessage).toContain('Forwarded native log');
     expect(capturedLogs[0]?.renderedMessage).toContain('notificationId');
-    expect(capturedLogs[0]?.renderedMessage).toContain('nativeTimestamp');
+    expect(capturedLogs[0]?.renderedMessage).not.toContain('nativeTimestamp');
     expect(capturedLogs[0]?.renderedMessage).toContain('\u001b[38;5;141m');
     expect(bufferedEntries[0]).toMatchObject({
       level: 'info',
