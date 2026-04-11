@@ -1,39 +1,46 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
 import {
   ActionPill,
   ActionPillRow,
+  CompactSurface,
   StatusBadge,
 } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
+import { useLocalSettingsStore } from '../../state/localSettingsStore';
+import { triggerSuccessHaptic } from '../haptics/appHaptics';
 import type { useAppTheme } from '../theme/appTheme';
 import { useThemedStyles } from '../theme/appTheme';
 import type { NearbySyncSessionController } from './useNearbySyncSession';
+
+const SEARCHING_PHASES = new Set<NearbySyncSessionController['state']['phase']>(
+  ['bootstrapping', 'connecting', 'discovering', 'hosting', 'idle', 'pairing'],
+);
 
 export function getSyncPhaseLabel(
   phase: NearbySyncSessionController['state']['phase'],
 ) {
   switch (phase) {
     case 'bootstrapping':
-      return 'Tap Phones';
     case 'hosting':
     case 'discovering':
     case 'connecting':
-      return 'Connecting';
     case 'pairing':
-      return 'Connecting';
+      return 'Searching';
     case 'transferring':
-      return 'Exchanging Data';
+      return 'Preparing';
     case 'review':
-      return 'Ready To Confirm';
+      return 'Review';
     case 'committing':
-      return 'Applying Sync';
+      return 'Finishing';
     case 'success':
-      return 'Synced';
+      return 'Done';
     case 'error':
       return 'Error';
     default:
-      return 'Idle';
+      return 'Ready';
   }
 }
 
@@ -57,233 +64,226 @@ export function canStartNewSyncSession(
   return phase === 'idle' || phase === 'error' || phase === 'success';
 }
 
-function getNearbyAvailabilityLabel(
-  state: NearbySyncSessionController['state'],
+function isSearchingPhase(
+  phase: NearbySyncSessionController['state']['phase'],
 ) {
-  if (state.availability.isReady) {
-    return 'Nearby Ready';
-  }
-
-  if (state.availability.reason === 'play-services-missing') {
-    return 'Play Services Missing';
-  }
-
-  if (state.availability.reason === 'play-services-error') {
-    return 'Play Services Error';
-  }
-
-  return 'Nearby Unavailable';
+  return SEARCHING_PHASES.has(phase);
 }
 
-function getNfcAvailabilityLabel(state: NearbySyncSessionController['state']) {
-  if (state.nfcAvailability.isReady) {
-    return 'NFC Ready';
-  }
-
-  switch (state.nfcAvailability.reason) {
-    case 'nfc-disabled':
-      return 'NFC Off';
-    case 'hce-unsupported':
-      return 'HCE Unsupported';
-    case 'reader-mode-unsupported':
-      return 'Reader Unsupported';
-    case 'nfc-unavailable':
-      return 'No NFC';
-    default:
-      return 'NFC Unavailable';
-  }
-}
-
-function getSessionBody(state: NearbySyncSessionController['state']) {
+function getSyncingBody(state: NearbySyncSessionController['state']) {
   switch (state.phase) {
     case 'bootstrapping':
-      return (
-        state.nfcBootstrap.message ??
-        'Hold both phones together while KidPoints confirms the tap and prepares a private nearby session.'
-      );
-    case 'connecting':
+      return 'Keep both phones back-to-back while KidPoints finds the matching device.';
     case 'hosting':
     case 'discovering':
+    case 'connecting':
     case 'pairing':
-      return state.connectedEndpoint
-        ? `Phones matched. Connecting with ${state.connectedEndpoint.endpointName}.`
-        : 'Phones matched. KidPoints is establishing a nearby link and skipping the old host and join steps for you.';
+      return 'KidPoints found the other phone and is opening a private connection.';
     case 'transferring':
-      return 'The two phones are exchanging sync summaries, history exports, and merge proofs.';
-    case 'review':
-      return 'The merge result is ready. Review it on both phones and confirm to continue.';
+      return 'KidPoints is comparing both histories and getting the review ready.';
     case 'committing':
-      return 'Both phones agreed on the same merge result and are now applying it.';
-    case 'success':
-      return 'This phone applied the agreed sync bundle successfully.';
-    case 'error':
-      return (
-        state.errorMessage ??
-        'Sync stopped before completion. Review the status above and try again.'
-      );
+      return 'Applying the approved sync on both phones now.';
     default:
-      return 'Both parents should open this screen, tap Sync Now, and hold their phones together until the review appears.';
+      return 'Open this screen on both phones and hold them together.';
   }
 }
 
-export function SyncScreenContent({
-  session,
+function getFriendlyErrorBody(state: NearbySyncSessionController['state']) {
+  if (state.nfcBootstrap.failureReason === 'timeout') {
+    return 'The phones did not connect in time. Keep them back-to-back and KidPoints can try again.';
+  }
+
+  switch (state.errorCode) {
+    case 'nfc-disabled':
+      return 'Turn on NFC on both phones, then try again.';
+    case 'permissions-denied':
+      return 'Nearby permissions are needed on this phone before syncing can start.';
+    case 'connection-disconnected':
+    case 'payload-transfer-failed':
+      return 'The phones lost their connection before syncing finished. Hold them together and try again.';
+    case 'bootstrap-token-mismatch':
+    case 'bootstrap-session-mismatch':
+      return 'KidPoints found the wrong phone for this tap. Hold the two syncing phones together and try again.';
+    default:
+      return (
+        state.errorMessage ??
+        'Sync could not finish this time. Keep the phones together and try again.'
+      );
+  }
+}
+
+function getReviewStatusCopy(state: NearbySyncSessionController['state']) {
+  if (state.phase === 'success') {
+    return 'Both phones finished applying the same sync.';
+  }
+
+  if (state.localPrepareConfirmed) {
+    return state.isAwaitingPeerPrepare
+      ? 'This phone is ready. Confirm on the other phone to finish syncing.'
+      : 'This phone is ready. Waiting for the final step to finish.';
+  }
+
+  return 'Review the updated history, then confirm on both phones to finish syncing.';
+}
+
+function SyncTileActionRail({
+  isApplied,
+  isAwaitingPeerPrepare,
+  localPrepareConfirmed,
+  onCancel,
+  onConfirm,
 }: {
-  session: NearbySyncSessionController;
+  isApplied: boolean;
+  isAwaitingPeerPrepare: boolean;
+  localPrepareConfirmed: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
 }) {
-  const { state } = session;
-  const hasRollbackAvailable = state.phase === 'success';
+  if (isApplied) {
+    return null;
+  }
 
   return (
-    <>
-      <SyncStatusTile state={state} />
-
-      <SyncStartTile
-        canStart={canStartNewSyncSession(state.phase)}
-        onCancel={() => {
-          void session.cancelSession();
-        }}
-        onStart={() => {
-          void session.startSyncFlow();
-        }}
-        phase={state.phase}
-      />
-
-      <SyncSessionTile
-        onCancel={() => {
-          void session.cancelSession();
-        }}
-        onRetry={() => {
-          void session.startSyncFlow();
-        }}
-        state={state}
-      />
-
-      {state.review ? (
-        <SyncReviewTile
-          isAwaitingPeerPrepare={state.isAwaitingPeerPrepare}
-          localPrepareConfirmed={state.localPrepareConfirmed}
-          onConfirm={() => {
-            if (!state.localPrepareConfirmed) {
-              void session.confirmMergeAndPrepareCommit();
-            }
-          }}
-          review={state.review}
+    <ActionPillRow>
+      {localPrepareConfirmed ? (
+        <StatusBadge
+          label={
+            isAwaitingPeerPrepare ? 'Waiting For Other Phone' : 'Confirmed'
+          }
+          tone="warning"
         />
-      ) : null}
-
-      {state.phase === 'success' ? (
-        <SyncSuccessTile
-          hasRollbackAvailable={hasRollbackAvailable}
-          onRestart={() => {
-            void session.cancelSession();
-          }}
-          onRevert={() => {
-            void session.revertLastAppliedSync();
-          }}
-        />
-      ) : null}
-    </>
+      ) : (
+        <ActionPill label="Confirm Sync" onPress={onConfirm} tone="primary" />
+      )}
+      <ActionPill label="Cancel" onPress={onCancel} tone="critical" />
+    </ActionPillRow>
   );
 }
 
-function SyncStatusTile({
+function SyncInstructionsDiagram() {
+  const styles = useThemedStyles(createStyles);
+
+  return (
+    <View style={styles.diagramRow}>
+      <View style={styles.phonePair}>
+        <View style={styles.phoneBackAligned} />
+        <View style={styles.phoneFrontAligned}>
+          <View style={styles.phoneCamera} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function SyncInstructionsTile() {
+  const styles = useThemedStyles(createStyles);
+
+  return (
+    <Tile title="Instructions">
+      <Text style={styles.primaryCopy}>
+        Hold your phones together back-to-back.
+      </Text>
+      <Text style={styles.body}>
+        Keep both screens open and let KidPoints handle the connection for you.
+      </Text>
+      <SyncInstructionsDiagram />
+    </Tile>
+  );
+}
+
+function SyncingTile({
+  celebrationTick,
   state,
 }: {
+  celebrationTick: number;
   state: NearbySyncSessionController['state'];
 }) {
   const styles = useThemedStyles(createStyles);
-  const nearbyReady = state.availability.isReady;
-  const nfcReady = state.nfcAvailability.isReady;
-  const permissionsReady = state.permissions.allGranted;
+  const pulse = useRef(new Animated.Value(0)).current;
+  const [searchingDots, setSearchingDots] = useState('');
+  const searching = isSearchingPhase(state.phase);
+
+  useEffect(() => {
+    if (!searching) {
+      setSearchingDots('');
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      setSearchingDots((currentDots) =>
+        currentDots.length >= 3 ? '' : `${currentDots}.`,
+      );
+    }, 420);
+
+    return () => clearInterval(intervalId);
+  }, [searching]);
+
+  useEffect(() => {
+    if (celebrationTick === 0) {
+      return;
+    }
+
+    pulse.setValue(0);
+    Animated.sequence([
+      Animated.timing(pulse, {
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+      Animated.delay(520),
+      Animated.timing(pulse, {
+        duration: 180,
+        easing: Easing.in(Easing.cubic),
+        toValue: 0,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [celebrationTick, pulse]);
 
   return (
     <Tile
       accessory={
-        <StatusBadge
-          label={getSyncPhaseLabel(state.phase)}
-          tone={getSyncPhaseTone(state.phase)}
-        />
+        <StatusBadge label={getSyncPhaseLabel(state.phase)} tone="neutral" />
       }
-      title="Sync Status"
+      title="Syncing"
     >
-      <Text style={styles.body}>
-        KidPoints uses NFC to bootstrap a private nearby connection, then keeps
-        the existing review and confirm steps before commit.
-      </Text>
-      <ActionPillRow>
-        <ActionPill
-          accessibilityLabel="Nearby transport availability"
-          disableLogging
-          label={getNearbyAvailabilityLabel(state)}
-          tone={nearbyReady ? 'primary' : 'critical'}
-        />
-        <ActionPill
-          accessibilityLabel="NFC bootstrap availability"
-          disableLogging
-          label={getNfcAvailabilityLabel(state)}
-          tone={nfcReady ? 'primary' : 'critical'}
-        />
-        <ActionPill
-          accessibilityLabel="Nearby permissions status"
-          disableLogging
-          label={permissionsReady ? 'Permissions Ready' : 'Permissions Needed'}
-          tone={permissionsReady ? 'primary' : 'critical'}
-        />
-      </ActionPillRow>
-      {!nearbyReady ? (
-        <Text style={styles.helper}>
-          Google Play services must be available on both devices for the nearby
-          transport to work.
+      <View style={styles.syncingHeader}>
+        <Text style={styles.syncHeadline}>
+          {searching
+            ? `Searching${searchingDots}`
+            : getSyncPhaseLabel(state.phase)}
         </Text>
-      ) : null}
-      {!nfcReady ? (
-        <Text style={styles.helper}>
-          Both phones need Android NFC support, host card emulation, and NFC
-          turned on before the tap step can succeed.
-        </Text>
-      ) : null}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.connectionCelebration,
+            {
+              opacity: pulse,
+              transform: [
+                {
+                  scale: pulse.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.72, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Feather
+            color={styles.connectionCelebrationIcon.color}
+            name="check"
+            size={16}
+          />
+        </Animated.View>
+      </View>
+      <Text style={styles.body}>{getSyncingBody(state)}</Text>
     </Tile>
   );
 }
 
-function SyncStartTile({
-  canStart,
-  onCancel,
-  onStart,
-  phase,
-}: {
-  canStart: boolean;
-  onCancel: () => void;
-  onStart: () => void;
-  phase: NearbySyncSessionController['state']['phase'];
-}) {
-  const styles = useThemedStyles(createStyles);
-
-  return (
-    <Tile title="Start Sync">
-      <Text style={styles.body}>
-        Both parents open this screen, tap the same button, then hold the phones
-        together. KidPoints handles the hidden host and join work behind the
-        scenes.
-      </Text>
-      <ActionPillRow>
-        {canStart ? (
-          <ActionPill label="Sync Now" onPress={onStart} tone="primary" />
-        ) : (
-          <ActionPill label="Cancel Sync" onPress={onCancel} tone="critical" />
-        )}
-      </ActionPillRow>
-      {phase === 'error' ? (
-        <Text style={styles.helper}>
-          Retry from here after fixing the NFC or Nearby issue shown below.
-        </Text>
-      ) : null}
-    </Tile>
-  );
-}
-
-function SyncSessionTile({
+function SyncErrorTile({
   onCancel,
   onRetry,
   state,
@@ -293,140 +293,213 @@ function SyncSessionTile({
   state: NearbySyncSessionController['state'];
 }) {
   const styles = useThemedStyles(createStyles);
-  const isBootstrapError =
-    state.phase === 'error' && state.nfcBootstrap.phase === 'error';
+  const isTimeout = state.nfcBootstrap.failureReason === 'timeout';
 
   return (
     <Tile
-      accessory={
-        state.connectedEndpoint ? (
-          <StatusBadge
-            label={state.connectedEndpoint.endpointName}
-            tone="neutral"
-          />
-        ) : null
-      }
-      title="Session"
+      accessory={<StatusBadge label="Try Again" tone="warning" />}
+      title="Syncing"
     >
-      {state.sessionLabel ? (
+      <Text style={styles.primaryCopy}>
+        We couldn&apos;t finish syncing yet.
+      </Text>
+      <Text style={styles.body}>{getFriendlyErrorBody(state)}</Text>
+      {isTimeout ? (
         <Text style={styles.helper}>
-          Hidden session label: {state.sessionLabel}
+          KidPoints will keep retrying while this screen stays open.
         </Text>
       ) : null}
-      <Text style={styles.body}>{getSessionBody(state)}</Text>
-      {state.transferProgress.payloadId != null ? (
-        <Text style={styles.helper}>
-          Payload {state.transferProgress.payloadId} is{' '}
-          {state.transferProgress.status}.
-          {state.transferProgress.totalBytes != null
-            ? ` ${state.transferProgress.bytesTransferred ?? 0}/${state.transferProgress.totalBytes} bytes`
-            : ''}
-        </Text>
-      ) : null}
-      {state.errorMessage ? (
-        <Text style={styles.error}>{state.errorMessage}</Text>
-      ) : null}
-      {isBootstrapError ? (
-        <ActionPillRow>
-          <ActionPill label="Retry Tap" onPress={onRetry} tone="primary" />
-          <ActionPill label="Cancel" onPress={onCancel} tone="critical" />
-        </ActionPillRow>
-      ) : null}
+      <ActionPillRow>
+        <ActionPill
+          label={isTimeout ? 'Retry Now' : 'Try Again'}
+          onPress={onRetry}
+          tone="primary"
+        />
+        <ActionPill label="Cancel" onPress={onCancel} tone="critical" />
+      </ActionPillRow>
     </Tile>
   );
 }
 
 function SyncReviewTile({
-  isAwaitingPeerPrepare,
-  localPrepareConfirmed,
+  onCancel,
   onConfirm,
-  review,
+  state,
 }: {
-  isAwaitingPeerPrepare: boolean;
-  localPrepareConfirmed: boolean;
+  onCancel: () => void;
   onConfirm: () => void;
-  review: NonNullable<NearbySyncSessionController['state']['review']>;
+  state: NearbySyncSessionController['state'];
 }) {
   const styles = useThemedStyles(createStyles);
+  const review = state.review;
+
+  if (!review) {
+    return null;
+  }
+
+  const isApplied = state.phase === 'success';
 
   return (
     <Tile
-      accessory={<StatusBadge label={review.mode} tone="warning" />}
-      title="Merge Summary"
+      accessory={
+        <StatusBadge
+          label={isApplied ? 'Applied' : 'Ready To Confirm'}
+          tone={isApplied ? 'good' : 'warning'}
+        />
+      }
+      title={isApplied ? 'Sync Complete' : 'Review Sync'}
     >
-      <Text style={styles.body}>
-        Both parents must confirm the same merged result before commit.
-      </Text>
-      <View style={styles.summaryGrid}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Affected Children</Text>
-          <Text style={styles.summaryValue}>{review.mergedChildCount}</Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Reconciliations</Text>
-          <Text style={styles.summaryValue}>
-            {review.childReconciliationCount}
-          </Text>
+      <SyncTileActionRail
+        isApplied={isApplied}
+        isAwaitingPeerPrepare={state.isAwaitingPeerPrepare}
+        localPrepareConfirmed={state.localPrepareConfirmed}
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+      />
+
+      <View style={styles.reviewIntro}>
+        <Text style={styles.primaryCopy}>{review.outcomeCopy}</Text>
+        <Text style={styles.body}>{getReviewStatusCopy(state)}</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Children</Text>
+        <View style={styles.sectionList}>
+          {review.children.map((child) => (
+            <CompactSurface key={child.childId} style={styles.childRow}>
+              <View style={styles.childRowHeader}>
+                <Text style={styles.childName}>{child.childName}</Text>
+                {child.change === 'added' ? (
+                  <StatusBadge label="+ New" size="mini" tone="good" />
+                ) : child.change === 'removed' ? (
+                  <StatusBadge label="- Removed" size="mini" tone="warning" />
+                ) : null}
+              </View>
+              <Text style={styles.childPoints}>{child.points} points</Text>
+            </CompactSurface>
+          ))}
         </View>
       </View>
-      <Text style={styles.helper}>
-        Bundle: {review.bundleHash.slice(0, 14)}
-      </Text>
-      <Text style={styles.helper}>
-        Head: {review.mergedHeadSyncHash.slice(0, 14)}
-      </Text>
-      <ActionPillRow>
-        <ActionPill
-          label={
-            localPrepareConfirmed
-              ? isAwaitingPeerPrepare
-                ? 'Waiting For Peer'
-                : 'Confirmed'
-              : 'Confirm Sync'
-          }
-          onPress={onConfirm}
-          tone="primary"
-        />
-      </ActionPillRow>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, styles.sectionTitleCentered]}>
+          Synced History
+        </Text>
+        <View style={styles.transactionOriginHeader}>
+          <Text style={styles.transactionOriginLabel}>Yours</Text>
+          <Text style={styles.transactionOriginLabel}>Theirs</Text>
+        </View>
+        {review.transactions.length === 0 ? (
+          <Text style={styles.helper}>
+            No syncable history changes were needed.
+          </Text>
+        ) : (
+          <View style={styles.transactionColumn}>
+            {review.transactions.map((transaction) => {
+              const isLocalOrigin = transaction.origin === 'local';
+
+              return (
+                <View
+                  key={transaction.id}
+                  style={[
+                    styles.reviewTransactionWrap,
+                    isLocalOrigin
+                      ? styles.reviewTransactionWrapLocal
+                      : styles.reviewTransactionWrapRemote,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.reviewTransactionBubble,
+                      isLocalOrigin
+                        ? styles.reviewTransactionBubbleLocal
+                        : styles.reviewTransactionBubbleRemote,
+                    ]}
+                  >
+                    <Text style={styles.reviewTransactionSummary}>
+                      {transaction.summaryText}
+                    </Text>
+                    <Text style={styles.reviewTransactionTime}>
+                      {transaction.timestampLabel}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </View>
+
+      <SyncTileActionRail
+        isApplied={isApplied}
+        isAwaitingPeerPrepare={state.isAwaitingPeerPrepare}
+        localPrepareConfirmed={state.localPrepareConfirmed}
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+      />
     </Tile>
   );
 }
 
-function SyncSuccessTile({
-  hasRollbackAvailable,
-  onRestart,
-  onRevert,
+export function SyncScreenContent({
+  session,
 }: {
-  hasRollbackAvailable: boolean;
-  onRestart: () => void;
-  onRevert: () => void;
+  session: NearbySyncSessionController;
 }) {
-  const styles = useThemedStyles(createStyles);
+  const { state } = session;
+  const hapticsEnabled = useLocalSettingsStore(
+    (storeState) => storeState.hapticsEnabled,
+  );
+  const lastConnectedEndpointIdRef = useRef<string | null>(null);
+  const [celebrationTick, setCelebrationTick] = useState(0);
+  const connectedEndpointId = state.connectedEndpoint?.endpointId ?? null;
+
+  useEffect(() => {
+    if (!connectedEndpointId) {
+      lastConnectedEndpointIdRef.current = null;
+      return;
+    }
+
+    if (lastConnectedEndpointIdRef.current === connectedEndpointId) {
+      return;
+    }
+
+    lastConnectedEndpointIdRef.current = connectedEndpointId;
+    triggerSuccessHaptic(hapticsEnabled);
+    setCelebrationTick((currentValue) => currentValue + 1);
+  }, [connectedEndpointId, hapticsEnabled]);
 
   return (
-    <Tile
-      accessory={<StatusBadge label="Applied" tone="good" />}
-      title="Sync Complete"
-    >
-      <Text style={styles.body}>
-        This device applied the agreed sync bundle. If the result looks wrong,
-        revert the last sync before starting another session.
-      </Text>
-      <ActionPillRow>
-        <ActionPill
-          label="Start Another Sync"
-          onPress={onRestart}
-          tone="primary"
+    <>
+      <SyncInstructionsTile />
+
+      {state.phase === 'error' ? (
+        <SyncErrorTile
+          onCancel={() => {
+            void session.cancelSession();
+          }}
+          onRetry={() => {
+            void session.startSyncFlow();
+          }}
+          state={state}
         />
-        {hasRollbackAvailable ? (
-          <ActionPill
-            label="Revert Last Sync"
-            onPress={onRevert}
-            tone="critical"
-          />
-        ) : null}
-      </ActionPillRow>
-    </Tile>
+      ) : state.review &&
+        (state.phase === 'review' || state.phase === 'success') ? (
+        <SyncReviewTile
+          onCancel={() => {
+            void session.cancelSession();
+          }}
+          onConfirm={() => {
+            if (!state.localPrepareConfirmed) {
+              void session.confirmMergeAndPrepareCommit();
+            }
+          }}
+          state={state}
+        />
+      ) : (
+        <SyncingTile celebrationTick={celebrationTick} state={state} />
+      )}
+    </>
   );
 }
 
@@ -437,39 +510,202 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       fontSize: 14,
       lineHeight: 20,
     },
-    error: {
-      color: tokens.critical,
+    childName: {
+      color: tokens.textPrimary,
+      flex: 1,
       fontSize: 13,
-      fontWeight: '700',
+      fontWeight: '800',
+      minWidth: 0,
+    },
+    childPoints: {
+      color: tokens.textMuted,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    childRow: {
+      gap: 4,
+    },
+    childRowHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 8,
+      justifyContent: 'space-between',
+    },
+    connectionCelebration: {
+      alignItems: 'center',
+      backgroundColor: tokens.successSurface,
+      borderRadius: 999,
+      height: 32,
+      justifyContent: 'center',
+      width: 32,
+    },
+    connectionCelebrationIcon: {
+      color: tokens.successText,
+    },
+    diagramArrow: {
+      color: tokens.textMuted,
+    },
+    diagramArrowWrap: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    diagramRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 12,
+      justifyContent: 'center',
+      paddingVertical: 4,
     },
     helper: {
       color: tokens.textMuted,
       fontSize: 12,
       lineHeight: 17,
     },
-    summaryCard: {
-      backgroundColor: tokens.controlSurface,
-      borderColor: tokens.border,
-      borderRadius: 18,
+    phoneBack: {
+      backgroundColor: tokens.transactionSyncedSurface,
+      borderColor: tokens.tileBorder,
+      borderRadius: 14,
       borderWidth: 1,
-      flex: 1,
-      gap: 4,
-      minHeight: 86,
-      paddingHorizontal: 14,
-      paddingVertical: 14,
+      height: 72,
+      left: 14,
+      position: 'absolute',
+      top: 6,
+      transform: [{ rotate: '7deg' }],
+      width: 40,
     },
-    summaryGrid: {
-      flexDirection: 'row',
-      gap: 10,
+    phoneBackAligned: {
+      backgroundColor: tokens.transactionSyncedSurface,
+      borderColor: tokens.tileBorder,
+      borderRadius: 14,
+      borderWidth: 1,
+      height: 72,
+      left: 18,
+      position: 'absolute',
+      top: 6,
+      width: 40,
     },
-    summaryLabel: {
+    phoneCamera: {
+      backgroundColor: tokens.textMuted,
+      borderRadius: 999,
+      height: 6,
+      width: 6,
+    },
+    phoneFront: {
+      alignItems: 'center',
+      backgroundColor: tokens.transactionLocalSurface,
+      borderColor: tokens.tileBorder,
+      borderRadius: 14,
+      borderWidth: 1,
+      gap: 6,
+      height: 72,
+      justifyContent: 'flex-start',
+      paddingTop: 10,
+      width: 40,
+    },
+    phoneFrontAligned: {
+      alignItems: 'center',
+      backgroundColor: tokens.transactionLocalSurface,
+      borderColor: tokens.tileBorder,
+      borderRadius: 14,
+      borderWidth: 1,
+      gap: 6,
+      height: 72,
+      justifyContent: 'flex-start',
+      paddingTop: 10,
+      transform: [{ rotate: '-7deg' }],
+      width: 40,
+    },
+    phonePair: {
+      height: 84,
+      position: 'relative',
+      width: 64,
+    },
+    primaryCopy: {
+      color: tokens.textPrimary,
+      fontSize: 17,
+      fontWeight: '900',
+      lineHeight: 22,
+    },
+    reviewIntro: {
+      gap: 6,
+    },
+    reviewTransactionBubble: {
+      borderColor: tokens.tileBorder,
+      borderRadius: 16,
+      borderWidth: 1,
+      gap: 2,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      width: '90%',
+    },
+    reviewTransactionBubbleLocal: {
+      backgroundColor: tokens.transactionLocalSurface,
+    },
+    reviewTransactionBubbleRemote: {
+      backgroundColor: tokens.transactionSyncedSurface,
+    },
+    reviewTransactionSummary: {
+      color: tokens.textPrimary,
+      fontSize: 12,
+      fontWeight: '800',
+      lineHeight: 17,
+    },
+    reviewTransactionTime: {
+      color: tokens.textMuted,
+      fontSize: 11,
+      lineHeight: 13,
+    },
+    reviewTransactionWrap: {
+      width: '100%',
+    },
+    reviewTransactionWrapLocal: {
+      alignItems: 'flex-start',
+    },
+    reviewTransactionWrapRemote: {
+      alignItems: 'flex-end',
+    },
+    section: {
+      gap: 8,
+    },
+    sectionList: {
+      gap: 8,
+    },
+    sectionTitle: {
       color: tokens.textMuted,
       fontSize: 12,
-      fontWeight: '700',
+      fontWeight: '800',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
     },
-    summaryValue: {
+    sectionTitleCentered: {
+      textAlign: 'center',
+    },
+    syncingHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 12,
+      justifyContent: 'space-between',
+    },
+    syncHeadline: {
       color: tokens.textPrimary,
-      fontSize: 26,
+      flex: 1,
+      fontSize: 21,
       fontWeight: '900',
+      lineHeight: 26,
+    },
+    transactionOriginHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingHorizontal: 4,
+    },
+    transactionOriginLabel: {
+      color: tokens.textMuted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    transactionColumn: {
+      gap: 8,
     },
   });

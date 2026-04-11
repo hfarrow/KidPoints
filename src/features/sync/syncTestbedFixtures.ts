@@ -48,11 +48,12 @@ export function createSyncTestbedLocalSeedDocument(args: {
     return createInitialSharedDocument({ deviceId: TESTBED_LOCAL_DEVICE_ID });
   }
 
-  return cloneSharedDocument({
-    ...sourceDocument,
-    deviceId: TESTBED_LOCAL_DEVICE_ID,
-    syncState: null,
-  });
+  return cloneSharedDocument(
+    remapDocumentIdentity({
+      document: sourceDocument,
+      nextDeviceId: TESTBED_LOCAL_DEVICE_ID,
+    }),
+  );
 }
 
 export function deriveSyncTestbedCommonBaseOptions(
@@ -162,6 +163,16 @@ function createSharedBaseRemoteProjection(args: {
   storage: StateStorage;
 }): SyncProjection {
   const { commonBaseTransactionId, localDocument, storage } = args;
+  const localProjection = deriveSyncProjection(localDocument);
+  const localBaseIndex = localProjection.entries.findIndex(
+    (entry) => entry.sourceTransactionId === commonBaseTransactionId,
+  );
+  const localPostBaseTimestamps =
+    localBaseIndex >= 0
+      ? localProjection.entries
+          .slice(localBaseIndex + 1)
+          .map((entry) => entry.occurredAt)
+      : [];
   const baseDocument = buildDocumentAtTransaction({
     deviceId: REMOTE_DEVICE_ID,
     sourceDocument: localDocument,
@@ -177,25 +188,50 @@ function createSharedBaseRemoteProjection(args: {
     storage,
   });
   const activeChildIds = store.getState().document.head.activeChildIds;
-  const [firstChildId, secondChildId] = activeChildIds;
+  const remoteEntryCount = Math.max(
+    2,
+    Math.min(4, localPostBaseTimestamps.length || 2),
+  );
+  const operationTargets = Array.from(
+    { length: remoteEntryCount },
+    (_, index) =>
+      activeChildIds.length > 0
+        ? activeChildIds[index % activeChildIds.length]
+        : undefined,
+  );
 
-  if (firstChildId) {
-    const firstChild =
-      store.getState().document.head.childrenById[firstChildId];
-    const nextPoints = (firstChild?.points ?? 0) + 3;
+  for (const [operationIndex, childId] of operationTargets.entries()) {
+    if (!childId) {
+      continue;
+    }
 
-    store.getState().setPoints(firstChildId, nextPoints);
+    const child = store.getState().document.head.childrenById[childId];
+    const currentPoints = child?.points ?? 0;
+
+    if (operationIndex % 2 === 0) {
+      store.getState().setPoints(childId, currentPoints + operationIndex + 2);
+      continue;
+    }
+
+    const delta = childId === activeChildIds[1] ? -1 : 1;
+    const nextPoints = Math.max(currentPoints + delta, 0);
+
+    store.getState().setPoints(childId, nextPoints);
   }
 
-  if (secondChildId) {
-    const secondChild =
-      store.getState().document.head.childrenById[secondChildId];
-    const nextPoints = Math.max((secondChild?.points ?? 0) - 2, 0);
+  const interleavedRemoteDocument = remapPostBaseTransactionTimestamps({
+    baseTransactionId: commonBaseTransactionId,
+    document: store.getState().document,
+    desiredOccurredAt: buildInterleavedTimestampPlan({
+      baseOccurredAt:
+        localProjection.entries[localBaseIndex]?.occurredAt ??
+        new Date().toISOString(),
+      localPostBaseTimestamps,
+      remoteEntryCount,
+    }),
+  });
 
-    store.getState().setPoints(secondChildId, nextPoints);
-  }
-
-  return deriveSyncProjection(store.getState().document);
+  return deriveSyncProjection(interleavedRemoteDocument);
 }
 
 function buildDocumentAtTransaction(args: {
@@ -273,5 +309,108 @@ function cloneTransactionRecord(
       timerConfig: { ...transaction.stateAfter.timerConfig },
       timerState: { ...transaction.stateAfter.timerState },
     },
+  };
+}
+
+function buildInterleavedTimestampPlan(args: {
+  baseOccurredAt: string;
+  localPostBaseTimestamps: string[];
+  remoteEntryCount: number;
+}) {
+  const { baseOccurredAt, localPostBaseTimestamps, remoteEntryCount } = args;
+  const parsedLocalTimes = localPostBaseTimestamps
+    .map((timestamp) => Date.parse(timestamp))
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const parsedBaseTime = Date.parse(baseOccurredAt);
+  let lastAssignedTime = Number.isFinite(parsedBaseTime)
+    ? parsedBaseTime
+    : Date.now();
+
+  return Array.from({ length: remoteEntryCount }, (_, index) => {
+    let nextTime = lastAssignedTime + 1000;
+
+    if (parsedLocalTimes.length > 0 && index < parsedLocalTimes.length) {
+      const currentLocalTime = parsedLocalTimes[index];
+      const nextLocalTime =
+        parsedLocalTimes[index + 1] ?? currentLocalTime + 2000;
+      const midpointTime =
+        currentLocalTime +
+        Math.max(Math.floor((nextLocalTime - currentLocalTime) / 2), 1);
+
+      nextTime = midpointTime;
+    }
+
+    if (nextTime <= lastAssignedTime) {
+      nextTime = lastAssignedTime + 1;
+    }
+
+    lastAssignedTime = nextTime;
+    return new Date(nextTime).toISOString();
+  });
+}
+
+function remapPostBaseTransactionTimestamps(args: {
+  baseTransactionId: string;
+  desiredOccurredAt: string[];
+  document: SharedDocument;
+}) {
+  const { baseTransactionId, desiredOccurredAt, document } = args;
+  const baseIndex = document.transactions.findIndex(
+    (transaction) => transaction.id === baseTransactionId,
+  );
+
+  if (baseIndex < 0) {
+    return document;
+  }
+
+  let nextTimestampIndex = 0;
+
+  return {
+    ...document,
+    transactions: document.transactions.map((transaction, index) => {
+      if (
+        index <= baseIndex ||
+        !transaction.participatesInHistory ||
+        nextTimestampIndex >= desiredOccurredAt.length
+      ) {
+        return cloneTransactionRecord(transaction);
+      }
+
+      const occurredAt =
+        desiredOccurredAt[nextTimestampIndex] ?? transaction.occurredAt;
+      nextTimestampIndex += 1;
+
+      return {
+        ...cloneTransactionRecord(transaction),
+        occurredAt,
+      };
+    }),
+  };
+}
+
+function remapDocumentIdentity(args: {
+  document: SharedDocument;
+  nextDeviceId: string;
+}): SharedDocument {
+  const { document, nextDeviceId } = args;
+  const previousDeviceId = document.deviceId;
+
+  return {
+    ...document,
+    deviceId: nextDeviceId,
+    events: document.events.map((event) => ({
+      ...event,
+      deviceId:
+        event.deviceId === previousDeviceId ? nextDeviceId : event.deviceId,
+    })),
+    syncState: null,
+    transactions: document.transactions.map((transaction) => ({
+      ...cloneTransactionRecord(transaction),
+      originDeviceId:
+        transaction.originDeviceId === previousDeviceId
+          ? nextDeviceId
+          : transaction.originDeviceId,
+    })),
   };
 }

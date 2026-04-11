@@ -61,6 +61,15 @@ jest.mock('../../../src/features/sync/useNearbySyncSession', () => ({
   useNearbySyncSession: () => mockSession,
 }));
 
+jest.mock('../../../src/state/localSettingsStore', () => ({
+  useLocalSettingsStore: (
+    selector: (state: { hapticsEnabled: boolean }) => unknown,
+  ) =>
+    selector({
+      hapticsEnabled: true,
+    }),
+}));
+
 jest.mock('@expo/vector-icons', () => {
   const mockReactNative = jest.requireActual('react-native');
   const { Text } = mockReactNative;
@@ -86,13 +95,23 @@ jest.mock('../../../src/features/theme/appTheme', () => ({
       accent: '#2563eb',
       border: '#cbd5e1',
       critical: '#dc2626',
+      criticalSurface: '#fee2e2',
+      controlSurface: '#e2e8f0',
+      controlText: '#0f172a',
+      floatingLabelSurface: '#fef3c7',
       inputSurface: '#e2e8f0',
       modalBackdrop: 'rgba(15, 23, 42, 0.5)',
       modalSurface: '#ffffff',
       screenBackground: '#f8fafc',
       success: '#16a34a',
+      successSurface: '#dcfce7',
+      successText: '#166534',
       textMuted: '#475569',
       textPrimary: '#0f172a',
+      tileBorder: '#cbd5e1',
+      transactionLocalSurface: '#f8fafc',
+      transactionSyncedSurface: '#e2e8f0',
+      warningText: '#92400e',
     },
   }),
   useThemedStyles: (
@@ -103,13 +122,23 @@ jest.mock('../../../src/features/theme/appTheme', () => ({
         accent: '#2563eb',
         border: '#cbd5e1',
         critical: '#dc2626',
+        criticalSurface: '#fee2e2',
+        controlSurface: '#e2e8f0',
+        controlText: '#0f172a',
+        floatingLabelSurface: '#fef3c7',
         inputSurface: '#e2e8f0',
         modalBackdrop: 'rgba(15, 23, 42, 0.5)',
         modalSurface: '#ffffff',
         screenBackground: '#f8fafc',
         success: '#16a34a',
+        successSurface: '#dcfce7',
+        successText: '#166534',
         textMuted: '#475569',
         textPrimary: '#0f172a',
+        tileBorder: '#cbd5e1',
+        transactionLocalSurface: '#f8fafc',
+        transactionSyncedSurface: '#e2e8f0',
+        warningText: '#92400e',
       },
     }),
 }));
@@ -146,31 +175,46 @@ describe('SyncScreen', () => {
     jest.clearAllMocks();
   });
 
-  it('renders the NFC-first sync action from the idle state', () => {
+  it('auto-starts sync and shows friendly instructions from the idle state', () => {
     render(<SyncScreen />);
 
     expect(screen.getByText('Device Sync')).toBeTruthy();
-    fireEvent.press(screen.getByText('Sync Now'));
-
+    expect(
+      screen.getByText('Hold your phones together back-to-back.'),
+    ).toBeTruthy();
     expect(mockSession.startSyncFlow).toHaveBeenCalled();
   });
 
-  it('renders the merge summary and confirm action in review state', () => {
+  it('renders the friendly review tile and confirm action in review state', () => {
     mockSession.state.phase = 'review';
     mockSession.state.review = {
-      bundleHash: 'sync-bundle-1234567890',
-      childReconciliationCount: 2,
-      commonBaseHash: 'sync-base-1234567890',
-      mergedChildCount: 1,
-      mergedHeadSyncHash: 'sync-head-1234567890',
-      mode: 'merged',
-      peerEndpointName: 'KidPoints-AB12',
+      children: [
+        {
+          change: 'unchanged',
+          childId: 'child-1',
+          childName: 'Ava',
+          points: 12,
+        },
+      ],
+      outcome: 'merged',
+      outcomeCopy: 'The histories of both devices have been merged.',
+      transactions: [
+        {
+          id: 'change-1',
+          origin: 'local',
+          summaryText: 'Ava +2 Points [10 > 12]',
+          timestampLabel: 'Apr 11, 9:30 AM',
+        },
+      ],
     };
 
     render(<SyncScreen />);
 
-    expect(screen.getByText('Merge Summary')).toBeTruthy();
-    fireEvent.press(screen.getByText('Confirm Sync'));
+    expect(screen.getByText('Review Sync')).toBeTruthy();
+    expect(
+      screen.getByText('The histories of both devices have been merged.'),
+    ).toBeTruthy();
+    fireEvent.press(screen.getAllByText('Confirm Sync')[0]);
 
     expect(mockSession.confirmMergeAndPrepareCommit).toHaveBeenCalled();
   });

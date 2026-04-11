@@ -164,10 +164,15 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 export function CompactSurface({
   children,
   style,
-}: PropsWithChildren<{ style?: StyleProp<ViewStyle> }>) {
+  testID,
+}: PropsWithChildren<{ style?: StyleProp<ViewStyle>; testID?: string }>) {
   const styles = useThemedStyles(createStyles);
 
-  return <View style={[styles.surface, style]}>{children}</View>;
+  return (
+    <View style={[styles.surface, style]} testID={testID}>
+      {children}
+    </View>
+  );
 }
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>

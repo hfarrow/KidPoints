@@ -1,13 +1,10 @@
-import type { SyncBundle } from '../../state/sharedSync';
 import type {
   NfcBootstrapAvailability,
   NfcBootstrapRole,
   NfcBootstrapStateChangedEvent,
 } from './nfcSyncBridge';
-import {
-  buildSyncLoggerContext,
-  type SyncMergeReviewSummary,
-} from './syncProtocol';
+import { buildSyncLoggerContext } from './syncProtocol';
+import type { SyncReviewModel } from './syncReview';
 
 export type SyncRole = 'host' | 'join' | null;
 export type SyncSessionPhase =
@@ -81,11 +78,7 @@ export type SyncSessionState = {
   nfcBootstrap: SyncNfcBootstrapState;
   permissions: SyncPermissionsState;
   phase: SyncSessionPhase;
-  review:
-    | (SyncMergeReviewSummary & {
-        peerEndpointName: string | null;
-      })
-    | null;
+  review: SyncReviewModel | null;
   role: SyncRole;
   sessionId: string | null;
   sessionLabel: string | null;
@@ -140,8 +133,7 @@ export type SyncSessionAction =
       type: 'transferUpdated';
     }
   | {
-      peerEndpointName: string | null;
-      review: SyncMergeReviewSummary;
+      review: SyncReviewModel;
       type: 'reviewReady';
     }
   | {
@@ -154,7 +146,7 @@ export type SyncSessionAction =
       type: 'commitStarted';
     }
   | {
-      review: SyncMergeReviewSummary;
+      review: SyncReviewModel;
       type: 'commitSucceeded';
     }
   | {
@@ -375,10 +367,7 @@ export function reduceSyncSessionState(
         errorMessage: null,
         isAwaitingPeerPrepare: false,
         phase: 'review',
-        review: {
-          ...action.review,
-          peerEndpointName: action.peerEndpointName,
-        },
+        review: action.review,
         transferProgress: {
           ...state.transferProgress,
           status: 'success',
@@ -407,10 +396,7 @@ export function reduceSyncSessionState(
         errorMessage: null,
         isAwaitingPeerPrepare: false,
         phase: 'success',
-        review: {
-          ...action.review,
-          peerEndpointName: state.connectedEndpoint?.endpointName ?? null,
-        },
+        review: action.review,
       };
     case 'sessionFailed':
       return {
@@ -452,15 +438,4 @@ export function buildSyncSessionLogDetails(
     phase: state.phase,
     sessionId: state.sessionId,
   });
-}
-
-export function buildSyncSessionSummary(bundle: SyncBundle) {
-  return {
-    bundleHash: bundle.bundleHash,
-    childReconciliationCount: bundle.childReconciliations.length,
-    commonBaseHash: bundle.commonBaseHash,
-    mergedChildCount: Object.keys(bundle.mergedHead.childrenById).length,
-    mergedHeadSyncHash: bundle.mergedHeadSyncHash,
-    mode: bundle.mode,
-  } satisfies SyncMergeReviewSummary;
 }

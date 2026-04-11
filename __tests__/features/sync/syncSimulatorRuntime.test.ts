@@ -44,7 +44,7 @@ describe('syncSimulatorRuntime', () => {
     mockFileContents.clear();
   });
 
-  it('switches remote endpoint identity when the mode changes', () => {
+  it('switches remote endpoint identity when the fixture changes bootstrap direction', () => {
     const simulator = createSimulatorNearbySyncRuntime({
       getLocalDocument: () =>
         createInitialSharedDocument({ deviceId: 'local' }),
@@ -54,11 +54,38 @@ describe('syncSimulatorRuntime', () => {
       'Parent-SIMJ',
     );
 
-    simulator.controller.setMode('joiner');
+    simulator.controller.setFixtureStrategy('bootstrap-right-to-left');
 
     expect(simulator.controller.getSnapshot().remoteEndpoint.endpointName).toBe(
       'KidPoints-SIMH',
     );
+  });
+
+  it('derives the simulated NFC bootstrap role from the fixture strategy', async () => {
+    const simulator = createSimulatorNearbySyncRuntime({
+      getLocalDocument: () =>
+        createInitialSharedDocument({ deviceId: 'local' }),
+    });
+    const bootstrapStates: string[] = [];
+    const completedRoles: string[] = [];
+
+    simulator.runtime.addNfcBootstrapStateChangedListener((event) => {
+      bootstrapStates.push(event.phase);
+    });
+    simulator.runtime.addNfcBootstrapCompletedListener((event) => {
+      completedRoles.push(event.role);
+    });
+
+    simulator.controller.setFixtureStrategy('bootstrap-right-to-left');
+    await simulator.runtime.beginNfcBootstrap({
+      localDeviceId: 'local',
+      timeoutMs: 30_000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(bootstrapStates).toContain('reader-active');
+    expect(completedRoles).toContain('join');
   });
 
   it('applies availability and permission failure scenarios', async () => {

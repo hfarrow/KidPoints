@@ -43,9 +43,12 @@ export type SyncEntry = {
   hash: string;
   kind: SyncableTransactionKind;
   occurredAt: string;
+  originDeviceId: string;
   parentHash: string | null;
   pointsAfter: number | null;
   pointsBefore: number | null;
+  restoredFromTransactionId: string | null;
+  restoredToTransactionId: string | null;
   sourceTransactionId: string;
   stateAfter: SyncProjectionHead;
   stateHash: string;
@@ -57,7 +60,7 @@ export type SyncProjection = {
   headHash: string;
   headSyncHash: string;
   scope: SyncProjectionScope;
-  syncSchemaVersion: 1;
+  syncSchemaVersion: 2;
 };
 
 export type SyncProjectionValidationErrorCode =
@@ -149,6 +152,7 @@ export type ReconcileSyncProjectionsResult =
 export type SyncBundleMode = 'bootstrap' | 'merged';
 
 export type SyncBundle = {
+  bootstrapHistory: SyncEntry[] | null;
   bundleHash: string;
   childReconciliations: SyncPointReconciliation[];
   commonBaseHash: string | null;
@@ -157,7 +161,7 @@ export type SyncBundle = {
   mode: SyncBundleMode;
   participantHeadHashes: string[];
   participantHeadSyncHashes: string[];
-  syncSchemaVersion: 1;
+  syncSchemaVersion: 2;
 };
 
 export type SyncRollbackSnapshot = {
@@ -189,7 +193,7 @@ export type ConfirmSyncBundleAgreementResult =
     };
 
 const SYNC_PROJECTION_SCOPE = 'child-ledger' satisfies SyncProjectionScope;
-const SYNC_SCHEMA_VERSION = 1 as const;
+export const CURRENT_SYNC_SCHEMA_VERSION = 2 as const;
 const SYNCABLE_TRANSACTION_KINDS = new Set<TransactionKind>([
   'child-archived',
   'child-created',
@@ -210,6 +214,41 @@ type CanonicalValue =
 
 function sortIds(ids: string[]) {
   return [...ids].sort((left, right) => left.localeCompare(right));
+}
+
+function cloneSyncProjectionHead(head: SyncProjectionHead): SyncProjectionHead {
+  return {
+    activeChildIds: [...head.activeChildIds],
+    archivedChildIds: [...head.archivedChildIds],
+    childrenById: Object.fromEntries(
+      Object.entries(head.childrenById).map(([childId, child]) => [
+        childId,
+        {
+          ...child,
+        },
+      ]),
+    ),
+  };
+}
+
+function cloneSyncEntry(entry: SyncEntry): SyncEntry {
+  return {
+    affectedChildIds: [...entry.affectedChildIds],
+    childId: entry.childId,
+    childName: entry.childName,
+    hash: entry.hash,
+    kind: entry.kind,
+    occurredAt: entry.occurredAt,
+    originDeviceId: entry.originDeviceId,
+    parentHash: entry.parentHash,
+    pointsAfter: entry.pointsAfter,
+    pointsBefore: entry.pointsBefore,
+    restoredFromTransactionId: entry.restoredFromTransactionId,
+    restoredToTransactionId: entry.restoredToTransactionId,
+    sourceTransactionId: entry.sourceTransactionId,
+    stateAfter: cloneSyncProjectionHead(entry.stateAfter),
+    stateHash: entry.stateHash,
+  };
 }
 
 function projectChildSnapshotForSync(
@@ -504,9 +543,13 @@ function buildSyncEntryHash(args: {
   childId: string | null;
   childName: string | null;
   kind: SyncableTransactionKind;
+  occurredAt: string;
+  originDeviceId: string;
   parentHash: string | null;
   pointsAfter: number | null;
   pointsBefore: number | null;
+  restoredFromTransactionId: string | null;
+  restoredToTransactionId: string | null;
   sourceTransactionId: string;
   stateHash: string;
 }) {
@@ -515,9 +558,13 @@ function buildSyncEntryHash(args: {
     childId,
     childName,
     kind,
+    occurredAt,
+    originDeviceId,
     parentHash,
     pointsAfter,
     pointsBefore,
+    restoredFromTransactionId,
+    restoredToTransactionId,
     sourceTransactionId,
     stateHash,
   } = args;
@@ -527,9 +574,13 @@ function buildSyncEntryHash(args: {
     childId,
     childName,
     kind,
+    occurredAt,
+    originDeviceId,
     parentHash,
     pointsAfter,
     pointsBefore,
+    restoredFromTransactionId,
+    restoredToTransactionId,
     sourceTransactionId,
     stateHash,
   });
@@ -550,9 +601,13 @@ export function deriveSyncProjection(document: SharedDocument): SyncProjection {
       childId: transaction.childId,
       childName: transaction.childName,
       kind: transaction.kind,
+      occurredAt: transaction.occurredAt,
+      originDeviceId: transaction.originDeviceId,
       parentHash,
       pointsAfter: transaction.pointsAfter ?? null,
       pointsBefore: transaction.pointsBefore ?? null,
+      restoredFromTransactionId: transaction.restoredFromTransactionId ?? null,
+      restoredToTransactionId: transaction.restoredToTransactionId ?? null,
       sourceTransactionId: transaction.id,
       stateHash,
     });
@@ -564,9 +619,12 @@ export function deriveSyncProjection(document: SharedDocument): SyncProjection {
       hash: entryHash,
       kind: transaction.kind,
       occurredAt: transaction.occurredAt,
+      originDeviceId: transaction.originDeviceId,
       parentHash,
       pointsAfter: transaction.pointsAfter ?? null,
       pointsBefore: transaction.pointsBefore ?? null,
+      restoredFromTransactionId: transaction.restoredFromTransactionId ?? null,
+      restoredToTransactionId: transaction.restoredToTransactionId ?? null,
       sourceTransactionId: transaction.id,
       stateAfter,
       stateHash,
@@ -583,7 +641,7 @@ export function deriveSyncProjection(document: SharedDocument): SyncProjection {
     headHash: entries.at(-1)?.hash ?? headSyncHash,
     headSyncHash,
     scope: SYNC_PROJECTION_SCOPE,
-    syncSchemaVersion: SYNC_SCHEMA_VERSION,
+    syncSchemaVersion: CURRENT_SYNC_SCHEMA_VERSION,
   };
 }
 
@@ -628,9 +686,13 @@ function validateProjectionEntryChain(
       childId: entry.childId,
       childName: entry.childName,
       kind: entry.kind,
+      occurredAt: entry.occurredAt,
+      originDeviceId: entry.originDeviceId,
       parentHash: entry.parentHash,
       pointsAfter: entry.pointsAfter,
       pointsBefore: entry.pointsBefore,
+      restoredFromTransactionId: entry.restoredFromTransactionId,
+      restoredToTransactionId: entry.restoredToTransactionId,
       sourceTransactionId: entry.sourceTransactionId,
       stateHash: entry.stateHash,
     });
@@ -691,10 +753,10 @@ export function validateSyncProjection(
     };
   }
 
-  if (projection.syncSchemaVersion !== SYNC_SCHEMA_VERSION) {
+  if (projection.syncSchemaVersion !== CURRENT_SYNC_SCHEMA_VERSION) {
     return {
       code: 'sync-schema-version-mismatch',
-      message: `Unsupported sync schema version: ${projection.syncSchemaVersion}.`,
+      message: `Unsupported sync schema version: ${projection.syncSchemaVersion}. Expected ${CURRENT_SYNC_SCHEMA_VERSION}.`,
       ok: false,
     };
   }
@@ -998,6 +1060,24 @@ function normalizeSyncBundleMode(
   return mode === 'merged' ? 'merged' : 'bootstrap';
 }
 
+function buildBootstrapHistory(args: {
+  leftProjection: SyncProjection;
+  mode: Extract<ReconcileSyncProjectionsResult, { ok: true }>['mode'];
+  rightProjection: SyncProjection;
+}) {
+  const { leftProjection, mode, rightProjection } = args;
+
+  if (mode === 'bootstrap-left-to-right') {
+    return leftProjection.entries.map(cloneSyncEntry);
+  }
+
+  if (mode === 'bootstrap-right-to-left') {
+    return rightProjection.entries.map(cloneSyncEntry);
+  }
+
+  return null;
+}
+
 function buildSyncBundle(args: {
   leftProjection: SyncProjection;
   reconcileResult: Extract<ReconcileSyncProjectionsResult, { ok: true }>;
@@ -1005,6 +1085,11 @@ function buildSyncBundle(args: {
 }): SyncBundle {
   const { leftProjection, reconcileResult, rightProjection } = args;
   const bundleCore = {
+    bootstrapHistory: buildBootstrapHistory({
+      leftProjection,
+      mode: reconcileResult.mode,
+      rightProjection,
+    }),
     childReconciliations: reconcileResult.childReconciliations,
     commonBaseHash: reconcileResult.commonBaseHash,
     mergedHead: reconcileResult.mergedHead,
@@ -1018,7 +1103,7 @@ function buildSyncBundle(args: {
       leftProjection.headSyncHash,
       rightProjection.headSyncHash,
     ]),
-    syncSchemaVersion: SYNC_SCHEMA_VERSION,
+    syncSchemaVersion: CURRENT_SYNC_SCHEMA_VERSION,
   } satisfies Omit<SyncBundle, 'bundleHash'>;
 
   return {
@@ -1113,9 +1198,13 @@ export function serializeSyncProjection(projection: SyncProjection) {
     childName: entry.childName,
     hash: entry.hash,
     kind: entry.kind,
+    occurredAt: entry.occurredAt,
+    originDeviceId: entry.originDeviceId,
     parentHash: entry.parentHash,
     pointsAfter: entry.pointsAfter,
     pointsBefore: entry.pointsBefore,
+    restoredFromTransactionId: entry.restoredFromTransactionId,
+    restoredToTransactionId: entry.restoredToTransactionId,
     sourceTransactionId: entry.sourceTransactionId,
     stateAfter: entry.stateAfter,
     stateHash: entry.stateHash,
@@ -1133,6 +1222,24 @@ export function serializeSyncProjection(projection: SyncProjection) {
 
 export function serializeSyncBundle(bundle: SyncBundle) {
   return toCanonicalJson({
+    bootstrapHistory:
+      bundle.bootstrapHistory?.map((entry) => ({
+        affectedChildIds: entry.affectedChildIds,
+        childId: entry.childId,
+        childName: entry.childName,
+        hash: entry.hash,
+        kind: entry.kind,
+        occurredAt: entry.occurredAt,
+        originDeviceId: entry.originDeviceId,
+        parentHash: entry.parentHash,
+        pointsAfter: entry.pointsAfter,
+        pointsBefore: entry.pointsBefore,
+        restoredFromTransactionId: entry.restoredFromTransactionId,
+        restoredToTransactionId: entry.restoredToTransactionId,
+        sourceTransactionId: entry.sourceTransactionId,
+        stateAfter: entry.stateAfter,
+        stateHash: entry.stateHash,
+      })) ?? null,
     bundleHash: bundle.bundleHash,
     childReconciliations: bundle.childReconciliations,
     commonBaseHash: bundle.commonBaseHash,

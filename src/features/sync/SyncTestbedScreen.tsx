@@ -285,7 +285,7 @@ function SyncTestbedScene({
   async function startCurrentMode() {
     await session.startSyncFlow();
     setStatusMessage(
-      `Local preview started in ${simulatorState.mode} mode with NFC bootstrap.`,
+      'Local preview started with the same one-button NFC flow used in production.',
     );
   }
 
@@ -395,29 +395,6 @@ function SyncTestbedScene({
           without needing a second device.
         </Text>
         <CompactSurface>
-          <SectionLabel>Mode</SectionLabel>
-          <ActionPillRow>
-            <ActionPill
-              label="Host"
-              onPress={() => {
-                controller.setMode('host');
-                setSimulatorState(controller.getSnapshot());
-                setStatusMessage('Simulator mode set to host.');
-              }}
-              tone={simulatorState.mode === 'host' ? 'primary' : 'neutral'}
-            />
-            <ActionPill
-              label="Joiner"
-              onPress={() => {
-                controller.setMode('joiner');
-                setSimulatorState(controller.getSnapshot());
-                setStatusMessage('Simulator mode set to joiner.');
-              }}
-              tone={simulatorState.mode === 'joiner' ? 'primary' : 'neutral'}
-            />
-          </ActionPillRow>
-        </CompactSurface>
-        <CompactSurface>
           <SectionLabel>Fixture</SectionLabel>
           <ActionPillRow>
             {FIXTURE_STRATEGIES.map((strategy) => (
@@ -439,6 +416,10 @@ function SyncTestbedScene({
             Right bootstrap uses an empty local preview with seeded remote
             history. Shared base branches both sides from a selected syncable
             transaction.
+          </Text>
+          <Text style={styles.helper}>
+            The simulator keeps the hidden host and join work internal and
+            derives it from the selected fixture.
           </Text>
           {fixtureStrategyId === 'shared-base' ? (
             <>
@@ -471,7 +452,7 @@ function SyncTestbedScene({
           <SectionLabel>Session</SectionLabel>
           <ActionPillRow>
             <ActionPill
-              label={`Sync ${capitalize(simulatorState.mode)}`}
+              label="Sync Now"
               onPress={() => {
                 void startCurrentMode();
               }}
@@ -514,7 +495,7 @@ function SyncTestbedScene({
           </Text>
         </CompactSurface>
         <Text style={styles.helper}>
-          Mode: {simulatorState.mode}. Fixture: {fixtureStrategyId}. Scenario:{' '}
+          Fixture: {fixtureStrategyId}. Scenario:{' '}
           {simulatorState.scenarioId ?? 'manual'}.
         </Text>
         <Text style={styles.helper}>{statusMessage}</Text>
@@ -765,10 +746,6 @@ function buildPreviewSeedSignature(document: SharedDocument) {
     document.head.activeChildIds.join('|'),
     document.head.archivedChildIds.join('|'),
   ].join(':');
-}
-
-function capitalize(value: string) {
-  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
 const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>

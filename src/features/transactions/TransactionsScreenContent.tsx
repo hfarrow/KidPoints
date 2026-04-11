@@ -15,11 +15,14 @@ import type { SharedDocument, TransactionRow } from '../../state/sharedTypes';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 
 const log = createModuleLogger('transactions-screen');
+const LOCAL_ORIGIN_TINT_AMOUNT = 0.08;
+const SYNCED_ORIGIN_TINT_AMOUNT = 0.14;
 
 type TransactionDisplayItem =
   | {
       id: string;
       kind: 'group';
+      origin: 'local' | 'mixed' | 'remote';
       rows: TransactionRow[];
       summaryText: string;
       timestampLabel: string;
@@ -65,6 +68,75 @@ function summarizeGroupedPointRows(rows: TransactionRow[]) {
   return `${childName} Point Changes`;
 }
 
+function resolveRowsOrigin(
+  rows: TransactionRow[],
+): 'local' | 'mixed' | 'remote' {
+  const hasLocalOrigin = rows.some((row) => row.isLocalOrigin);
+  const hasRemoteOrigin = rows.some((row) => !row.isLocalOrigin);
+
+  if (hasLocalOrigin && hasRemoteOrigin) {
+    return 'mixed';
+  }
+
+  return hasLocalOrigin ? 'local' : 'remote';
+}
+
+function clampColorChannel(value: number) {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function parseHexColor(color: string) {
+  const normalized = color.trim();
+
+  if (!/^#[0-9a-f]{6}$/i.test(normalized)) {
+    return null;
+  }
+
+  return {
+    blue: Number.parseInt(normalized.slice(5, 7), 16),
+    green: Number.parseInt(normalized.slice(3, 5), 16),
+    red: Number.parseInt(normalized.slice(1, 3), 16),
+  };
+}
+
+function toHexColor(args: { blue: number; green: number; red: number }) {
+  return `#${clampColorChannel(args.red).toString(16).padStart(2, '0')}${clampColorChannel(args.green).toString(16).padStart(2, '0')}${clampColorChannel(args.blue).toString(16).padStart(2, '0')}`;
+}
+
+function mixHexColors(args: { amount: number; from: string; to: string }) {
+  const fromColor = parseHexColor(args.from);
+  const toColor = parseHexColor(args.to);
+
+  if (!fromColor || !toColor) {
+    return args.from;
+  }
+
+  const amount = Math.max(0, Math.min(1, args.amount));
+
+  return toHexColor({
+    blue: fromColor.blue + (toColor.blue - fromColor.blue) * amount,
+    green: fromColor.green + (toColor.green - fromColor.green) * amount,
+    red: fromColor.red + (toColor.red - fromColor.red) * amount,
+  });
+}
+
+function tintSurfaceByOrigin(args: {
+  baseColor: string;
+  origin: 'local' | 'remote';
+}) {
+  return args.origin === 'local'
+    ? mixHexColors({
+        amount: LOCAL_ORIGIN_TINT_AMOUNT,
+        from: args.baseColor,
+        to: '#ffffff',
+      })
+    : mixHexColors({
+        amount: SYNCED_ORIGIN_TINT_AMOUNT,
+        from: args.baseColor,
+        to: '#000000',
+      });
+}
+
 function buildDisplayItems(rows: TransactionRow[]) {
   const items: TransactionDisplayItem[] = [];
   let index = 0;
@@ -79,7 +151,10 @@ function buildDisplayItems(rows: TransactionRow[]) {
       while (nextIndex < rows.length) {
         const nextRow = rows[nextIndex];
 
-        if (nextRow.groupId !== row.groupId) {
+        if (
+          nextRow.groupId !== row.groupId ||
+          nextRow.isLocalOrigin !== row.isLocalOrigin
+        ) {
           break;
         }
 
@@ -90,6 +165,7 @@ function buildDisplayItems(rows: TransactionRow[]) {
       items.push({
         id: `group-${row.groupId}`,
         kind: 'group',
+        origin: resolveRowsOrigin(groupedRows),
         rows: groupedRows,
         summaryText: row.groupLabel,
         timestampLabel: groupedRows[0].timestampLabel,
@@ -105,7 +181,11 @@ function buildDisplayItems(rows: TransactionRow[]) {
       while (nextIndex < rows.length) {
         const nextRow = rows[nextIndex];
 
-        if (!isPointAction(nextRow) || nextRow.childId !== row.childId) {
+        if (
+          !isPointAction(nextRow) ||
+          nextRow.childId !== row.childId ||
+          nextRow.isLocalOrigin !== row.isLocalOrigin
+        ) {
           break;
         }
 
@@ -117,6 +197,7 @@ function buildDisplayItems(rows: TransactionRow[]) {
         items.push({
           id: `group-${groupedRows[0].id}`,
           kind: 'group',
+          origin: resolveRowsOrigin(groupedRows),
           rows: groupedRows,
           summaryText: summarizeGroupedPointRows(groupedRows),
           timestampLabel: groupedRows[0].timestampLabel,
@@ -186,6 +267,35 @@ export function TransactionsScreenContent({
 }) {
   const styles = useThemedStyles(createStyles);
   const { tokens } = useAppTheme();
+  const transactionSurfaceColors = useMemo(
+    () => ({
+      groupedLocal: tintSurfaceByOrigin({
+        baseColor: tokens.tileSurface,
+        origin: 'local',
+      }),
+      groupedRemote: tintSurfaceByOrigin({
+        baseColor: tokens.tileSurface,
+        origin: 'remote',
+      }),
+      singleLocal: tintSurfaceByOrigin({
+        baseColor: tokens.tileSurface,
+        origin: 'local',
+      }),
+      singleRemote: tintSurfaceByOrigin({
+        baseColor: tokens.tileSurface,
+        origin: 'remote',
+      }),
+      subtileLocal: tintSurfaceByOrigin({
+        baseColor: tokens.controlSurface,
+        origin: 'local',
+      }),
+      subtileRemote: tintSurfaceByOrigin({
+        baseColor: tokens.controlSurface,
+        origin: 'remote',
+      }),
+    }),
+    [tokens.controlSurface, tokens.tileSurface],
+  );
   const itemLayoutYRef = useRef<Record<string, number>>({});
   const document = useSharedStore((state) => state.document);
   const restoreTransaction = useSharedStore(
@@ -448,11 +558,23 @@ export function TransactionsScreenContent({
                           : [...currentIds, item.id],
                       );
                     }}
-                    style={
+                    style={[
+                      item.origin === 'local'
+                        ? {
+                            backgroundColor:
+                              transactionSurfaceColors.groupedLocal,
+                          }
+                        : item.origin === 'remote'
+                          ? {
+                              backgroundColor:
+                                transactionSurfaceColors.groupedRemote,
+                            }
+                          : undefined,
                       itemContainsTransaction(item, highlightedTransactionId)
                         ? styles.highlightedTile
-                        : undefined
-                    }
+                        : undefined,
+                    ]}
+                    testID={`transaction-origin-${item.id}`}
                     title={
                       <View style={styles.titleBlock}>
                         <Text
@@ -477,8 +599,18 @@ export function TransactionsScreenContent({
                         return (
                           <CompactSurface
                             key={row.id}
+                            testID={`transaction-origin-${row.id}`}
                             style={[
                               styles.subtile,
+                              row.isLocalOrigin
+                                ? {
+                                    backgroundColor:
+                                      transactionSurfaceColors.subtileLocal,
+                                  }
+                                : {
+                                    backgroundColor:
+                                      transactionSurfaceColors.subtileRemote,
+                                  },
                               row.id === highlightedTransactionId &&
                                 styles.highlightedSubtile,
                             ]}
@@ -583,11 +715,19 @@ export function TransactionsScreenContent({
                         : [...currentIds, item.id],
                     );
                   }}
-                  style={
-                    row.id === highlightedTransactionId
-                      ? styles.highlightedTile
-                      : undefined
-                  }
+                  style={[
+                    row.isLocalOrigin
+                      ? {
+                          backgroundColor: transactionSurfaceColors.singleLocal,
+                        }
+                      : {
+                          backgroundColor:
+                            transactionSurfaceColors.singleRemote,
+                        },
+                    row.id === highlightedTransactionId &&
+                      styles.highlightedTile,
+                  ]}
+                  testID={`transaction-origin-${row.id}`}
                   title={
                     <View style={styles.titleBlock}>
                       <Text

@@ -40,6 +40,8 @@ export type ThemeTokens = {
   tabBarInactiveTint: string;
   textPrimary: string;
   textMuted: string;
+  transactionLocalSurface: string;
+  transactionSyncedSurface: string;
   tileBorder: string;
   tileMutedSurface: string;
   tileSurface: string;
@@ -95,6 +97,8 @@ const themesById: Record<ThemeId, ThemeDefinition> = {
       tabBarInactiveTint: '#c0b3e4',
       textPrimary: '#f5f0ff',
       textMuted: '#d1c7ec',
+      transactionLocalSurface: '#4c4288',
+      transactionSyncedSurface: '#302954',
       tileBorder: '#8778ba',
       tileMutedSurface: '#31295a',
       tileSurface: '#3d336d',
@@ -140,6 +144,8 @@ const themesById: Record<ThemeId, ThemeDefinition> = {
       tabBarInactiveTint: '#766c9a',
       textPrimary: '#191531',
       textMuted: '#6f678f',
+      transactionLocalSurface: '#f4ecff',
+      transactionSyncedSurface: '#d7caef',
       tileBorder: '#c9b8ea',
       tileMutedSurface: '#d9cdf3',
       tileSurface: '#e3d5fb',
@@ -185,6 +191,8 @@ const themesById: Record<ThemeId, ThemeDefinition> = {
       tabBarInactiveTint: '#d5c4a1',
       textPrimary: '#ebdbb2',
       textMuted: '#d5c4a1',
+      transactionLocalSurface: '#686059',
+      transactionSyncedSurface: '#4c4641',
       tileBorder: '#a89984',
       tileMutedSurface: '#504945',
       tileSurface: '#5a524c',
@@ -230,6 +238,8 @@ const themesById: Record<ThemeId, ThemeDefinition> = {
       tabBarInactiveTint: '#7c6f64',
       textPrimary: '#3c3836',
       textMuted: '#7c6f64',
+      transactionLocalSurface: '#f5ebc8',
+      transactionSyncedSurface: '#ddc7a1',
       tileBorder: '#a89984',
       tileMutedSurface: '#e2cca9',
       tileSurface: '#ebdbb2',

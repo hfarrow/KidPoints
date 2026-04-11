@@ -482,7 +482,7 @@ export function parseSyncEnvelope(
         isString(envelope.headSyncHash) &&
         isString(envelope.payloadId) &&
         envelope.projectionScope === 'child-ledger' &&
-        envelope.projectionSyncSchemaVersion === 1
+        isNumber(envelope.projectionSyncSchemaVersion)
       ) {
         return {
           envelope: envelope as unknown as HistoryFileMetaEnvelope,

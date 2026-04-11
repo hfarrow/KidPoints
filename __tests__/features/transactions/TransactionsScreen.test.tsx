@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import { TransactionsScreen } from '../../../src/features/transactions/TransactionsScreen';
@@ -78,6 +79,21 @@ describe('TransactionsScreen', () => {
     expect(screen.getByText('Ava +1 Points [1 > 2]')).toBeTruthy();
     expect(screen.getByText('Ava +1 Points [0 > 1]')).toBeTruthy();
     expect(screen.queryByText('Restore To This Point')).toBeNull();
+
+    const groupedTileStyle = StyleSheet.flatten(
+      screen.getByTestId(/transaction-origin-group-/).props.style,
+    );
+    const nestedRowStyle = StyleSheet.flatten(
+      screen.getByTestId(
+        `transaction-origin-${store.getState().document.transactions[1].id}`,
+      ).props.style,
+    );
+
+    expect(groupedTileStyle.backgroundColor).toBe('#e5d8fb');
+    expect(nestedRowStyle.backgroundColor).toBe('#cbc5ef');
+    expect(groupedTileStyle.backgroundColor).not.toBe(
+      nestedRowStyle.backgroundColor,
+    );
 
     fireEvent.press(screen.getByLabelText('Expand Ava +1 Points [0 > 1]'));
     expect(screen.getByText('Restore To This Point')).toBeTruthy();
@@ -413,5 +429,75 @@ describe('TransactionsScreen', () => {
     fireEvent.press(screen.getByLabelText('Expand Started Timer'));
     expect(screen.getByText('Audit entries cannot be restored.')).toBeTruthy();
     expect(screen.queryByText('Restore To This Point')).toBeNull();
+  });
+
+  it('keeps local and synced point history in separate tiles and tints them by origin', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'tx-origin-split',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+    expect(store.getState().adjustPoints(childId, 1).ok).toBe(true);
+
+    const localDocument = store.getState().document;
+    const remoteAdjustedDocument = {
+      ...localDocument,
+      transactions: localDocument.transactions.map((transaction) =>
+        transaction.pointsAfter === 1
+          ? {
+              ...transaction,
+              originDeviceId: 'remote-device',
+            }
+          : transaction,
+      ),
+    };
+    const latestLocalTransaction = remoteAdjustedDocument.transactions.find(
+      (transaction) => transaction.pointsAfter === 2,
+    );
+    const remoteTransaction = remoteAdjustedDocument.transactions.find(
+      (transaction) => transaction.pointsAfter === 1,
+    );
+
+    if (!latestLocalTransaction || !remoteTransaction) {
+      throw new Error('Expected split-origin point transactions to exist');
+    }
+
+    render(
+      <SharedStoreProvider
+        initialDocument={remoteAdjustedDocument}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppSettingsProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <TransactionsScreen />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(screen.queryByText('Ava +2 Points [0 > 2]')).toBeNull();
+    expect(screen.getByText('Ava +1 Points [1 > 2]')).toBeTruthy();
+    expect(screen.getByText('Ava +1 Points [0 > 1]')).toBeTruthy();
+
+    const localTileStyle = StyleSheet.flatten(
+      screen.getByTestId(`transaction-origin-${latestLocalTransaction.id}`)
+        .props.style,
+    );
+    const remoteTileStyle = StyleSheet.flatten(
+      screen.getByTestId(`transaction-origin-${remoteTransaction.id}`).props
+        .style,
+    );
+
+    expect(localTileStyle.backgroundColor).toBe('#e5d8fb');
+    expect(remoteTileStyle.backgroundColor).toBe('#c3b7d8');
   });
 });

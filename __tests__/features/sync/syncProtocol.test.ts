@@ -13,7 +13,10 @@ import {
   createInitialSharedDocument,
   createSharedStore,
 } from '../../../src/state/sharedStore';
-import { deriveSyncProjection } from '../../../src/state/sharedSync';
+import {
+  CURRENT_SYNC_SCHEMA_VERSION,
+  deriveSyncProjection,
+} from '../../../src/state/sharedSync';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 function createFixtureBundle() {
@@ -30,7 +33,8 @@ function createFixtureBundle() {
     mode: 'bootstrap' as const,
     participantHeadHashes: ['sync-left', 'sync-right'],
     participantHeadSyncHashes: ['sync-left-head', 'sync-right-head'],
-    syncSchemaVersion: 1 as const,
+    syncSchemaVersion: CURRENT_SYNC_SCHEMA_VERSION,
+    bootstrapHistory: null,
   };
 }
 
@@ -81,6 +85,7 @@ describe('syncProtocol', () => {
 
 describe('syncSessionMachine', () => {
   it('moves from hosting to pairing to review with correlated log details', () => {
+    const bundleHash = 'sync-bundle-1234567890';
     const hosted = reduceSyncSessionState(createInitialSyncSessionState(), {
       role: 'host',
       sessionId: 'sync-session-state',
@@ -96,14 +101,11 @@ describe('syncSessionMachine', () => {
       type: 'authTokenReady',
     });
     const review = reduceSyncSessionState(pairing, {
-      peerEndpointName: 'KidPoints-AB12',
       review: {
-        bundleHash: 'sync-bundle-1234567890',
-        childReconciliationCount: 2,
-        commonBaseHash: 'sync-base-1234567890',
-        mergedChildCount: 1,
-        mergedHeadSyncHash: 'sync-head-1234567890',
-        mode: 'merged',
+        children: [],
+        outcome: 'merged',
+        outcomeCopy: 'The histories of both devices have been merged.',
+        transactions: [],
       },
       type: 'reviewReady',
     });
@@ -113,7 +115,7 @@ describe('syncSessionMachine', () => {
     expect(review.phase).toBe('review');
     expect(
       buildSyncSessionLogDetails(review, {
-        bundleHash: review.review?.bundleHash,
+        bundleHash,
         payloadId: '42',
       }),
     ).toMatchObject({

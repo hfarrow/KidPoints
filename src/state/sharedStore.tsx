@@ -15,7 +15,7 @@ import {
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import { createModuleLogger, createStructuredLog } from '../logging/logger';
-import type { SyncBundle, SyncRollbackSnapshot } from './sharedSync';
+import type { SyncBundle, SyncEntry, SyncRollbackSnapshot } from './sharedSync';
 import { deriveSyncProjection } from './sharedSync';
 import {
   areTimerConfigsEquivalent,
@@ -325,7 +325,9 @@ function cloneDocumentSnapshot(
     isOrphanedRestoreWindowOpen: Boolean(snapshot.isOrphanedRestoreWindowOpen),
     nextSequence: snapshot.nextSequence,
     schemaVersion: snapshot.schemaVersion,
-    transactions: snapshot.transactions.map(normalizeTransactionRecord),
+    transactions: snapshot.transactions.map((transaction) =>
+      normalizeTransactionRecord(snapshot.deviceId, transaction),
+    ),
   };
 }
 
@@ -434,7 +436,7 @@ export function createInitialSharedDocument({
     head: createEmptyHead(),
     isOrphanedRestoreWindowOpen: false,
     nextSequence: 1,
-    schemaVersion: 4,
+    schemaVersion: 5,
     syncState: null,
     transactions: [],
   };
@@ -589,6 +591,7 @@ function getHeadForCurrentTransaction(
  * documents continue to work after transaction metadata grows new fields.
  */
 function normalizeTransactionRecord(
+  documentDeviceId: string,
   transaction: TransactionRecord,
 ): TransactionRecord {
   const isTransientTimerTransaction = TRANSIENT_TIMER_TRANSACTION_KINDS.has(
@@ -604,6 +607,7 @@ function normalizeTransactionRecord(
     isRestorable: isTransientTimerTransaction
       ? false
       : (transaction.isRestorable ?? true),
+    originDeviceId: transaction.originDeviceId ?? documentDeviceId,
     participatesInHistory: isTransientTimerTransaction
       ? false
       : (transaction.participatesInHistory ?? true),
@@ -642,7 +646,8 @@ function isSharedDocument(value: unknown): value is SharedDocument {
   return (
     (candidate.schemaVersion === 2 ||
       candidate.schemaVersion === 3 ||
-      candidate.schemaVersion === 4) &&
+      candidate.schemaVersion === 4 ||
+      candidate.schemaVersion === 5) &&
     typeof candidate.deviceId === 'string' &&
     Array.isArray(candidate.events) &&
     Array.isArray(candidate.transactions)
@@ -662,7 +667,9 @@ export function cloneSharedDocument(
   }
 
   const events = sortEventsCanonical(document.events);
-  const transactions = document.transactions.map(normalizeTransactionRecord);
+  const transactions = document.transactions.map((transaction) =>
+    normalizeTransactionRecord(document.deviceId, transaction),
+  );
   const fallbackHeadTransactionId =
     findLatestHistoryTransaction(transactions)?.id ?? null;
   const currentHeadTransactionId = transactions.some(
@@ -685,7 +692,7 @@ export function cloneSharedDocument(
     head: cloneHeadWithTimerState(historyHead, persistedHead.timerState),
     isOrphanedRestoreWindowOpen: Boolean(document.isOrphanedRestoreWindowOpen),
     nextSequence: document.nextSequence ?? deriveNextSequence(events),
-    schemaVersion: 4,
+    schemaVersion: 5,
     syncState: cloneSharedSyncState(document.syncState),
     transactions,
   };
@@ -735,6 +742,7 @@ function createTransactionRecord(args: {
   isRestorable?: boolean;
   kind: TransactionKind;
   occurredAt: string;
+  originDeviceId: string;
   parentTransactionId: string | null;
   participatesInHistory?: boolean;
   pointsAfter?: number;
@@ -755,6 +763,7 @@ function createTransactionRecord(args: {
     isRestorable = true,
     kind,
     occurredAt,
+    originDeviceId,
     parentTransactionId,
     participatesInHistory = true,
     pointsAfter,
@@ -776,6 +785,7 @@ function createTransactionRecord(args: {
     isRestorable,
     kind,
     occurredAt,
+    originDeviceId,
     parentTransactionId,
     participatesInHistory,
     pointsAfter,
@@ -783,6 +793,36 @@ function createTransactionRecord(args: {
     restoredFromTransactionId,
     restoredToTransactionId,
     stateAfter: cloneHead(stateAfter),
+  } satisfies TransactionRecord;
+}
+
+function createTransactionRecordFromSyncEntry(args: {
+  entry: SyncEntry;
+  localHead: SharedHead;
+  parentTransactionId: string | null;
+}) {
+  const { entry, localHead, parentTransactionId } = args;
+
+  return {
+    affectedChildIds: [...entry.affectedChildIds],
+    childId: entry.childId,
+    childName: entry.childName,
+    eventIds: [],
+    id: entry.sourceTransactionId,
+    isRestorable: true,
+    kind: entry.kind,
+    occurredAt: entry.occurredAt,
+    originDeviceId: entry.originDeviceId,
+    parentTransactionId,
+    participatesInHistory: true,
+    pointsAfter: entry.pointsAfter ?? undefined,
+    pointsBefore: entry.pointsBefore ?? undefined,
+    restoredFromTransactionId: entry.restoredFromTransactionId ?? undefined,
+    restoredToTransactionId: entry.restoredToTransactionId ?? undefined,
+    stateAfter: createSharedHeadFromSyncProjectionHead(
+      entry.stateAfter,
+      localHead,
+    ),
   } satisfies TransactionRecord;
 }
 
@@ -899,7 +939,9 @@ function toStoredDocumentSnapshot(
     isOrphanedRestoreWindowOpen: document.isOrphanedRestoreWindowOpen,
     nextSequence: document.nextSequence,
     schemaVersion: document.schemaVersion,
-    transactions: document.transactions.map(normalizeTransactionRecord),
+    transactions: document.transactions.map((transaction) =>
+      normalizeTransactionRecord(document.deviceId, transaction),
+    ),
   };
 }
 
@@ -1399,6 +1441,7 @@ export function deriveTransactionRows(document: SharedDocument) {
       transaction.participatesInHistory &&
       (transaction.id === document.currentHeadTransactionId ||
         transaction.id === currentRestoreTargetId);
+    const isLocalOrigin = transaction.originDeviceId === document.deviceId;
     const isOrphaned = transaction.participatesInHistory
       ? !activeTransactionIds.has(transaction.id)
       : false;
@@ -1426,11 +1469,13 @@ export function deriveTransactionRows(document: SharedDocument) {
       groupLabel: transaction.groupLabel,
       id: transaction.id,
       isHead,
+      isLocalOrigin,
       isOrphaned,
       isRestorable: transaction.isRestorable,
       isRestorableNow,
       kind: transaction.kind,
       occurredAt: transaction.occurredAt,
+      originDeviceId: transaction.originDeviceId,
       parentTransactionId: transaction.parentTransactionId,
       participatesInHistory: transaction.participatesInHistory,
       pointsAfter: transaction.pointsAfter,
@@ -1521,6 +1566,130 @@ function createSharedStoreActions(
           state.document.head,
         );
         const occurredAt = new Date().toISOString();
+
+        if (bundle.mode === 'bootstrap') {
+          const auditTransaction = createTransactionRecord({
+            affectedChildIds: [],
+            childAfter: null,
+            childBefore: null,
+            childId: null,
+            eventIds: [],
+            isRestorable: false,
+            kind: 'sync-applied',
+            occurredAt,
+            originDeviceId: state.document.deviceId,
+            parentTransactionId: state.document.currentHeadTransactionId,
+            participatesInHistory: false,
+            stateAfter: nextHead,
+          });
+          const isEmptyLocalProjection = currentProjection.entries.length === 0;
+
+          if (isEmptyLocalProjection) {
+            const bootstrapHistory = bundle.bootstrapHistory;
+
+            if (!bootstrapHistory || bootstrapHistory.length === 0) {
+              logRejectedSharedStoreMutation(
+                'applySyncBundle',
+                'The bootstrap sync bundle was missing source history.',
+                {
+                  bundleHash: bundle.bundleHash,
+                  mergedHeadSyncHash: bundle.mergedHeadSyncHash,
+                },
+              );
+              result = {
+                error: 'The bootstrap sync bundle was missing source history.',
+                ok: false,
+              };
+              return state;
+            }
+
+            let parentTransactionId: string | null = null;
+            const importedTransactions = bootstrapHistory.map((entry) => {
+              const transaction = createTransactionRecordFromSyncEntry({
+                entry,
+                localHead: state.document.head,
+                parentTransactionId,
+              });
+
+              parentTransactionId = transaction.id;
+              return transaction;
+            });
+            const latestImportedTransaction =
+              importedTransactions.at(-1) ?? null;
+            const bootstrapAuditTransaction = {
+              ...auditTransaction,
+              parentTransactionId: latestImportedTransaction?.id ?? null,
+            } satisfies TransactionRecord;
+            const importedDocument = {
+              ...state.document,
+              currentHeadTransactionId: latestImportedTransaction?.id ?? null,
+              head: cloneHead(nextHead),
+              isOrphanedRestoreWindowOpen: false,
+              transactions: [
+                ...state.document.transactions,
+                ...importedTransactions,
+                bootstrapAuditTransaction,
+              ],
+            } satisfies SharedDocument;
+            const nextDocument = {
+              ...importedDocument,
+              syncState: {
+                lastAppliedSync: buildStoredSyncBundle(bundle, occurredAt),
+                lastRollbackSnapshot:
+                  buildStoredSyncRollbackSnapshot(rollbackSnapshot),
+              },
+            } satisfies SharedDocument;
+
+            logSharedStoreMutation('applySyncBundle', {
+              bundleHash: bundle.bundleHash,
+              importedTransactionCount: importedTransactions.length,
+              mergedHeadSyncHash: bundle.mergedHeadSyncHash,
+              mode: bundle.mode,
+              transactionId: bootstrapAuditTransaction.id,
+            });
+            logSharedTransaction(bootstrapAuditTransaction, {
+              bundleHash: bundle.bundleHash,
+              importedTransactionCount: importedTransactions.length,
+              mergedHeadSyncHash: bundle.mergedHeadSyncHash,
+            });
+
+            return {
+              ...state,
+              document: nextDocument,
+            };
+          }
+
+          const nextDocument = {
+            ...appendDisplayOnlyTransaction({
+              document: state.document,
+              transaction: auditTransaction,
+            }),
+            syncState: {
+              lastAppliedSync: buildStoredSyncBundle(bundle, occurredAt),
+              lastRollbackSnapshot:
+                buildStoredSyncRollbackSnapshot(rollbackSnapshot),
+            },
+          } satisfies SharedDocument;
+
+          logSharedStoreMutation('applySyncBundle', {
+            bundleHash: bundle.bundleHash,
+            childReconciliationCount: bundle.childReconciliations.length,
+            eventCount: 0,
+            mergedHeadSyncHash: bundle.mergedHeadSyncHash,
+            mode: bundle.mode,
+            transactionId: auditTransaction.id,
+          });
+          logSharedTransaction(auditTransaction, {
+            bundleHash: bundle.bundleHash,
+            mergedHeadSyncHash: bundle.mergedHeadSyncHash,
+          });
+
+          return {
+            ...state,
+            document: nextDocument,
+          };
+        }
+
         const { affectedChildIds, eventsToAppend } = buildRestoreEvents(
           state.document,
           nextHead,
@@ -1534,6 +1703,7 @@ function createSharedStoreActions(
           eventIds: eventsToAppend.map((event) => event.eventId),
           kind: 'sync-applied',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           stateAfter: nextHead,
         });
@@ -1610,6 +1780,7 @@ function createSharedStoreActions(
           eventIds: [event.eventId],
           kind: 'child-created',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           pointsAfter: child.points,
           stateAfter: nextHead,
@@ -1689,6 +1860,7 @@ function createSharedStoreActions(
           eventIds: [event.eventId],
           kind: 'points-adjusted',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           pointsAfter: nextChild?.points,
           pointsBefore: child.points,
@@ -1797,6 +1969,7 @@ function createSharedStoreActions(
                 isRestorable: false,
                 kind: 'check-in-dismissed',
                 occurredAt,
+                originDeviceId: state.document.deviceId,
                 parentTransactionId,
                 participatesInHistory: false,
                 stateAfter: nextHead,
@@ -1827,6 +2000,7 @@ function createSharedStoreActions(
             groupLabel,
             kind: 'points-adjusted',
             occurredAt,
+            originDeviceId: state.document.deviceId,
             parentTransactionId,
             pointsAfter: childAfter?.points,
             pointsBefore: childBefore.points,
@@ -1908,6 +2082,7 @@ function createSharedStoreActions(
           eventIds: [event.eventId],
           kind: 'child-archived',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           pointsAfter: nextChild?.points,
           pointsBefore: child.points,
@@ -1968,6 +2143,7 @@ function createSharedStoreActions(
           eventIds: [event.eventId],
           kind: 'child-deleted',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           pointsBefore: child.points,
           stateAfter: nextHead,
@@ -2044,6 +2220,7 @@ function createSharedStoreActions(
           isRestorable: false,
           kind: 'timer-paused',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           participatesInHistory: false,
           stateAfter: nextHead,
@@ -2121,6 +2298,7 @@ function createSharedStoreActions(
           isRestorable: false,
           kind: 'timer-reset',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           participatesInHistory: false,
           stateAfter: nextHead,
@@ -2162,6 +2340,7 @@ function createSharedStoreActions(
           isRestorable: false,
           kind: success ? 'parent-unlock-succeeded' : 'parent-unlock-failed',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           participatesInHistory: false,
           stateAfter: state.document.head,
@@ -2200,6 +2379,7 @@ function createSharedStoreActions(
           isRestorable: false,
           kind: 'parent-mode-locked',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           participatesInHistory: false,
           stateAfter: state.document.head,
@@ -2241,7 +2421,7 @@ function createSharedStoreActions(
 
         const revertedDocument = cloneSharedDocument({
           ...rollbackSnapshot.documentSnapshot,
-          schemaVersion: 4,
+          schemaVersion: 5,
           syncState: null,
         });
 
@@ -2291,6 +2471,7 @@ function createSharedStoreActions(
           eventIds: [event.eventId],
           kind: 'child-restored',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           pointsAfter: nextChild?.points,
           pointsBefore: child.points,
@@ -2391,6 +2572,7 @@ function createSharedStoreActions(
           eventIds: eventsToAppend.map((event) => event.eventId),
           kind: 'history-restored',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: transactionRow.id,
           restoredFromTransactionId:
             state.document.currentHeadTransactionId ?? undefined,
@@ -2473,6 +2655,7 @@ function createSharedStoreActions(
           eventIds: [event.eventId],
           kind: 'points-set',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           pointsAfter: nextChild?.points,
           pointsBefore: child.points,
@@ -2551,6 +2734,7 @@ function createSharedStoreActions(
           isRestorable: false,
           kind: 'timer-started',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           participatesInHistory: false,
           stateAfter: nextHead,
@@ -2641,6 +2825,7 @@ function createSharedStoreActions(
           eventIds: [event.eventId],
           kind: 'timer-config-updated',
           occurredAt,
+          originDeviceId: state.document.deviceId,
           parentTransactionId: state.document.currentHeadTransactionId,
           stateAfter: nextHead,
         });

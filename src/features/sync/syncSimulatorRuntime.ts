@@ -46,7 +46,6 @@ import {
   type SyncTestbedFixtureStrategyId,
 } from './syncTestbedFixtures';
 
-export type SyncSimulatorMode = 'host' | 'joiner';
 export type SyncTestbedScenarioId =
   | 'availability-unavailable'
   | 'bundle-hash-mismatch'
@@ -69,7 +68,6 @@ type SyncSimulatorSnapshot = {
   availability: NearbySyncAvailability;
   commonBaseTransactionId: string | null;
   fixtureStrategyId: SyncTestbedFixtureStrategyId;
-  mode: SyncSimulatorMode;
   nfcAvailability: NfcBootstrapAvailability;
   permissions: NearbySyncPermissionStatus;
   remoteEndpoint: NearbySyncEndpoint;
@@ -109,7 +107,6 @@ export type SyncSimulatorController = {
   reset: () => void;
   setCommonBaseTransactionId: (transactionId: string | null) => void;
   setFixtureStrategy: (strategyId: SyncTestbedFixtureStrategyId) => void;
-  setMode: (mode: SyncSimulatorMode) => void;
   subscribe: (listener: () => void) => () => void;
 };
 
@@ -117,7 +114,6 @@ export function createSimulatorNearbySyncRuntime(args: {
   initialCommonBaseTransactionId?: string | null;
   initialFixtureStrategyId?: SyncTestbedFixtureStrategyId;
   getLocalDocument: () => SharedDocument;
-  initialMode?: SyncSimulatorMode;
 }): {
   controller: SyncSimulatorController;
   runtime: NearbySyncRuntime;
@@ -168,7 +164,6 @@ export function createSimulatorNearbySyncRuntime(args: {
     fixtureStrategyId:
       args.initialFixtureStrategyId ?? ('independent-lineages' as const),
     localBootstrapToken: initialBootstrapToken,
-    mode: args.initialMode ?? ('host' as SyncSimulatorMode),
     nfcAvailability: defaultNfcAvailability,
     nextPayloadId: 1,
     permissions: defaultPermissions,
@@ -191,9 +186,13 @@ export function createSimulatorNearbySyncRuntime(args: {
   }
 
   function getRemoteEndpoint() {
-    return state.mode === 'host'
+    return getSimulatorMode() === 'host'
       ? { endpointId: 'sim-joiner-endpoint', endpointName: 'Parent-SIMJ' }
       : { endpointId: 'sim-host-endpoint', endpointName: 'KidPoints-SIMH' };
+  }
+
+  function getSimulatorMode() {
+    return resolveSimulatorMode(state.fixtureStrategyId);
   }
 
   function nextPayloadId() {
@@ -700,7 +699,7 @@ export function createSimulatorNearbySyncRuntime(args: {
         authToken: state.authToken,
         endpointId: endpoint.endpointId,
         endpointName: endpoint.endpointName,
-        isIncomingConnection: state.mode === 'host',
+        isIncomingConnection: getSimulatorMode() === 'host',
       });
     },
     emitDiscoveryUpdated: () => {
@@ -733,7 +732,6 @@ export function createSimulatorNearbySyncRuntime(args: {
       availability: state.availability,
       commonBaseTransactionId: state.commonBaseTransactionId,
       fixtureStrategyId: state.fixtureStrategyId,
-      mode: state.mode,
       nfcAvailability: state.nfcAvailability,
       permissions: state.permissions,
       remoteEndpoint: getRemoteEndpoint(),
@@ -785,12 +783,8 @@ export function createSimulatorNearbySyncRuntime(args: {
         storage: memoryStorage,
         strategyId: state.fixtureStrategyId,
       });
-      notifyControllerListeners();
-    },
-    setMode: (mode) => {
-      state.mode = mode;
-      notifyControllerListeners();
       emitDiscovery([]);
+      notifyControllerListeners();
     },
     subscribe: (listener) => {
       controllerListeners.add(listener);
@@ -850,7 +844,7 @@ export function createSimulatorNearbySyncRuntime(args: {
     addNfcSyncLogListener: (listener) => addListener(nfcLogListeners, listener),
     beginNfcBootstrap: async () => {
       const attemptId = `sim-nfc-${Date.now().toString(36)}`;
-      const role = state.mode === 'host' ? 'host' : 'join';
+      const role = getSimulatorMode() === 'host' ? 'host' : 'join';
 
       if (!state.nfcAvailability.isReady) {
         emitNfcBootstrapState({
@@ -1010,6 +1004,10 @@ function createReadyNfcAvailability(): NfcBootstrapAvailability {
 
 function createSimulatorBootstrapToken() {
   return `sim-bootstrap-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function resolveSimulatorMode(strategyId: SyncTestbedFixtureStrategyId) {
+  return strategyId === 'bootstrap-right-to-left' ? 'joiner' : 'host';
 }
 
 function createGrantedPermissions(): NearbySyncPermissionStatus {

@@ -1,4 +1,5 @@
 import {
+  cloneSharedDocument,
   createInitialSharedDocument,
   createSharedStore,
   deriveTransactionRows,
@@ -892,6 +893,162 @@ describe('sharedStore sync integration', () => {
     ).toBeTruthy();
   });
 
+  it('imports bootstrap source history into an empty device and keeps the sync audit row read-only', () => {
+    const sourceStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-store-bootstrap-source',
+      }),
+      storage: createMemoryStorage(),
+    });
+    const targetStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-store-bootstrap-target',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(sourceStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = sourceStore.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error('Expected bootstrap source fixture to create a child.');
+    }
+
+    expect(sourceStore.getState().setPoints(childId, 5).ok).toBe(true);
+
+    const sourceProjection = deriveSyncProjection(
+      sourceStore.getState().document,
+    );
+    const preparedBundle = prepareSyncDeviceBundle({
+      capturedAt: '2026-04-09T22:07:00.000Z',
+      localDocument: targetStore.getState().document,
+      remoteProjection: sourceProjection,
+    });
+
+    if (!preparedBundle.ok) {
+      throw new Error('Expected bootstrap sync bundle preparation to succeed.');
+    }
+
+    expect(
+      targetStore
+        .getState()
+        .applySyncBundle(
+          preparedBundle.sharedBundle,
+          preparedBundle.localRollbackSnapshot,
+        ).ok,
+    ).toBe(true);
+
+    const document = targetStore.getState().document;
+    const rows = deriveTransactionRows(document);
+    const importedHeadId = sourceProjection.entries.at(-1)?.sourceTransactionId;
+    const importedHeadRow = rows.find((row) => row.id === importedHeadId);
+    const syncAuditRow = rows.find((row) => row.kind === 'sync-applied');
+
+    expect(document.events).toEqual([]);
+    expect(document.head.childrenById[childId]?.points).toBe(5);
+    expect(document.currentHeadTransactionId).toBe(importedHeadId);
+    expect(
+      document.transactions.slice(0, -1).map((transaction) => transaction.id),
+    ).toEqual(
+      sourceProjection.entries.map((entry) => entry.sourceTransactionId),
+    );
+    expect(
+      document.transactions
+        .slice(0, -1)
+        .every((transaction) => transaction.eventIds.length === 0),
+    ).toBe(true);
+    expect(document.transactions.at(-1)).toMatchObject({
+      isRestorable: false,
+      kind: 'sync-applied',
+      participatesInHistory: false,
+    });
+    expect(importedHeadRow).toMatchObject({
+      isHead: true,
+      summaryText: 'Ava Set Points [0 > 5]',
+    });
+    expect(syncAuditRow).toMatchObject({
+      isHead: false,
+      isRestorable: false,
+      summaryText: 'Applied Device Sync',
+    });
+    expect(document.syncState?.lastAppliedSync).toMatchObject({
+      bundleHash: preparedBundle.sharedBundle.bundleHash,
+      mode: 'bootstrap',
+    });
+  });
+
+  it('keeps the populated bootstrap side unchanged except for a read-only sync audit row', () => {
+    const populatedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-store-bootstrap-populated',
+      }),
+      storage: createMemoryStorage(),
+    });
+    const emptyProjection = deriveSyncProjection(
+      createInitialSharedDocument({
+        deviceId: 'device-sync-store-bootstrap-empty',
+      }),
+    );
+
+    expect(populatedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = populatedStore.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error(
+        'Expected populated bootstrap fixture to create a child.',
+      );
+    }
+
+    expect(populatedStore.getState().setPoints(childId, 5).ok).toBe(true);
+
+    const previousDocument = cloneSharedDocument(
+      populatedStore.getState().document,
+    );
+    const previousHeadTransactionId = previousDocument.currentHeadTransactionId;
+    const preparedBundle = prepareSyncDeviceBundle({
+      capturedAt: '2026-04-09T22:08:00.000Z',
+      localDocument: populatedStore.getState().document,
+      remoteProjection: emptyProjection,
+    });
+
+    if (!preparedBundle.ok) {
+      throw new Error(
+        'Expected populated bootstrap bundle preparation to succeed.',
+      );
+    }
+
+    expect(
+      populatedStore
+        .getState()
+        .applySyncBundle(
+          preparedBundle.sharedBundle,
+          preparedBundle.localRollbackSnapshot,
+        ).ok,
+    ).toBe(true);
+
+    const document = populatedStore.getState().document;
+    const rows = deriveTransactionRows(document);
+    const syncAuditRow = rows.find((row) => row.kind === 'sync-applied');
+    const previousHeadRow = rows.find(
+      (row) => row.id === previousHeadTransactionId,
+    );
+
+    expect(document.head).toEqual(previousDocument.head);
+    expect(document.currentHeadTransactionId).toBe(previousHeadTransactionId);
+    expect(document.transactions).toHaveLength(
+      previousDocument.transactions.length + 1,
+    );
+    expect(document.transactions.at(-1)).toMatchObject({
+      kind: 'sync-applied',
+      participatesInHistory: false,
+    });
+    expect(previousHeadRow?.isHead).toBe(true);
+    expect(syncAuditRow).toMatchObject({
+      isHead: false,
+      summaryText: 'Applied Device Sync',
+    });
+  });
+
   it('reverts the last applied sync back to the exact rollback snapshot', () => {
     const leftStorage = createMemoryStorage();
     const seedStore = createSharedStore({
@@ -954,6 +1111,58 @@ describe('sharedStore sync integration', () => {
 
     expect(leftStore.getState().revertLastSync().ok).toBe(true);
     expect(leftStore.getState().document).toEqual({
+      ...rollbackDocument,
+      syncState: null,
+    });
+  });
+
+  it('reverts an imported bootstrap sync back to the empty rollback snapshot', () => {
+    const sourceStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-store-bootstrap-revert-source',
+      }),
+      storage: createMemoryStorage(),
+    });
+    const targetStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-store-bootstrap-revert-target',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(sourceStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = sourceStore.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error('Expected bootstrap revert fixture to create a child.');
+    }
+
+    expect(sourceStore.getState().setPoints(childId, 5).ok).toBe(true);
+
+    const preparedBundle = prepareSyncDeviceBundle({
+      capturedAt: '2026-04-09T22:09:00.000Z',
+      localDocument: targetStore.getState().document,
+      remoteProjection: deriveSyncProjection(sourceStore.getState().document),
+    });
+
+    if (!preparedBundle.ok) {
+      throw new Error(
+        'Expected bootstrap revert bundle preparation to succeed.',
+      );
+    }
+
+    const rollbackDocument = preparedBundle.localRollbackSnapshot.document;
+
+    expect(
+      targetStore
+        .getState()
+        .applySyncBundle(
+          preparedBundle.sharedBundle,
+          preparedBundle.localRollbackSnapshot,
+        ).ok,
+    ).toBe(true);
+    expect(targetStore.getState().revertLastSync().ok).toBe(true);
+    expect(targetStore.getState().document).toEqual({
       ...rollbackDocument,
       syncState: null,
     });

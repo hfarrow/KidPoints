@@ -97,23 +97,22 @@ describe('SyncTestbedScreen', () => {
 
     expect(screen.getByText('Sync Testbed')).toBeTruthy();
     expect(screen.getByText('Testbed Controls')).toBeTruthy();
-    expect(screen.getByText('Sync Status')).toBeTruthy();
+    expect(screen.getByText('Instructions')).toBeTruthy();
     expect(screen.queryByText('Device Sync')).toBeNull();
   });
 
-  it('switches simulator mode and runs presets into review and error states', async () => {
+  it('hides internal sync roles and runs presets into review and error states', async () => {
     await renderSyncTestbed();
 
-    fireEvent.press(screen.getByText('Joiner'));
+    expect(screen.queryByText('Host')).toBeNull();
+    expect(screen.queryByText('Joiner')).toBeNull();
     expect(
-      screen.getByText(
-        'Mode: joiner. Fixture: bootstrap-right-to-left. Scenario: manual.',
-      ),
+      screen.getByText('Fixture: bootstrap-right-to-left. Scenario: manual.'),
     ).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Expand Scenario Presets'));
     fireEvent.press(screen.getByText('Happy Review'));
-    await waitFor(() => expect(screen.getByText('Merge Summary')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Review Sync')).toBeTruthy());
 
     fireEvent.press(screen.getByText('Unavailable'));
     await waitFor(() =>
@@ -138,6 +137,14 @@ describe('SyncTestbedScreen', () => {
     await waitFor(() =>
       expect(screen.getByText('Preview Transactions')).toBeTruthy(),
     );
+    expect(screen.getAllByText('Maya Added').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('Maya Set Points [0 > 9]').length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText('Noah Added').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('Noah Set Points [0 > 4]').length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText('Applied Device Sync')).toBeTruthy();
   });
 });

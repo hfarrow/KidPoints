@@ -21,3 +21,15 @@ export function triggerErrorHaptic(hapticsEnabled: boolean) {
     },
   );
 }
+
+export function triggerSuccessHaptic(hapticsEnabled: boolean) {
+  if (!hapticsEnabled) {
+    return;
+  }
+
+  void Haptics.notificationAsync(
+    Haptics.NotificationFeedbackType.Success,
+  ).catch(() => {
+    // Haptics are best-effort UI polish; ignore unsupported-device failures.
+  });
+}

@@ -26,7 +26,6 @@ import {
   loadSyncProjectionFromFile,
 } from './syncFileTransfer';
 import {
-  buildMergeReviewSummary,
   buildSyncLoggerContext,
   type CommitAckEnvelope,
   type CommitEnvelope,
@@ -52,9 +51,9 @@ import {
   type SyncSummaryEnvelope,
   serializeSyncEnvelope,
 } from './syncProtocol';
+import { buildSyncReviewModel, type SyncReviewModel } from './syncReview';
 import { useSyncRuntime } from './syncRuntimeContext';
 import {
-  buildSyncSessionSummary,
   createInitialSyncSessionState,
   reduceSyncSessionState,
   type SyncSessionState,
@@ -177,6 +176,10 @@ export function useNearbySyncSession(): NearbySyncSessionController {
   const remoteSummaryRef = useRef<SyncSummaryEnvelope | null>(null);
   const remoteMergeResultRef = useRef<MergeResultEnvelope | null>(null);
   const localPreparedBundleRef = useRef<PreparedBundle | null>(null);
+  const remoteProjectionRef = useRef<PreparedBundle['localProjection'] | null>(
+    null,
+  );
+  const reviewModelRef = useRef<SyncReviewModel | null>(null);
   const lastSeenNativeLogSequenceRef = useRef(-1);
   const lastSeenNfcNativeLogSequenceRef = useRef(-1);
   const localHelloSentRef = useRef(false);
@@ -225,6 +228,8 @@ export function useNearbySyncSession(): NearbySyncSessionController {
     remoteSummaryRef.current = null;
     remoteMergeResultRef.current = null;
     localPreparedBundleRef.current = null;
+    remoteProjectionRef.current = null;
+    reviewModelRef.current = null;
     isAutomaticSyncFlowRef.current = false;
     automaticDiscoveryConnectInFlightRef.current = false;
     automaticallyAcceptedEndpointIdsRef.current.clear();
@@ -477,8 +482,9 @@ export function useNearbySyncSession(): NearbySyncSessionController {
   async function maybeEnterReview() {
     const localPreparedBundle = localPreparedBundleRef.current;
     const remoteMergeResult = remoteMergeResultRef.current;
+    const remoteProjection = remoteProjectionRef.current;
 
-    if (!localPreparedBundle || !remoteMergeResult) {
+    if (!localPreparedBundle || !remoteMergeResult || !remoteProjection) {
       return;
     }
 
@@ -508,10 +514,16 @@ export function useNearbySyncSession(): NearbySyncSessionController {
       return;
     }
 
+    const review = buildSyncReviewModel({
+      bundle: localPreparedBundle.sharedBundle,
+      localDeviceId: documentRef.current.deviceId,
+      localProjection: localPreparedBundle.localProjection,
+      remoteProjection,
+    });
+    reviewModelRef.current = review;
+
     dispatch({
-      peerEndpointName:
-        stateRef.current.connectedEndpoint?.endpointName ?? null,
-      review: buildSyncSessionSummary(localPreparedBundle.sharedBundle),
+      review,
       type: 'reviewReady',
     });
   }
@@ -558,6 +570,8 @@ export function useNearbySyncSession(): NearbySyncSessionController {
       });
       return;
     }
+
+    remoteProjectionRef.current = loadedProjection.projection;
 
     const preparedBundle = prepareSyncDeviceBundle({
       localDocument,
@@ -658,11 +672,28 @@ export function useNearbySyncSession(): NearbySyncSessionController {
   async function finalizeSuccessfulCommit(
     bundle: PreparedBundle['sharedBundle'],
   ) {
+    const review =
+      reviewModelRef.current ??
+      stateRef.current.review ??
+      (remoteProjectionRef.current
+        ? buildSyncReviewModel({
+            bundle,
+            localDeviceId: documentRef.current.deviceId,
+            localProjection:
+              localPreparedBundleRef.current?.localProjection ??
+              deriveSyncProjection(documentRef.current),
+            remoteProjection: remoteProjectionRef.current,
+          })
+        : null);
+
     commitSucceededRef.current = true;
-    dispatch({
-      review: buildMergeReviewSummary(bundle),
-      type: 'commitSucceeded',
-    });
+    if (review) {
+      reviewModelRef.current = review;
+      dispatch({
+        review,
+        type: 'commitSucceeded',
+      });
+    }
     await bestEffortStopAll();
   }
 

@@ -3,19 +3,22 @@ import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
 import { ActionPill } from '../../components/Skeleton';
+import type { SyncSessionPhase } from './syncSessionMachine';
 
 export function SyncScreenShell({
   canStartNewSession,
   children,
   onCancel,
+  phase,
 }: PropsWithChildren<{
   canStartNewSession: boolean;
   onCancel: () => void;
+  phase: SyncSessionPhase;
 }>) {
   return (
     <ScreenScaffold
       footer={
-        canStartNewSession ? (
+        phase === 'review' ? null : canStartNewSession ? (
           <ScreenBackFooter />
         ) : (
           <ActionPill

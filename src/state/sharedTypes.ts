@@ -135,6 +135,7 @@ export type TransactionRecord = {
   groupId?: string;
   groupLabel?: string;
   id: string;
+  originDeviceId: string;
   kind: TransactionKind;
   occurredAt: string;
   parentTransactionId: string | null;
@@ -160,11 +161,13 @@ export type TransactionRow = {
   groupLabel?: string;
   id: string;
   isHead: boolean;
+  isLocalOrigin: boolean;
   isOrphaned: boolean;
   isRestorable: boolean;
   isRestorableNow: boolean;
   kind: TransactionKind;
   occurredAt: string;
+  originDeviceId: string;
   parentTransactionId: string | null;
   participatesInHistory: boolean;
   pointsAfter?: number;
@@ -184,7 +187,7 @@ export type SharedDocument = {
   head: SharedHead;
   isOrphanedRestoreWindowOpen: boolean;
   nextSequence: number;
-  schemaVersion: 4;
+  schemaVersion: 5;
   syncState: SharedSyncState | null;
   transactions: TransactionRecord[];
 };
@@ -198,7 +201,7 @@ export type SharedDocumentSnapshot = {
   head: SharedHead;
   isOrphanedRestoreWindowOpen: boolean;
   nextSequence: number;
-  schemaVersion: 3 | 4;
+  schemaVersion: 3 | 4 | 5;
   transactions: TransactionRecord[];
 };
 
@@ -222,7 +225,7 @@ export type StoredSyncBundle = {
   mode: 'bootstrap' | 'merged';
   participantHeadHashes: string[];
   participantHeadSyncHashes: string[];
-  syncSchemaVersion: 1;
+  syncSchemaVersion: 1 | 2;
 };
 
 export type StoredSyncRollbackSnapshot = {

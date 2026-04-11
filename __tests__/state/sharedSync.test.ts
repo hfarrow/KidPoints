@@ -4,6 +4,7 @@ import {
   createSharedStore,
 } from '../../src/state/sharedStore';
 import {
+  CURRENT_SYNC_SCHEMA_VERSION,
   captureSyncRollbackSnapshot,
   confirmSyncBundleAgreement,
   deriveSyncProjection,
@@ -151,11 +152,17 @@ describe('sharedSync phase 1 projection', () => {
       'points-adjusted',
       'history-restored',
     ]);
+    expect(projection.syncSchemaVersion).toBe(CURRENT_SYNC_SCHEMA_VERSION);
     expect(
       projection.entries.at(-1)?.stateAfter.childrenById[childId]?.points,
     ).toBe(1);
     expect(projection.head.childrenById[childId]?.points).toBe(1);
     expect(projection.headHash).toBe(projection.entries.at(-1)?.hash);
+    expect(projection.entries.at(-1)).toMatchObject({
+      occurredAt: expect.any(String),
+      restoredFromTransactionId: expect.any(String),
+      restoredToTransactionId: restoreTarget?.id,
+    });
   });
 
   it('chains sync entry hashes from the active branch in oldest-first order', () => {
@@ -181,6 +188,32 @@ describe('sharedSync phase 1 projection', () => {
     expect(setEntry?.pointsBefore).toBe(1);
     expect(setEntry?.pointsAfter).toBe(7);
     expect(projection.headHash).toBe(setEntry?.hash);
+  });
+
+  it('rejects projections from an older sync schema version', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-legacy-schema',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+
+    const legacyProjection = {
+      ...deriveSyncProjection(store.getState().document),
+      syncSchemaVersion: 1 as const,
+    };
+
+    expect(
+      validateSyncProjection(
+        legacyProjection as never as ReturnType<typeof deriveSyncProjection>,
+      ),
+    ).toEqual({
+      code: 'sync-schema-version-mismatch',
+      message: `Unsupported sync schema version: 1. Expected ${CURRENT_SYNC_SCHEMA_VERSION}.`,
+      ok: false,
+    });
   });
 });
 
@@ -630,6 +663,50 @@ describe('sharedSync phase 4 agreement bundle', () => {
       agreedHeadSyncHash: leftPlan.sharedBundle.mergedHeadSyncHash,
       ok: true,
     });
+  });
+
+  it('includes identical bootstrap history payloads when syncing from a populated device into an empty device', () => {
+    const populatedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-phase4-bootstrap-source',
+      }),
+      storage: createMemoryStorage(),
+    });
+    const emptyStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-phase4-bootstrap-target',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(populatedStore.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(populatedStore.getState().document);
+    expect(populatedStore.getState().setPoints(childId, 5).ok).toBe(true);
+
+    const populatedProjection = deriveSyncProjection(
+      populatedStore.getState().document,
+    );
+    const leftPlan = prepareSyncDeviceBundle({
+      localDocument: populatedStore.getState().document,
+      remoteProjection: deriveSyncProjection(emptyStore.getState().document),
+    });
+    const rightPlan = prepareSyncDeviceBundle({
+      localDocument: emptyStore.getState().document,
+      remoteProjection: populatedProjection,
+    });
+
+    if (!leftPlan.ok || !rightPlan.ok) {
+      throw new Error('Expected bootstrap bundle preparation to succeed.');
+    }
+
+    expect(leftPlan.sharedBundle).toEqual(rightPlan.sharedBundle);
+    expect(leftPlan.sharedBundle.mode).toBe('bootstrap');
+    expect(leftPlan.sharedBundle.bootstrapHistory).toEqual(
+      populatedProjection.entries,
+    );
+    expect(serializeSyncBundle(leftPlan.sharedBundle)).toBe(
+      serializeSyncBundle(rightPlan.sharedBundle),
+    );
   });
 
   it('rejects agreement when merged head hashes differ', () => {
