@@ -75,6 +75,7 @@ describe('RootLayout', () => {
     expect(screen.getByText('(tabs):default')).toBeTruthy();
     expect(screen.getByText('settings:default')).toBeTruthy();
     expect(screen.getByText('sync:default')).toBeTruthy();
+    expect(screen.getByText('sync-testbed:default')).toBeTruthy();
     expect(screen.getByText('logs:default')).toBeTruthy();
     expect(screen.getByText('transactions:default')).toBeTruthy();
     expect(screen.getByText('parent-unlock:transparentModal')).toBeTruthy();

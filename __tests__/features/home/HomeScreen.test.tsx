@@ -257,10 +257,14 @@ describe('HomeScreen', () => {
     fireEvent.press(screen.getByText('Parent'));
     expect(screen.getByText('Add Child')).toBeTruthy();
     expect(screen.getByText('Sync Devices')).toBeTruthy();
+    expect(screen.getByText('Sync Testbed')).toBeTruthy();
     expect(screen.getByText('Transactions')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Sync Devices'));
     expect(mockPush).toHaveBeenCalledWith('/sync');
+
+    fireEvent.press(screen.getByText('Sync Testbed'));
+    expect(mockPush).toHaveBeenCalledWith('/sync-testbed');
   });
 
   it('opens archived children in a local overlay, restores items, and confirms permanent delete actions', () => {

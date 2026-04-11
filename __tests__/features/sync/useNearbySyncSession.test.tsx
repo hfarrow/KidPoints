@@ -23,26 +23,36 @@ let mockConnectionStateChangedListener: ((value: unknown) => void) | null =
   null;
 let mockEnvelopeReceivedListener: ((value: unknown) => void) | null = null;
 let mockPayloadProgressListener: ((value: unknown) => void) | null = null;
-
-jest.mock('../../../src/logging/logger', () => {
-  const actualLoggerModule = jest.requireActual('../../../src/logging/logger');
-
-  return {
-    ...actualLoggerModule,
-    createModuleLogger: jest.fn(() => ({
-      debug: jest.fn(),
-      error: jest.fn(),
-      info: jest.fn(),
-      namespace: 'nearby-sync-session-test',
-      temp: jest.fn(),
-      warn: jest.fn(),
-    })),
-    logForwardedNativeEntry: jest.fn(),
-  };
-});
-
-jest.mock('../../../src/features/sync/nearbySyncBridge', () => ({
-  acceptConnection: jest.fn(async () => undefined),
+const mockAcceptConnection = jest.fn<Promise<void>, [string]>(async () => {});
+const mockIsAvailable = jest.fn(async () => ({
+  isReady: true,
+  isSupported: true,
+  playServicesStatus: 0,
+  reason: 'ready',
+}));
+const mockRequestConnection = jest.fn(async () => undefined);
+const mockRequestPermissions = jest.fn(async () => ({
+  allGranted: true,
+  deniedPermissions: [],
+  requiredPermissions: [
+    'android.permission.BLUETOOTH_ADVERTISE',
+    'android.permission.BLUETOOTH_CONNECT',
+    'android.permission.BLUETOOTH_SCAN',
+    'android.permission.NEARBY_WIFI_DEVICES',
+  ],
+  results: {
+    'android.permission.BLUETOOTH_ADVERTISE': 'granted',
+    'android.permission.BLUETOOTH_CONNECT': 'granted',
+    'android.permission.BLUETOOTH_SCAN': 'granted',
+    'android.permission.NEARBY_WIFI_DEVICES': 'granted',
+  },
+}));
+const mockSendFile = jest.fn(async () => '2');
+const mockStartDiscovery = jest.fn(async () => undefined);
+const mockStartHosting = jest.fn(async () => undefined);
+const mockStopAll = jest.fn(async () => undefined);
+const mockRuntime = {
+  acceptConnection: mockAcceptConnection,
   addAuthTokenReadyListener: jest.fn((listener) => {
     mockAuthTokenReadyListener = listener;
     return { remove: jest.fn() };
@@ -69,35 +79,36 @@ jest.mock('../../../src/features/sync/nearbySyncBridge', () => ({
   }),
   disconnect: jest.fn(async () => undefined),
   getBufferedNearbySyncLogs: jest.fn(() => []),
-  isAvailable: jest.fn(async () => ({
-    isReady: true,
-    isSupported: true,
-    playServicesStatus: 0,
-    reason: 'ready',
-  })),
+  isAvailable: mockIsAvailable,
   rejectConnection: jest.fn(async () => undefined),
-  requestConnection: jest.fn(async () => undefined),
-  requestPermissions: jest.fn(async () => ({
-    allGranted: true,
-    deniedPermissions: [],
-    requiredPermissions: [
-      'android.permission.BLUETOOTH_ADVERTISE',
-      'android.permission.BLUETOOTH_CONNECT',
-      'android.permission.BLUETOOTH_SCAN',
-      'android.permission.NEARBY_WIFI_DEVICES',
-    ],
-    results: {
-      'android.permission.BLUETOOTH_ADVERTISE': 'granted',
-      'android.permission.BLUETOOTH_CONNECT': 'granted',
-      'android.permission.BLUETOOTH_SCAN': 'granted',
-      'android.permission.NEARBY_WIFI_DEVICES': 'granted',
-    },
-  })),
+  requestConnection: mockRequestConnection,
+  requestPermissions: mockRequestPermissions,
   sendEnvelope: jest.fn(async () => '1'),
-  sendFile: jest.fn(async () => '2'),
-  startDiscovery: jest.fn(async () => undefined),
-  startHosting: jest.fn(async () => undefined),
-  stopAll: jest.fn(async () => undefined),
+  sendFile: mockSendFile,
+  startDiscovery: mockStartDiscovery,
+  startHosting: mockStartHosting,
+  stopAll: mockStopAll,
+};
+
+jest.mock('../../../src/logging/logger', () => {
+  const actualLoggerModule = jest.requireActual('../../../src/logging/logger');
+
+  return {
+    ...actualLoggerModule,
+    createModuleLogger: jest.fn(() => ({
+      debug: jest.fn(),
+      error: jest.fn(),
+      info: jest.fn(),
+      namespace: 'nearby-sync-session-test',
+      temp: jest.fn(),
+      warn: jest.fn(),
+    })),
+    logForwardedNativeEntry: jest.fn(),
+  };
+});
+
+jest.mock('../../../src/features/sync/syncRuntimeContext', () => ({
+  useSyncRuntime: () => mockRuntime,
 }));
 
 jest.mock('../../../src/features/sync/syncFileTransfer', () => ({
@@ -113,26 +124,6 @@ jest.mock('../../../src/features/sync/syncFileTransfer', () => ({
     ok: false,
   })),
 }));
-
-const {
-  acceptConnection: mockAcceptConnection,
-  isAvailable: mockIsAvailable,
-  requestConnection: mockRequestConnection,
-  requestPermissions: mockRequestPermissions,
-  sendFile: mockSendFile,
-  startDiscovery: mockStartDiscovery,
-  startHosting: mockStartHosting,
-  stopAll: mockStopAll,
-} = jest.requireMock('../../../src/features/sync/nearbySyncBridge') as {
-  acceptConnection: jest.Mock;
-  isAvailable: jest.Mock;
-  requestConnection: jest.Mock;
-  requestPermissions: jest.Mock;
-  sendFile: jest.Mock;
-  startDiscovery: jest.Mock;
-  startHosting: jest.Mock;
-  stopAll: jest.Mock;
-};
 
 const {
   exportSyncProjectionToFile: mockExportSyncProjectionToFile,
@@ -464,7 +455,9 @@ describe('useNearbySyncSession', () => {
     mockAcceptConnection.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
-          resolveAcceptConnection = resolve;
+          resolveAcceptConnection = () => {
+            resolve();
+          };
         }),
     );
 

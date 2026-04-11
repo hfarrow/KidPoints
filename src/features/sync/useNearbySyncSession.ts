@@ -8,33 +8,13 @@ import {
   type PrepareSyncDeviceBundleResult,
   prepareSyncDeviceBundle,
 } from '../../state/sharedSync';
-import {
-  acceptConnection,
-  addAuthTokenReadyListener,
-  addAvailabilityChangeListener,
-  addConnectionRequestedListener,
-  addConnectionStateChangedListener,
-  addDiscoveryUpdatedListener,
-  addEnvelopeReceivedListener,
-  addErrorListener,
-  addNearbySyncLogListener,
-  addPayloadProgressListener,
-  disconnect,
-  getBufferedNearbySyncLogs,
-  isAvailable,
-  type NearbySyncConnectionStateEvent,
-  type NearbySyncEndpoint,
-  type NearbySyncEnvelopeReceivedEvent,
-  type NearbySyncNativeLogEntry,
-  type NearbySyncPayloadProgressEvent,
-  rejectConnection,
-  requestConnection,
-  requestPermissions,
-  sendEnvelope,
-  sendFile,
-  startDiscovery,
-  startHosting,
-  stopAll,
+import type { SharedCommandResult } from '../../state/sharedTypes';
+import type {
+  NearbySyncConnectionStateEvent,
+  NearbySyncEndpoint,
+  NearbySyncEnvelopeReceivedEvent,
+  NearbySyncNativeLogEntry,
+  NearbySyncPayloadProgressEvent,
 } from './nearbySyncBridge';
 import {
   exportSyncProjectionToFile,
@@ -65,15 +45,29 @@ import {
   type SyncSummaryEnvelope,
   serializeSyncEnvelope,
 } from './syncProtocol';
+import { useSyncRuntime } from './syncRuntimeContext';
 import {
   buildSyncSessionSummary,
   createInitialSyncSessionState,
   reduceSyncSessionState,
+  type SyncSessionState,
 } from './syncSessionMachine';
 
 const log = createModuleLogger('nearby-sync-session');
 
 type PreparedBundle = Extract<PrepareSyncDeviceBundleResult, { ok: true }>;
+export type NearbySyncSessionController = {
+  acceptPairingCode: () => Promise<void>;
+  cancelSession: () => Promise<void>;
+  confirmMergeAndPrepareCommit: () => Promise<void>;
+  connectToEndpoint: (endpoint: NearbySyncEndpoint) => Promise<void>;
+  refreshAvailability: () => Promise<void>;
+  rejectPairingCode: () => Promise<void>;
+  revertLastAppliedSync: () => Promise<SharedCommandResult>;
+  startHostFlow: () => Promise<void>;
+  startJoinFlow: () => Promise<void>;
+  state: SyncSessionState;
+};
 
 function waitForMs(ms: number) {
   return new Promise((resolve) => {
@@ -142,7 +136,8 @@ function createSessionStartFailureMessage(
   return reason ? `${baseMessage} ${reason}` : baseMessage;
 }
 
-export function useNearbySyncSession() {
+export function useNearbySyncSession(): NearbySyncSessionController {
+  const runtime = useSyncRuntime();
   const document = useSharedStore((state) => state.document);
   const applySyncBundle = useSharedStore((state) => state.applySyncBundle);
   const revertLastSync = useSharedStore((state) => state.revertLastSync);
@@ -221,7 +216,7 @@ export function useNearbySyncSession() {
 
     stopAllInFlightRef.current = true;
     try {
-      await stopAll();
+      await runtime.stopAll();
     } catch (error) {
       log.warn('Failed to stop nearby sync activity cleanly', {
         ...buildSyncLoggerContext({
@@ -237,7 +232,7 @@ export function useNearbySyncSession() {
 
   async function refreshAvailability() {
     dispatch({
-      availability: await isAvailable(),
+      availability: await runtime.isAvailable(),
       type: 'availabilityUpdated',
     });
   }
@@ -280,7 +275,7 @@ export function useNearbySyncSession() {
 
     if (args.sendRemoteError && endpointId && sessionState.sessionId) {
       try {
-        await sendEnvelope({
+        await runtime.sendEnvelope({
           endpointId,
           envelopeJson: serializeSyncEnvelope(
             createSyncErrorEnvelope({
@@ -301,7 +296,7 @@ export function useNearbySyncSession() {
     envelopeJson: string,
     details: Record<string, unknown> = {},
   ) {
-    const payloadId = await sendEnvelope({ endpointId, envelopeJson });
+    const payloadId = await runtime.sendEnvelope({ endpointId, envelopeJson });
 
     log.debug('Nearby sync envelope sent', {
       ...buildSyncLoggerContext({
@@ -387,7 +382,7 @@ export function useNearbySyncSession() {
     const projection = deriveSyncProjection(documentRef.current);
     const exportResult = exportSyncProjectionToFile({ projection });
     try {
-      const payloadId = await sendFile({
+      const payloadId = await runtime.sendFile({
         endpointId,
         fileUri: exportResult.fileUri,
       });
@@ -852,7 +847,7 @@ export function useNearbySyncSession() {
   useEffect(() => {
     void effectOpsRef.current.refreshAvailability();
 
-    const availabilitySubscription = addAvailabilityChangeListener(
+    const availabilitySubscription = runtime.addAvailabilityChangeListener(
       (availability) => {
         dispatch({
           availability,
@@ -860,14 +855,16 @@ export function useNearbySyncSession() {
         });
       },
     );
-    const discoverySubscription = addDiscoveryUpdatedListener((event) => {
-      dispatch({
-        endpoints: event.endpoints,
-        type: 'discoveryUpdated',
-      });
-    });
-    const connectionRequestedSubscription = addConnectionRequestedListener(
+    const discoverySubscription = runtime.addDiscoveryUpdatedListener(
       (event) => {
+        dispatch({
+          endpoints: event.endpoints,
+          type: 'discoveryUpdated',
+        });
+      },
+    );
+    const connectionRequestedSubscription =
+      runtime.addConnectionRequestedListener((event) => {
         log.debug('Nearby sync connection request received', {
           ...buildSyncLoggerContext({
             endpointId: event.endpointId,
@@ -880,9 +877,8 @@ export function useNearbySyncSession() {
           endpoint: toEndpoint(event),
           type: 'pairingStarted',
         });
-      },
-    );
-    const authTokenSubscription = addAuthTokenReadyListener((event) => {
+      });
+    const authTokenSubscription = runtime.addAuthTokenReadyListener((event) => {
       log.info('Nearby sync pairing token ready', {
         ...buildSyncLoggerContext({
           endpointId: event.endpointId,
@@ -898,49 +894,34 @@ export function useNearbySyncSession() {
         type: 'authTokenReady',
       });
     });
-    const connectionStateSubscription = addConnectionStateChangedListener(
-      (event: NearbySyncConnectionStateEvent) => {
-        log.debug('Nearby sync connection state changed', {
-          ...buildSyncLoggerContext({
-            endpointId: event.endpointId,
-            phase: stateRef.current.phase,
-            sessionId: stateRef.current.sessionId,
-          }),
-          endpointName: event.endpointName,
-          reason: event.reason,
-          state: event.state,
-        });
-
-        if (event.state === 'connected') {
-          dispatch({
-            endpoint: toEndpoint(event),
-            type: 'connected',
-          });
-          void effectOpsRef.current.sendHelloIfNeeded(event.endpointId);
-          if (remoteHelloRef.current) {
-            void effectOpsRef.current.sendSummaryIfNeeded(event.endpointId);
-          }
-          return;
-        }
-
-        if (event.state === 'requested') {
-          log.debug('Ignoring redundant nearby sync requested state event', {
+    const connectionStateSubscription =
+      runtime.addConnectionStateChangedListener(
+        (event: NearbySyncConnectionStateEvent) => {
+          log.debug('Nearby sync connection state changed', {
             ...buildSyncLoggerContext({
               endpointId: event.endpointId,
               phase: stateRef.current.phase,
               sessionId: stateRef.current.sessionId,
             }),
             endpointName: event.endpointName,
+            reason: event.reason,
+            state: event.state,
           });
-          return;
-        }
 
-        if (event.state === 'connecting') {
-          if (
-            stateRef.current.phase === 'pairing' &&
-            stateRef.current.authToken
-          ) {
-            log.debug('Ignoring redundant nearby sync connecting state event', {
+          if (event.state === 'connected') {
+            dispatch({
+              endpoint: toEndpoint(event),
+              type: 'connected',
+            });
+            void effectOpsRef.current.sendHelloIfNeeded(event.endpointId);
+            if (remoteHelloRef.current) {
+              void effectOpsRef.current.sendSummaryIfNeeded(event.endpointId);
+            }
+            return;
+          }
+
+          if (event.state === 'requested') {
+            log.debug('Ignoring redundant nearby sync requested state event', {
               ...buildSyncLoggerContext({
                 endpointId: event.endpointId,
                 phase: stateRef.current.phase,
@@ -951,36 +932,55 @@ export function useNearbySyncSession() {
             return;
           }
 
-          dispatch({
-            endpoint: toEndpoint(event),
-            type: 'pairingStarted',
+          if (event.state === 'connecting') {
+            if (
+              stateRef.current.phase === 'pairing' &&
+              stateRef.current.authToken
+            ) {
+              log.debug(
+                'Ignoring redundant nearby sync connecting state event',
+                {
+                  ...buildSyncLoggerContext({
+                    endpointId: event.endpointId,
+                    phase: stateRef.current.phase,
+                    sessionId: stateRef.current.sessionId,
+                  }),
+                  endpointName: event.endpointName,
+                },
+              );
+              return;
+            }
+
+            dispatch({
+              endpoint: toEndpoint(event),
+              type: 'pairingStarted',
+            });
+            return;
+          }
+
+          if (
+            stateRef.current.phase === 'idle' ||
+            stateRef.current.phase === 'success' ||
+            commitSucceededRef.current ||
+            stopAllInFlightRef.current
+          ) {
+            return;
+          }
+
+          void effectOpsRef.current.failSession({
+            code:
+              event.state === 'rejected'
+                ? 'connection-rejected'
+                : 'connection-disconnected',
+            message:
+              event.reason ??
+              (event.state === 'rejected'
+                ? 'The connection was rejected.'
+                : 'The nearby sync connection was lost.'),
           });
-          return;
-        }
-
-        if (
-          stateRef.current.phase === 'idle' ||
-          stateRef.current.phase === 'success' ||
-          commitSucceededRef.current ||
-          stopAllInFlightRef.current
-        ) {
-          return;
-        }
-
-        void effectOpsRef.current.failSession({
-          code:
-            event.state === 'rejected'
-              ? 'connection-rejected'
-              : 'connection-disconnected',
-          message:
-            event.reason ??
-            (event.state === 'rejected'
-              ? 'The connection was rejected.'
-              : 'The nearby sync connection was lost.'),
-        });
-      },
-    );
-    const payloadProgressSubscription = addPayloadProgressListener(
+        },
+      );
+    const payloadProgressSubscription = runtime.addPayloadProgressListener(
       (event: NearbySyncPayloadProgressEvent) => {
         dispatch({
           progress: {
@@ -1052,10 +1052,12 @@ export function useNearbySyncSession() {
         }
       },
     );
-    const envelopeSubscription = addEnvelopeReceivedListener((event) => {
-      void handleEnvelopeReceivedRef.current(event);
-    });
-    const errorSubscription = addErrorListener((event) => {
+    const envelopeSubscription = runtime.addEnvelopeReceivedListener(
+      (event) => {
+        void handleEnvelopeReceivedRef.current(event);
+      },
+    );
+    const errorSubscription = runtime.addErrorListener((event) => {
       void effectOpsRef.current.failSession({
         code: event.code,
         message: event.message,
@@ -1064,8 +1066,8 @@ export function useNearbySyncSession() {
 
     const removeNativeLogSync =
       connectNativeLogReceiver<NearbySyncNativeLogEntry>({
-        addLogListener: addNearbySyncLogListener,
-        getBufferedEntries: getBufferedNearbySyncLogs,
+        addLogListener: runtime.addNearbySyncLogListener,
+        getBufferedEntries: runtime.getBufferedNearbySyncLogs,
         getLastSeenSequence: () => lastSeenNativeLogSequenceRef.current,
         parseContextJson: (contextJson) => (contextJson ? { contextJson } : {}),
         setLastSeenSequence: (sequence) => {
@@ -1092,10 +1094,10 @@ export function useNearbySyncSession() {
         void effectOpsRef.current.bestEffortStopAll();
       }
     };
-  }, []);
+  }, [runtime]);
 
   async function beginSession(role: 'host' | 'join') {
-    const availability = await isAvailable();
+    const availability = await runtime.isAvailable();
 
     dispatch({ availability, type: 'availabilityUpdated' });
 
@@ -1107,7 +1109,7 @@ export function useNearbySyncSession() {
       return;
     }
 
-    const permissions = await requestPermissions();
+    const permissions = await runtime.requestPermissions();
     dispatch({ permissions, type: 'permissionsUpdated' });
 
     if (!permissions.allGranted) {
@@ -1129,12 +1131,12 @@ export function useNearbySyncSession() {
     resetEphemeralSessionRefs();
     try {
       if (role === 'host') {
-        await startHosting({
+        await runtime.startHosting({
           localEndpointName,
           sessionLabel: sessionLabel ?? createSessionLabel(),
         });
       } else {
-        await startDiscovery({ localEndpointName });
+        await runtime.startDiscovery({ localEndpointName });
       }
 
       dispatch({
@@ -1193,7 +1195,7 @@ export function useNearbySyncSession() {
       endpoint,
       type: 'pairingStarted',
     });
-    await requestConnection(endpoint.endpointId);
+    await runtime.requestConnection(endpoint.endpointId);
   }
 
   async function acceptPairingCode() {
@@ -1206,7 +1208,7 @@ export function useNearbySyncSession() {
     pairingDecisionInFlightRef.current = true;
 
     try {
-      await acceptConnection(endpointId);
+      await runtime.acceptConnection(endpointId);
       log.info('Nearby sync pairing code accepted', {
         ...buildSyncLoggerContext({
           endpointId,
@@ -1234,7 +1236,7 @@ export function useNearbySyncSession() {
     pairingDecisionInFlightRef.current = true;
 
     try {
-      await rejectConnection(endpointId);
+      await runtime.rejectConnection(endpointId);
       await failSession({
         code: 'pairing-rejected',
         message:
@@ -1273,7 +1275,7 @@ export function useNearbySyncSession() {
 
   async function cancelSession() {
     if (stateRef.current.connectedEndpoint?.endpointId) {
-      await disconnect(stateRef.current.connectedEndpoint.endpointId);
+      await runtime.disconnect(stateRef.current.connectedEndpoint.endpointId);
     }
     await bestEffortStopAll();
     resetEphemeralSessionRefs();

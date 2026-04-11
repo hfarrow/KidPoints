@@ -270,6 +270,10 @@ export function HomeScreen() {
                 tone="primary"
               />
               <ActionPill
+                label="Sync Testbed"
+                onPress={() => router.push('/sync-testbed')}
+              />
+              <ActionPill
                 label="Transactions"
                 onPress={() => router.push('/transactions')}
               />

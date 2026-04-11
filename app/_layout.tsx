@@ -17,6 +17,7 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="sync" />
+        <Stack.Screen name="sync-testbed" />
         <Stack.Screen name="logs" />
         <Stack.Screen name="transactions" />
         <Stack.Screen
