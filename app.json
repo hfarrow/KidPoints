@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "platforms": ["android"],
     "scheme": "kidpoints",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon-kidpoints-direction-badge-like.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
