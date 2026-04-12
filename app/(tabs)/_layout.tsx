@@ -1,6 +1,7 @@
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Tabs, useRouter } from 'expo-router';
 import { useEffect } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useParentSession } from '../../src/features/parent/parentSessionContext';
 import { useAppTheme } from '../../src/features/theme/appTheme';
@@ -12,6 +13,7 @@ export default function TabsLayout() {
   const router = useRouter();
   const { isParentUnlocked } = useParentSession();
   const { tokens } = useAppTheme();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     log.debug('Tabs layout initialized');
@@ -28,10 +30,10 @@ export default function TabsLayout() {
         tabBarActiveTintColor: tokens.tabBarActiveTint,
         tabBarInactiveTintColor: tokens.tabBarInactiveTint,
         tabBarStyle: {
-          height: 78,
+          height: 78 + insets.bottom,
           backgroundColor: tokens.tabBarBackground,
           borderTopColor: tokens.border,
-          paddingBottom: 14,
+          paddingBottom: 14 + insets.bottom,
           paddingTop: 8,
         },
         tabBarItemStyle: {
