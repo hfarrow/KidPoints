@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
 import { SyncScreen } from '../../../src/features/sync/SyncScreen';
@@ -167,7 +167,11 @@ jest.mock('../../../src/components/ScreenHeader', () => ({
 }));
 
 jest.mock('../../../src/components/ScreenBackFooter', () => ({
-  ScreenBackFooter: () => null,
+  ScreenBackFooter: () => {
+    const { Text } = jest.requireActual('react-native');
+
+    return <Text>Back</Text>;
+  },
 }));
 
 describe('SyncScreen', () => {
@@ -179,10 +183,42 @@ describe('SyncScreen', () => {
     render(<SyncScreen />);
 
     expect(screen.getByText('Device Sync')).toBeTruthy();
+    expect(screen.getByText('Syncing')).toBeTruthy();
+    expect(screen.getAllByText(/Searching/).length).toBeGreaterThan(0);
     expect(
-      screen.getByText('Hold your phones together back-to-back.'),
+      screen.getByText(
+        'Keep the app open on both phones and hold them back to back.',
+      ),
     ).toBeTruthy();
+    expect(screen.getByText('Back')).toBeTruthy();
+    expect(screen.queryByText('Cancel Sync')).toBeNull();
+    expect(screen.queryByText('Instructions')).toBeNull();
     expect(mockSession.startSyncFlow).toHaveBeenCalled();
+  });
+
+  it('uses the same combined searching tile while bootstrapping', () => {
+    mockSession.state.phase = 'bootstrapping';
+    mockSession.state.nfcBootstrap = {
+      ...mockSession.state.nfcBootstrap,
+      phase: 'starting',
+    };
+
+    render(<SyncScreen />);
+
+    expect(screen.getByText('Syncing')).toBeTruthy();
+    expect(screen.getAllByText(/Searching/).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        'Keep the app open on both phones and hold them back to back.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        'Keep both phones back-to-back while KidPoints finds the matching device.',
+      ),
+    ).toBeNull();
+    expect(screen.getByText('Back')).toBeTruthy();
+    expect(screen.queryByText('Cancel Sync')).toBeNull();
   });
 
   it('renders the friendly review tile and confirm action in review state', () => {
@@ -220,7 +256,6 @@ describe('SyncScreen', () => {
     render(<SyncScreen />);
 
     expect(screen.getByText('Review Sync')).toBeTruthy();
-    expect(screen.queryByText('Instructions')).toBeNull();
     expect(
       screen.getByText('The histories of both devices have been merged.'),
     ).toBeTruthy();
@@ -232,5 +267,48 @@ describe('SyncScreen', () => {
     fireEvent.press(screen.getAllByText('Confirm Sync')[0]);
 
     expect(mockSession.confirmMergeAndPrepareCommit).toHaveBeenCalled();
+  });
+
+  it('silently retries NFC timeouts without showing an error state', () => {
+    jest.useFakeTimers();
+    mockSession.state.phase = 'error';
+    mockSession.state.errorCode = 'nfc-bootstrap-timeout';
+    mockSession.state.errorMessage = 'The phones did not connect in time.';
+    mockSession.state.nfcBootstrap = {
+      ...mockSession.state.nfcBootstrap,
+      failureReason: 'timeout',
+      message: 'The phones did not connect in time.',
+      phase: 'error',
+    };
+
+    render(<SyncScreen />);
+
+    expect(screen.getByText('Syncing')).toBeTruthy();
+    expect(screen.getAllByText(/Searching/).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        'Keep the app open on both phones and hold them back to back.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Back')).toBeTruthy();
+    expect(screen.queryByText('Cancel Sync')).toBeNull();
+    expect(screen.queryByText('Try Again')).toBeNull();
+    expect(screen.queryByText("We couldn't finish syncing yet.")).toBeNull();
+
+    act(() => {
+      jest.advanceTimersByTime(1100);
+    });
+
+    expect(mockSession.startSyncFlow).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
+  it('uses cancel sync after the searching phase', () => {
+    mockSession.state.phase = 'transferring';
+
+    render(<SyncScreen />);
+
+    expect(screen.getByText('Cancel Sync')).toBeTruthy();
+    expect(screen.queryByText('Back')).toBeNull();
   });
 });

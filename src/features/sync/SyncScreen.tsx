@@ -30,6 +30,30 @@ export function SyncScreen() {
   const errorMessage = session.state.errorMessage;
   const nfcFailureReason = session.state.nfcBootstrap.failureReason;
   const startSyncFlow = session.startSyncFlow;
+  const isSilentlyRetryingTimeout = isTimeoutSyncFailure({
+    errorCode,
+    errorMessage,
+    failureReason: nfcFailureReason,
+    phase,
+  });
+  const shellPhase = isSilentlyRetryingTimeout ? 'bootstrapping' : phase;
+  const contentSession = isSilentlyRetryingTimeout
+    ? {
+        ...session,
+        state: {
+          ...session.state,
+          errorCode: null,
+          errorMessage: null,
+          nfcBootstrap: {
+            ...session.state.nfcBootstrap,
+            failureReason: null,
+            message: null,
+            phase: 'idle' as const,
+          },
+          phase: 'idle' as const,
+        },
+      }
+    : session;
 
   useEffect(() => {
     log.info('Sync screen initialized');
@@ -56,14 +80,7 @@ export function SyncScreen() {
       retryTimerRef.current = null;
     }
 
-    if (
-      !isTimeoutSyncFailure({
-        errorCode,
-        errorMessage,
-        failureReason: nfcFailureReason,
-        phase,
-      })
-    ) {
+    if (!isSilentlyRetryingTimeout) {
       return;
     }
 
@@ -78,17 +95,19 @@ export function SyncScreen() {
         retryTimerRef.current = null;
       }
     };
-  }, [errorCode, errorMessage, nfcFailureReason, phase, startSyncFlow]);
+  }, [isSilentlyRetryingTimeout, startSyncFlow]);
 
   return (
     <SyncScreenShell
-      canStartNewSession={canStartNewSyncSession(phase)}
-      phase={phase}
+      canStartNewSession={
+        isSilentlyRetryingTimeout ? false : canStartNewSyncSession(phase)
+      }
+      phase={shellPhase}
       onCancel={() => {
         void session.cancelSession();
       }}
     >
-      <SyncScreenContent session={session} />
+      <SyncScreenContent session={contentSession} />
     </SyncScreenShell>
   );
 }

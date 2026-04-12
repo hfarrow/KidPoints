@@ -23,6 +23,7 @@ export function getSyncPhaseLabel(
   phase: NearbySyncSessionController['state']['phase'],
 ) {
   switch (phase) {
+    case 'idle':
     case 'bootstrapping':
     case 'hosting':
     case 'discovering':
@@ -40,7 +41,7 @@ export function getSyncPhaseLabel(
     case 'error':
       return 'Error';
     default:
-      return 'Ready';
+      return 'Searching';
   }
 }
 
@@ -72,19 +73,12 @@ function isSearchingPhase(
 
 function getSyncingBody(state: NearbySyncSessionController['state']) {
   switch (state.phase) {
-    case 'bootstrapping':
-      return 'Keep both phones back-to-back while KidPoints finds the matching device.';
-    case 'hosting':
-    case 'discovering':
-    case 'connecting':
-    case 'pairing':
-      return 'KidPoints found the other phone and is opening a private connection.';
     case 'transferring':
       return 'KidPoints is comparing both histories and getting the review ready.';
     case 'committing':
       return 'Applying the approved sync on both phones now.';
     default:
-      return 'Open this screen on both phones and hold them together.';
+      return 'Keep the app open on both phones and hold them back to back.';
   }
 }
 
@@ -193,22 +187,6 @@ function SyncInstructionsDiagram() {
   );
 }
 
-function SyncInstructionsTile() {
-  const styles = useThemedStyles(createStyles);
-
-  return (
-    <Tile title="Instructions">
-      <Text style={styles.primaryCopy}>
-        Hold your phones together back-to-back.
-      </Text>
-      <Text style={styles.body}>
-        Keep both screens open and let KidPoints handle the connection for you.
-      </Text>
-      <SyncInstructionsDiagram />
-    </Tile>
-  );
-}
-
 function SyncingTile({
   celebrationTick,
   state,
@@ -266,37 +244,47 @@ function SyncingTile({
       }
       title="Syncing"
     >
-      <View style={styles.syncingHeader}>
-        <Text style={styles.syncHeadline}>
-          {searching
-            ? `Searching${searchingDots}`
-            : getSyncPhaseLabel(state.phase)}
-        </Text>
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.connectionCelebration,
-            {
-              opacity: pulse,
-              transform: [
+      {searching ? (
+        <>
+          <Text style={styles.syncHeadline}>{`Searching${searchingDots}`}</Text>
+          <Text style={styles.body}>
+            Keep the app open on both phones and hold them back to back.
+          </Text>
+          <SyncInstructionsDiagram />
+        </>
+      ) : (
+        <>
+          <View style={styles.syncingHeader}>
+            <Text style={styles.syncHeadline}>
+              {getSyncPhaseLabel(state.phase)}
+            </Text>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.connectionCelebration,
                 {
-                  scale: pulse.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.72, 1],
-                  }),
+                  opacity: pulse,
+                  transform: [
+                    {
+                      scale: pulse.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.72, 1],
+                      }),
+                    },
+                  ],
                 },
-              ],
-            },
-          ]}
-        >
-          <Feather
-            color={styles.connectionCelebrationIcon.color}
-            name="check"
-            size={16}
-          />
-        </Animated.View>
-      </View>
-      <Text style={styles.body}>{getSyncingBody(state)}</Text>
+              ]}
+            >
+              <Feather
+                color={styles.connectionCelebrationIcon.color}
+                name="check"
+                size={16}
+              />
+            </Animated.View>
+          </View>
+          <Text style={styles.body}>{getSyncingBody(state)}</Text>
+        </>
+      )}
     </Tile>
   );
 }
@@ -521,13 +509,8 @@ export function SyncScreenContent({
     setCelebrationTick((currentValue) => currentValue + 1);
   }, [connectedEndpointId, hapticsEnabled]);
 
-  const shouldShowInstructions =
-    state.phase !== 'review' && state.phase !== 'success';
-
   return (
     <>
-      {shouldShowInstructions ? <SyncInstructionsTile /> : null}
-
       {state.phase === 'error' ? (
         <SyncErrorTile
           onCancel={() => {
@@ -610,6 +593,7 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       gap: 12,
       justifyContent: 'center',
       paddingVertical: 4,
+      width: '100%',
     },
     helper: {
       color: tokens.textMuted,
@@ -631,19 +615,19 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     phoneBackAligned: {
       backgroundColor: tokens.transactionSyncedSurface,
       borderColor: tokens.tileBorder,
-      borderRadius: 14,
+      borderRadius: 28,
       borderWidth: 1,
-      height: 72,
-      left: 18,
+      height: '85.714%',
+      left: '28.125%',
       position: 'absolute',
-      top: 6,
-      width: 40,
+      top: '7.143%',
+      width: '62.5%',
     },
     phoneCamera: {
       backgroundColor: tokens.textMuted,
       borderRadius: 999,
-      height: 6,
-      width: 6,
+      height: 12,
+      width: 12,
     },
     phoneFront: {
       alignItems: 'center',
@@ -661,19 +645,19 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       alignItems: 'center',
       backgroundColor: tokens.transactionLocalSurface,
       borderColor: tokens.tileBorder,
-      borderRadius: 14,
+      borderRadius: 28,
       borderWidth: 1,
-      gap: 6,
-      height: 72,
+      gap: 12,
+      height: '85.714%',
       justifyContent: 'flex-start',
-      paddingTop: 10,
+      paddingTop: 20,
       transform: [{ rotate: '-7deg' }],
-      width: 40,
+      width: '62.5%',
     },
     phonePair: {
-      height: 84,
+      aspectRatio: 128 / 168,
       position: 'relative',
-      width: 64,
+      width: '75%',
     },
     primaryCopy: {
       color: tokens.textPrimary,

@@ -5,6 +5,21 @@ import { ScreenScaffold } from '../../components/ScreenScaffold';
 import { ActionPill } from '../../components/Skeleton';
 import type { SyncSessionPhase } from './syncSessionMachine';
 
+function shouldUseBackFooter(
+  phase: SyncSessionPhase,
+  canStartNewSession: boolean,
+) {
+  return (
+    canStartNewSession ||
+    phase === 'idle' ||
+    phase === 'bootstrapping' ||
+    phase === 'hosting' ||
+    phase === 'discovering' ||
+    phase === 'connecting' ||
+    phase === 'pairing'
+  );
+}
+
 export function SyncScreenShell({
   canStartNewSession,
   children,
@@ -18,7 +33,10 @@ export function SyncScreenShell({
   return (
     <ScreenScaffold
       footer={
-        phase === 'review' ? null : canStartNewSession ? (
+        phase === 'review' ? null : shouldUseBackFooter(
+            phase,
+            canStartNewSession,
+          ) ? (
           <ScreenBackFooter />
         ) : (
           <ActionPill
