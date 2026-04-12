@@ -120,6 +120,21 @@ async function renderSyncTestbed() {
   });
 }
 
+function expandScenarioPresets() {
+  fireEvent.press(screen.getByLabelText('Expand Scenario Presets'));
+}
+
+function pressScenarioPreset(label: string) {
+  fireEvent.press(screen.getByLabelText(label));
+}
+
+async function waitForPresetCompletion() {
+  await waitFor(
+    () => expect(screen.queryByText('Running preset automation...')).toBeNull(),
+    { timeout: 3_000 },
+  );
+}
+
 describe('SyncTestbedScreen', () => {
   beforeEach(() => {
     mockFileContents.clear();
@@ -131,7 +146,22 @@ describe('SyncTestbedScreen', () => {
 
     expect(screen.getByText('Sync Testbed')).toBeTruthy();
     expect(screen.getByText('Testbed Controls')).toBeTruthy();
-    expect(screen.getByText('Instructions')).toBeTruthy();
+    expect(screen.getByText('Scenario Presets')).toBeTruthy();
+    expect(screen.getByText('Bootstrap Theirs')).toBeTruthy();
+    expect(screen.getByText('Bootstrap Mine')).toBeTruthy();
+    expect(screen.getByText('Syncing')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Keep the app open on both phones and hold them back to back.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Manual Remote Steps')).toBeNull();
+    expect(
+      screen.queryByText(
+        'Use fixture controls and visual-state presets to land the live sync preview on the state you want to review without needing a second device.',
+      ),
+    ).toBeNull();
+    expect(screen.queryByText('Instructions')).toBeNull();
     expect(screen.queryByText('Device Sync')).toBeNull();
     expect(screen.getByTestId('sync-testbed-split-body')).toBeTruthy();
     expect(screen.getByTestId('sync-testbed-layout-narrow')).toBeTruthy();
@@ -150,25 +180,179 @@ describe('SyncTestbedScreen', () => {
     expect(screen.getByTestId('sync-testbed-preview-scroll')).toBeTruthy();
   });
 
-  it('hides internal sync roles and runs presets into review and error states', async () => {
+  it('hides internal sync roles and exposes the simplified visual-state presets', async () => {
     await renderSyncTestbed();
 
     expect(screen.queryByText('Host')).toBeNull();
     expect(screen.queryByText('Joiner')).toBeNull();
     expect(
-      screen.getByText('Fixture: bootstrap-right-to-left. Scenario: manual.'),
+      screen.getByText('Fixture: bootstrap-right-to-left. Preset: none.'),
     ).toBeTruthy();
+    expect(screen.queryByText('Left Bootstrap')).toBeNull();
+    expect(screen.queryByText('Right Bootstrap')).toBeNull();
 
-    fireEvent.press(screen.getByLabelText('Expand Scenario Presets'));
-    fireEvent.press(screen.getByText('Happy Review'));
-    await waitFor(() => expect(screen.getByText('Review Sync')).toBeTruthy());
-    expect(screen.queryByText('Instructions')).toBeNull();
+    expandScenarioPresets();
 
-    fireEvent.press(screen.getByText('Unavailable'));
+    expect(screen.getAllByText('Searching').length).toBeGreaterThan(0);
+    expect(screen.getByText('Preparing')).toBeTruthy();
+    expect(screen.getByText('Review')).toBeTruthy();
+    expect(screen.getByText('Waiting')).toBeTruthy();
+    expect(screen.getByText('Finishing')).toBeTruthy();
+    expect(screen.getByText('Success')).toBeTruthy();
+    expect(screen.getByText('Unavailable')).toBeTruthy();
+    expect(screen.getByText('No NFC')).toBeTruthy();
+    expect(screen.getByText('Permissions')).toBeTruthy();
+    expect(screen.getByText('NFC Timeout')).toBeTruthy();
+    expect(screen.getByText('Wrong Peer')).toBeTruthy();
+    expect(screen.getByText('Transfer Failed')).toBeTruthy();
+  });
+
+  it('lands the searching preset on the default searching UI', async () => {
+    await renderSyncTestbed();
+
+    expandScenarioPresets();
+
+    pressScenarioPreset('Searching');
+    await waitFor(
+      () =>
+        expect(
+          screen.getByText(
+            'Fixture: bootstrap-right-to-left. Preset: searching.',
+          ),
+        ).toBeTruthy(),
+      { timeout: 3_000 },
+    );
+    await waitForPresetCompletion();
+  });
+
+  it('lands the preparing preset on the preparing UI', async () => {
+    await renderSyncTestbed();
+
+    expandScenarioPresets();
+
+    pressScenarioPreset('Preparing');
+    await waitFor(
+      () =>
+        expect(
+          screen.getByText(
+            'KidPoints is comparing both histories and getting the review ready.',
+          ),
+        ).toBeTruthy(),
+      { timeout: 3_000 },
+    );
+    await waitForPresetCompletion();
+  });
+
+  it('lands the review preset on the review UI', async () => {
+    await renderSyncTestbed();
+
+    expandScenarioPresets();
+
+    pressScenarioPreset('Review');
+    await waitFor(() => expect(screen.getByText('Review Sync')).toBeTruthy(), {
+      timeout: 3_000,
+    });
+    await waitForPresetCompletion();
+  });
+
+  it('lands the waiting preset on the waiting-for-other-phone UI', async () => {
+    await renderSyncTestbed();
+
+    expandScenarioPresets();
+
+    pressScenarioPreset('Waiting');
+    await waitFor(
+      () =>
+        expect(
+          screen.getAllByText('Waiting For Other Phone').length,
+        ).toBeGreaterThan(0),
+      { timeout: 3_000 },
+    );
+    expect(
+      screen.getByText(
+        'This phone is ready. Confirm on the other phone to finish syncing.',
+      ),
+    ).toBeTruthy();
+    await waitForPresetCompletion();
+  });
+
+  it('lands the finishing preset on the finishing UI', async () => {
+    await renderSyncTestbed();
+
+    expandScenarioPresets();
+
+    pressScenarioPreset('Finishing');
+    await waitFor(
+      () =>
+        expect(
+          screen.getByText('Applying the approved sync on both phones now.'),
+        ).toBeTruthy(),
+      { timeout: 3_000 },
+    );
+    expect(screen.getAllByText('Finishing').length).toBeGreaterThan(0);
+    await waitForPresetCompletion();
+  });
+
+  it('runs the distinct error presets into their user-facing messages', async () => {
+    await renderSyncTestbed();
+
+    expandScenarioPresets();
+
+    pressScenarioPreset('Unavailable');
     await waitFor(() =>
       expect(
         screen.getAllByText(
           'Nearby sync is unavailable because Google Play services could not be used on this device.',
+        ).length,
+      ).toBeGreaterThan(0),
+    );
+
+    pressScenarioPreset('No NFC');
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(
+          'This device cannot use NFC sync because it has no NFC adapter.',
+        ).length,
+      ).toBeGreaterThan(0),
+    );
+
+    pressScenarioPreset('Permissions');
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(
+          'Nearby permissions are needed on this phone before syncing can start.',
+        ).length,
+      ).toBeGreaterThan(0),
+    );
+
+    pressScenarioPreset('NFC Timeout');
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(
+          'The phones did not connect in time. Keep them back-to-back and KidPoints can try again.',
+        ).length,
+      ).toBeGreaterThan(0),
+    );
+    expect(
+      screen.getAllByText(
+        'KidPoints will keep retrying while this screen stays open.',
+      ).length,
+    ).toBeGreaterThan(0);
+
+    pressScenarioPreset('Wrong Peer');
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(
+          'KidPoints found the wrong phone for this tap. Hold the two syncing phones together and try again.',
+        ).length,
+      ).toBeGreaterThan(0),
+    );
+
+    pressScenarioPreset('Transfer Failed');
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(
+          'The phones lost their connection before syncing finished. Hold them together and try again.',
         ).length,
       ).toBeGreaterThan(0),
     );
@@ -177,8 +361,8 @@ describe('SyncTestbedScreen', () => {
   it('can open the sandbox preview transaction log after a simulated success', async () => {
     await renderSyncTestbed();
 
-    fireEvent.press(screen.getByLabelText('Expand Scenario Presets'));
-    fireEvent.press(screen.getByText('Happy Success'));
+    expandScenarioPresets();
+    pressScenarioPreset('Success');
 
     await waitFor(() => expect(screen.getByText('Sync Complete')).toBeTruthy());
 

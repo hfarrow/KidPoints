@@ -55,33 +55,205 @@ import { useNearbySyncSession } from './useNearbySyncSession';
 const log = createModuleLogger('sync-testbed-screen');
 const SYNC_TESTBED_WIDE_BREAKPOINT = 900;
 
-const SCENARIO_ITEMS: {
-  id: SyncTestbedScenarioId;
+type SyncTestbedSession = ReturnType<typeof useNearbySyncSession>;
+type SyncTestbedPresetId =
+  | 'searching'
+  | 'preparing'
+  | 'review'
+  | 'waiting'
+  | 'finishing'
+  | 'success'
+  | 'unavailable'
+  | 'no-nfc'
+  | 'permissions'
+  | 'nfc-timeout'
+  | 'wrong-peer'
+  | 'transfer-failed';
+
+type SyncTestbedPresetCheckpoint = {
+  run?: (session: SyncTestbedSession) => Promise<void>;
+  waitFor: (state: SyncTestbedSession['state']) => boolean;
+};
+
+type SyncTestbedPresetConfig = {
+  checkpoints: SyncTestbedPresetCheckpoint[];
+  id: SyncTestbedPresetId;
   label: string;
-}[] = [
-  { id: 'happy-path-review', label: 'Happy Review' },
-  { id: 'happy-path-success', label: 'Happy Success' },
-  { id: 'availability-unavailable', label: 'Unavailable' },
-  { id: 'nfc-unsupported', label: 'No NFC' },
-  { id: 'nfc-bootstrap-timeout', label: 'NFC Timeout' },
-  { id: 'permissions-denied', label: 'Permissions' },
-  { id: 'connection-rejected', label: 'Rejected' },
-  { id: 'payload-transfer-failed', label: 'Payload Fail' },
-  { id: 'unreadable-remote-projection', label: 'Unreadable File' },
-  { id: 'merged-head-mismatch', label: 'Head Mismatch' },
-  { id: 'bundle-hash-mismatch', label: 'Bundle Mismatch' },
-  { id: 'sync-response-rejected', label: 'Response Reject' },
-  { id: 'commit-ack-bundle-mismatch', label: 'Ack Mismatch' },
-  { id: 'disconnect-during-transfer', label: 'Disconnect' },
-  { id: 'wrong-peer-bootstrap-token', label: 'Wrong Peer' },
+  scenarioId: SyncTestbedScenarioId | null;
+  shouldStartFlow: boolean;
+  successMessage: string;
+};
+
+const SYNC_TESTBED_PRESETS: SyncTestbedPresetConfig[] = [
+  {
+    checkpoints: [],
+    id: 'searching',
+    label: 'Searching',
+    scenarioId: null,
+    shouldStartFlow: false,
+    successMessage: 'Reached searching state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'transferring',
+      },
+    ],
+    id: 'preparing',
+    label: 'Preparing',
+    scenarioId: 'pause-before-merge-result',
+    shouldStartFlow: true,
+    successMessage: 'Reached preparing state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'review',
+      },
+    ],
+    id: 'review',
+    label: 'Review',
+    scenarioId: null,
+    shouldStartFlow: true,
+    successMessage: 'Reached review state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'review',
+      },
+      {
+        run: async (session) => {
+          await session.confirmMergeAndPrepareCommit();
+        },
+        waitFor: (state) =>
+          state.phase === 'review' &&
+          state.localPrepareConfirmed &&
+          state.isAwaitingPeerPrepare,
+      },
+    ],
+    id: 'waiting',
+    label: 'Waiting',
+    scenarioId: 'pause-before-peer-prepare-ack',
+    shouldStartFlow: true,
+    successMessage: 'Reached waiting-for-other-phone state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'review',
+      },
+      {
+        run: async (session) => {
+          await session.confirmMergeAndPrepareCommit();
+        },
+        waitFor: (state) => state.phase === 'committing',
+      },
+    ],
+    id: 'finishing',
+    label: 'Finishing',
+    scenarioId: 'pause-before-commit-ack',
+    shouldStartFlow: true,
+    successMessage: 'Reached finishing state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'review',
+      },
+      {
+        run: async (session) => {
+          await session.confirmMergeAndPrepareCommit();
+        },
+        waitFor: (state) => state.phase === 'success',
+      },
+    ],
+    id: 'success',
+    label: 'Success',
+    scenarioId: null,
+    shouldStartFlow: true,
+    successMessage: 'Reached success state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'error',
+      },
+    ],
+    id: 'unavailable',
+    label: 'Unavailable',
+    scenarioId: 'availability-unavailable',
+    shouldStartFlow: true,
+    successMessage: 'Reached unavailable error state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'error',
+      },
+    ],
+    id: 'no-nfc',
+    label: 'No NFC',
+    scenarioId: 'nfc-unsupported',
+    shouldStartFlow: true,
+    successMessage: 'Reached no-NFC error state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'error',
+      },
+    ],
+    id: 'permissions',
+    label: 'Permissions',
+    scenarioId: 'permissions-denied',
+    shouldStartFlow: true,
+    successMessage: 'Reached permissions error state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'error',
+      },
+    ],
+    id: 'nfc-timeout',
+    label: 'NFC Timeout',
+    scenarioId: 'nfc-bootstrap-timeout',
+    shouldStartFlow: true,
+    successMessage: 'Reached NFC timeout state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'error',
+      },
+    ],
+    id: 'wrong-peer',
+    label: 'Wrong Peer',
+    scenarioId: 'wrong-peer-bootstrap-token',
+    shouldStartFlow: true,
+    successMessage: 'Reached wrong-peer error state.',
+  },
+  {
+    checkpoints: [
+      {
+        waitFor: (state) => state.phase === 'error',
+      },
+    ],
+    id: 'transfer-failed',
+    label: 'Transfer Failed',
+    scenarioId: 'payload-transfer-failed',
+    shouldStartFlow: true,
+    successMessage: 'Reached transfer failure state.',
+  },
 ];
 
 const FIXTURE_STRATEGIES: {
   id: SyncTestbedFixtureStrategyId;
   label: string;
 }[] = [
-  { id: 'bootstrap-left-to-right', label: 'Left Bootstrap' },
-  { id: 'bootstrap-right-to-left', label: 'Right Bootstrap' },
+  { id: 'bootstrap-left-to-right', label: 'Bootstrap Theirs' },
+  { id: 'bootstrap-right-to-left', label: 'Bootstrap Mine' },
   { id: 'shared-base', label: 'Shared Base' },
   { id: 'independent-lineages', label: 'Independent' },
 ];
@@ -214,12 +386,11 @@ function SyncTestbedScene({
     fixtureStrategyId: SyncTestbedFixtureStrategyId;
     previewSeedSignature: string;
   } | null>(null);
-  const [simulatorState, setSimulatorState] = useState(
-    controller.getSnapshot(),
-  );
+  const [activePresetId, setActivePresetId] =
+    useState<SyncTestbedPresetId | null>(null);
   const [isBaseSelectorVisible, setBaseSelectorVisible] = useState(false);
   const [isPreviewHistoryVisible, setPreviewHistoryVisible] = useState(false);
-  const [isRunningScenario, setIsRunningScenario] = useState(false);
+  const [isRunningPreset, setIsRunningPreset] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Ready to simulate.');
 
   useEffect(() => {
@@ -229,12 +400,6 @@ function SyncTestbedScene({
   useEffect(() => {
     sessionStateRef.current = session.state;
   }, [session.state]);
-
-  useEffect(() => {
-    return controller.subscribe(() => {
-      setSimulatorState(controller.getSnapshot());
-    });
-  }, [controller]);
 
   useEffect(() => {
     controller.setFixtureStrategy(fixtureStrategyId);
@@ -263,6 +428,7 @@ function SyncTestbedScene({
       return;
     }
 
+    setActivePresetId(null);
     void resetPreviewToSeed(
       previewStore,
       session,
@@ -283,8 +449,11 @@ function SyncTestbedScene({
   const selectedCommonBaseOption =
     commonBaseOptions.find((option) => option.id === commonBaseTransactionId) ??
     null;
+  const activePreset =
+    SYNC_TESTBED_PRESETS.find((preset) => preset.id === activePresetId) ?? null;
 
   async function resetPreview() {
+    setActivePresetId(null);
     await resetPreviewToSeed(
       previewStore,
       session,
@@ -295,16 +464,16 @@ function SyncTestbedScene({
     );
   }
 
-  async function startCurrentMode() {
-    await session.startSyncFlow();
-    setStatusMessage(
-      'Local preview started with the same one-button NFC flow used in production.',
-    );
-  }
+  async function runPreset(presetId: SyncTestbedPresetId) {
+    const preset = SYNC_TESTBED_PRESETS.find((item) => item.id === presetId);
 
-  async function runScenario(scenarioId: SyncTestbedScenarioId) {
-    setIsRunningScenario(true);
-    setStatusMessage(`Running ${scenarioId}...`);
+    if (!preset) {
+      return;
+    }
+
+    setActivePresetId(preset.id);
+    setIsRunningPreset(true);
+    setStatusMessage(`Running ${preset.label.toLowerCase()} preset...`);
 
     try {
       await resetPreviewToSeed(
@@ -313,80 +482,31 @@ function SyncTestbedScene({
         controller,
         previewSeedDocument,
         setStatusMessage,
-        'Preview reset for scenario playback.',
+        'Preview reset for preset playback.',
       );
-      controller.applyScenario(scenarioId);
+      controller.applyScenario(preset.scenarioId);
 
-      if (
-        scenarioId === 'availability-unavailable' ||
-        scenarioId === 'permissions-denied' ||
-        scenarioId === 'nfc-unsupported'
-      ) {
+      if (preset.shouldStartFlow) {
         await startModeForScenario(session);
-        setStatusMessage('Reached startup validation error state.');
-        return;
       }
 
-      await startModeForScenario(session);
+      for (const checkpoint of preset.checkpoints) {
+        if (checkpoint.run) {
+          await checkpoint.run(session);
+        }
 
-      if (scenarioId === 'nfc-bootstrap-timeout') {
-        await waitForCondition(() => sessionStateRef.current.phase === 'error');
-        setStatusMessage('Reached NFC timeout state.');
-        return;
+        await waitForCondition(() =>
+          checkpoint.waitFor(sessionStateRef.current),
+        );
       }
 
-      if (
-        scenarioId === 'connection-rejected' ||
-        scenarioId === 'wrong-peer-bootstrap-token'
-      ) {
-        await waitForCondition(() => sessionStateRef.current.phase === 'error');
-        setStatusMessage('Reached connection validation error state.');
-        return;
-      }
-
-      if (scenarioId === 'disconnect-during-transfer') {
-        await waitForCondition(() => sessionStateRef.current.phase === 'error');
-        setStatusMessage('Reached transfer disconnect state.');
-        return;
-      }
-
-      if (
-        scenarioId === 'payload-transfer-failed' ||
-        scenarioId === 'unreadable-remote-projection' ||
-        scenarioId === 'merged-head-mismatch' ||
-        scenarioId === 'bundle-hash-mismatch' ||
-        scenarioId === 'sync-response-rejected'
-      ) {
-        await waitForCondition(() => sessionStateRef.current.phase === 'error');
-        setStatusMessage('Reached remote error state.');
-        return;
-      }
-
-      await waitForCondition(() => sessionStateRef.current.phase === 'review');
-
-      if (scenarioId === 'happy-path-review') {
-        setStatusMessage('Reached review state.');
-        return;
-      }
-
-      await session.confirmMergeAndPrepareCommit();
-      await waitForCondition(
-        () =>
-          sessionStateRef.current.phase === 'success' ||
-          sessionStateRef.current.phase === 'error',
-      );
-
-      setStatusMessage(
-        sessionStateRef.current.phase === 'success'
-          ? 'Reached success state.'
-          : 'Reached commit error state.',
-      );
+      setStatusMessage(preset.successMessage);
     } catch (error) {
       setStatusMessage(
-        `Scenario failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Preset failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     } finally {
-      setIsRunningScenario(false);
+      setIsRunningPreset(false);
     }
   }
 
@@ -438,10 +558,6 @@ function SyncTestbedScene({
                 }
                 title="Testbed Controls"
               >
-                <Text style={styles.body}>
-                  Use the simulator controls to drive the live sync preview
-                  below without needing a second device.
-                </Text>
                 <CompactSurface>
                   <SectionLabel>Fixture</SectionLabel>
                   <ActionPillRow>
@@ -450,6 +566,7 @@ function SyncTestbedScene({
                         key={strategy.id}
                         label={strategy.label}
                         onPress={() => {
+                          setActivePresetId(null);
                           setFixtureStrategyId(strategy.id);
                           setStatusMessage(
                             `Fixture strategy set to ${strategy.label.toLowerCase()}.`,
@@ -463,23 +580,13 @@ function SyncTestbedScene({
                       />
                     ))}
                   </ActionPillRow>
-                  <Text style={styles.helper}>
-                    Left bootstrap uses local preview history with an empty
-                    remote. Right bootstrap uses an empty local preview with
-                    seeded remote history. Shared base branches both sides from
-                    a selected syncable transaction.
-                  </Text>
-                  <Text style={styles.helper}>
-                    The simulator keeps the hidden host and join work internal
-                    and derives it from the selected fixture.
-                  </Text>
                   {fixtureStrategyId === 'shared-base' ? (
                     <>
                       <ActionPillRow>
                         <ActionPill
                           label={
                             selectedCommonBaseOption
-                              ? 'Choose Shared Base'
+                              ? 'Shared Base'
                               : 'No Shared Base'
                           }
                           onPress={() => {
@@ -487,6 +594,7 @@ function SyncTestbedScene({
                               return;
                             }
 
+                            setActivePresetId(null);
                             setBaseSelectorVisible(true);
                           }}
                           tone={
@@ -503,39 +611,14 @@ function SyncTestbedScene({
                   ) : null}
                 </CompactSurface>
                 <CompactSurface>
-                  <SectionLabel>Session</SectionLabel>
+                  <SectionLabel>Inspect</SectionLabel>
                   <ActionPillRow>
-                    <ActionPill
-                      label="Sync Now"
-                      onPress={() => {
-                        void startCurrentMode();
-                      }}
-                      tone="primary"
-                    />
-                    <ActionPill
-                      label="Confirm Merge"
-                      onPress={() => {
-                        void session.confirmMergeAndPrepareCommit();
-                      }}
-                    />
-                    <ActionPill
-                      label="Cancel Session"
-                      onPress={() => {
-                        void session.cancelSession();
-                      }}
-                      tone="critical"
-                    />
                     <ActionPill
                       label="Reset Preview"
                       onPress={() => {
                         void resetPreview();
                       }}
                     />
-                  </ActionPillRow>
-                </CompactSurface>
-                <CompactSurface>
-                  <SectionLabel>Inspect</SectionLabel>
-                  <ActionPillRow>
                     <ActionPill
                       label="View Preview History"
                       onPress={() => {
@@ -543,162 +626,32 @@ function SyncTestbedScene({
                       }}
                     />
                   </ActionPillRow>
-                  <Text style={styles.helper}>
-                    Opens the sandboxed transaction log so you can review the
-                    simulated merge result without leaving the testbed.
-                  </Text>
                 </CompactSurface>
                 <Text style={styles.helper}>
-                  Fixture: {fixtureStrategyId}. Scenario:{' '}
-                  {simulatorState.scenarioId ?? 'manual'}.
+                  Fixture: {fixtureStrategyId}. Preset:{' '}
+                  {activePreset?.label.toLowerCase() ?? 'none'}.
                 </Text>
                 <Text style={styles.helper}>{statusMessage}</Text>
               </Tile>
 
               <Tile collapsible initiallyCollapsed title="Scenario Presets">
-                <Text style={styles.body}>
-                  Each preset runs the live session and simulated remote
-                  responses until the target state is visible in the preview.
-                </Text>
                 <ActionPillRow>
-                  {SCENARIO_ITEMS.map((item) => (
+                  {SYNC_TESTBED_PRESETS.map((item) => (
                     <ActionPill
                       key={item.id}
                       label={item.label}
                       onPress={() => {
-                        void runScenario(item.id);
+                        void runPreset(item.id);
                       }}
-                      tone={
-                        simulatorState.scenarioId === item.id
-                          ? 'primary'
-                          : 'neutral'
-                      }
+                      tone={activePresetId === item.id ? 'primary' : 'neutral'}
                     />
                   ))}
                 </ActionPillRow>
-                {isRunningScenario ? (
+                {isRunningPreset ? (
                   <Text style={styles.helper}>
                     Running preset automation...
                   </Text>
                 ) : null}
-              </Tile>
-
-              <Tile collapsible initiallyCollapsed title="Manual Remote Steps">
-                <ActionPillRow>
-                  <ActionPill
-                    label="Show Discovery"
-                    onPress={() => {
-                      controller.emitDiscoveryUpdated();
-                      setStatusMessage('Discovery list emitted.');
-                    }}
-                  />
-                  <ActionPill
-                    label="Incoming Pair"
-                    onPress={() => {
-                      controller.emitConnectionRequested();
-                      setStatusMessage('Incoming pairing request emitted.');
-                    }}
-                  />
-                  <ActionPill
-                    label="Remote Hello"
-                    onPress={() => {
-                      controller.emitRemoteHello();
-                      setStatusMessage('Remote hello emitted.');
-                    }}
-                  />
-                  <ActionPill
-                    label="Remote Summary"
-                    onPress={() => {
-                      controller.emitRemoteSummary();
-                      setStatusMessage('Remote summary emitted.');
-                    }}
-                  />
-                  <ActionPill
-                    label="Remote History"
-                    onPress={() => {
-                      controller.emitRemoteHistoryTransfer();
-                      setStatusMessage('Remote file transfer emitted.');
-                    }}
-                  />
-                  <ActionPill
-                    label="Unreadable File"
-                    onPress={() => {
-                      controller.emitRemoteHistoryTransfer({
-                        invalidFile: true,
-                      });
-                      setStatusMessage('Unreadable file emitted.');
-                    }}
-                    tone="critical"
-                  />
-                  <ActionPill
-                    label="Remote Merge"
-                    onPress={() => {
-                      controller.emitRemoteMergeResult();
-                      setStatusMessage('Remote merge result emitted.');
-                    }}
-                  />
-                  <ActionPill
-                    label="Peer Confirm"
-                    onPress={() => {
-                      controller.emitRemotePrepareAck();
-                      setStatusMessage('Peer confirmation emitted.');
-                    }}
-                  />
-                  <ActionPill
-                    label="Remote Commit"
-                    onPress={() => {
-                      controller.emitRemoteCommit();
-                      setStatusMessage('Remote commit emitted.');
-                    }}
-                  />
-                  <ActionPill
-                    label="Commit Ack"
-                    onPress={() => {
-                      controller.emitRemoteCommitAck();
-                      setStatusMessage('Commit ack emitted.');
-                    }}
-                  />
-                  <ActionPill
-                    label="Ack Mismatch"
-                    onPress={() => {
-                      controller.emitRemoteCommitAck({
-                        bundleHash: 'sim-manual-mismatch',
-                      });
-                      setStatusMessage('Mismatched commit ack emitted.');
-                    }}
-                    tone="critical"
-                  />
-                  <ActionPill
-                    label="Reject Response"
-                    onPress={() => {
-                      controller.emitRemoteSyncResponse({
-                        accepted: false,
-                        reason: 'Manual simulated rejection.',
-                      });
-                      setStatusMessage('Rejected sync response emitted.');
-                    }}
-                    tone="critical"
-                  />
-                  <ActionPill
-                    label="Disconnect"
-                    onPress={() => {
-                      controller.emitDisconnect('Manual simulated disconnect.');
-                      setStatusMessage('Disconnect emitted.');
-                    }}
-                    tone="critical"
-                  />
-                  <ActionPill
-                    label="Remote Error"
-                    onPress={() => {
-                      controller.emitRemoteError(
-                        'manual-simulated-error',
-                        'Manual simulated remote error.',
-                      );
-                      setStatusMessage('Remote error emitted.');
-                    }}
-                    tone="critical"
-                  />
-                </ActionPillRow>
               </Tile>
             </ScrollView>
           </View>
@@ -744,6 +697,7 @@ function SyncTestbedScene({
       <SyncBaseTransactionSelectorModal
         onRequestClose={() => setBaseSelectorVisible(false)}
         onSelectTransaction={(transactionId) => {
+          setActivePresetId(null);
           setCommonBaseTransactionId(transactionId);
           setBaseSelectorVisible(false);
           setStatusMessage('Shared base transaction updated.');
@@ -791,7 +745,7 @@ async function startModeForScenario(
 
 async function waitForCondition(
   condition: () => boolean,
-  timeoutMs = 1500,
+  timeoutMs = 3000,
   intervalMs = 30,
 ) {
   const start = Date.now();

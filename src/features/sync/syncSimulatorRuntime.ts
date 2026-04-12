@@ -48,19 +48,13 @@ import {
 
 export type SyncTestbedScenarioId =
   | 'availability-unavailable'
-  | 'bundle-hash-mismatch'
-  | 'commit-ack-bundle-mismatch'
-  | 'connection-rejected'
-  | 'disconnect-during-transfer'
-  | 'happy-path-review'
-  | 'happy-path-success'
-  | 'merged-head-mismatch'
   | 'nfc-bootstrap-timeout'
   | 'nfc-unsupported'
+  | 'pause-before-commit-ack'
+  | 'pause-before-merge-result'
+  | 'pause-before-peer-prepare-ack'
   | 'payload-transfer-failed'
   | 'permissions-denied'
-  | 'sync-response-rejected'
-  | 'unreadable-remote-projection'
   | 'wrong-peer-bootstrap-token';
 
 type SyncSimulatorSnapshot = {
@@ -313,6 +307,7 @@ export function createSimulatorNearbySyncRuntime(args: {
     });
     state.remoteSessionId = createBootstrapBoundSessionId(remoteBootstrapToken);
     state.authToken = 'SIM42';
+    state.nextPayloadId = 1;
 
     if (scenarioId === 'availability-unavailable') {
       state.availability = {
@@ -586,8 +581,6 @@ export function createSimulatorNearbySyncRuntime(args: {
       return;
     }
 
-    const endpoint = getRemoteEndpoint();
-
     switch (parsedEnvelope.envelope.type) {
       case 'HELLO':
         queue(() => {
@@ -602,12 +595,6 @@ export function createSimulatorNearbySyncRuntime(args: {
       case 'SYNC_REQUEST':
         queue(() => {
           switch (state.scenarioId) {
-            case 'sync-response-rejected':
-              emitRemoteSyncResponse({
-                accepted: false,
-                reason: 'The simulated remote device rejected the request.',
-              });
-              break;
             case 'payload-transfer-failed':
               emitRemoteSyncResponse();
               emitPayloadProgress({
@@ -620,33 +607,9 @@ export function createSimulatorNearbySyncRuntime(args: {
                 totalBytes: 2048,
               });
               break;
-            case 'disconnect-during-transfer':
-              emitRemoteSyncResponse();
-              emitConnectionState({
-                endpointId: endpoint.endpointId,
-                endpointName: endpoint.endpointName,
-                reason:
-                  'The simulated remote device disconnected mid-transfer.',
-                state: 'disconnected',
-              });
-              break;
-            case 'unreadable-remote-projection':
-              emitRemoteSyncResponse();
-              emitRemoteHistoryTransfer({ invalidFile: true });
-              break;
-            case 'merged-head-mismatch':
+            case 'pause-before-merge-result':
               emitRemoteSyncResponse();
               emitRemoteHistoryTransfer();
-              emitRemoteMergeResult({
-                mergedHeadSyncHashOverride: 'sim-mismatched-head-hash',
-              });
-              break;
-            case 'bundle-hash-mismatch':
-              emitRemoteSyncResponse();
-              emitRemoteHistoryTransfer();
-              emitRemoteMergeResult({
-                bundleHashOverride: 'sim-mismatched-bundle-hash',
-              });
               break;
             default:
               emitRemoteSyncResponse();
@@ -657,7 +620,7 @@ export function createSimulatorNearbySyncRuntime(args: {
         });
         break;
       case 'PREPARE_ACK':
-        if (state.scenarioId !== 'happy-path-review') {
+        if (state.scenarioId !== 'pause-before-peer-prepare-ack') {
           queue(() => {
             emitRemotePrepareAck();
           });
@@ -665,10 +628,7 @@ export function createSimulatorNearbySyncRuntime(args: {
         break;
       case 'COMMIT':
         queue(() => {
-          if (state.scenarioId === 'commit-ack-bundle-mismatch') {
-            emitRemoteCommitAck({
-              bundleHash: 'sim-remote-bundle-hash-mismatch',
-            });
+          if (state.scenarioId === 'pause-before-commit-ack') {
             return;
           }
 
@@ -738,30 +698,7 @@ export function createSimulatorNearbySyncRuntime(args: {
       scenarioId: state.scenarioId,
     }),
     reset: () => {
-      const bootstrapToken = createSimulatorBootstrapToken();
-
-      state.nextPayloadId = 1;
-      state.advertisedSessionLabel =
-        createBootstrapSessionLabel(bootstrapToken);
-      state.cachedPreparedBundle = null;
-      state.localBootstrapToken = bootstrapToken;
-      state.nfcAvailability = createReadyNfcAvailability();
-      state.remoteBootstrapToken =
-        state.scenarioId === 'wrong-peer-bootstrap-token'
-          ? createSimulatorBootstrapToken()
-          : bootstrapToken;
-      state.remoteProjection = createSyncTestbedRemoteProjection({
-        commonBaseTransactionId: state.commonBaseTransactionId,
-        localDocument: args.getLocalDocument(),
-        storage: memoryStorage,
-        strategyId: state.fixtureStrategyId,
-      });
-      state.remoteSessionId = createBootstrapBoundSessionId(
-        state.remoteBootstrapToken,
-      );
-      emitAvailability();
-      emitDiscovery([]);
-      notifyControllerListeners();
+      refreshScenarioState(null);
     },
     setCommonBaseTransactionId: (transactionId) => {
       state.commonBaseTransactionId = transactionId;
@@ -799,18 +736,6 @@ export function createSimulatorNearbySyncRuntime(args: {
     acceptConnection: async () => {
       state.cachedPreparedBundle = null;
       const endpoint = getRemoteEndpoint();
-
-      if (state.scenarioId === 'connection-rejected') {
-        queue(() => {
-          emitConnectionState({
-            endpointId: endpoint.endpointId,
-            endpointName: endpoint.endpointName,
-            reason: 'The simulated remote device rejected the connection.',
-            state: 'rejected',
-          });
-        });
-        return;
-      }
 
       queue(() => {
         emitConnectionState({
