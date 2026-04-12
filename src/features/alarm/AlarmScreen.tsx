@@ -18,6 +18,7 @@ import { createModuleLogger } from '../../logging/logger';
 import { useSharedStore } from '../../state/sharedStore';
 import { normalizeTimerConfig } from '../../state/sharedTimer';
 import { NotificationSettingsTile } from '../notifications/NotificationSettingsTile';
+import { useNotifications } from '../notifications/NotificationsProvider';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import { CountdownTileSummary } from '../timer/CountdownTileSummary';
@@ -30,10 +31,10 @@ export function AlarmScreen() {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked } = useParentSession();
+  const { requestTimerStart } = useNotifications();
   const { tokens } = useAppTheme();
   const pauseTimer = useSharedStore((state) => state.pauseTimer);
   const resetTimer = useSharedStore((state) => state.resetTimer);
-  const startTimer = useSharedStore((state) => state.startTimer);
   const timerConfig = useSharedStore(
     (state) => state.document.head.timerConfig,
   );
@@ -144,7 +145,7 @@ export function AlarmScreen() {
               resetTimer();
             }}
             onStart={() => {
-              startTimer();
+              void requestTimerStart('alarm');
             }}
             pauseDisabled={!timerViewModel.canPause}
             resetDisabled={!timerViewModel.canReset}

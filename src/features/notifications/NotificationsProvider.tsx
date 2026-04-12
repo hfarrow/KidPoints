@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
+import { Alert, AppState, type AppStateStatus, Platform } from 'react-native';
 import { type AppLogDetails, createModuleLogger } from '../../logging/logger';
 import { connectNativeLogReceiver } from '../../logging/nativeLogSync';
 import { useStartupNavigationStore } from '../../navigation/startupNavigationStore';
@@ -78,6 +78,7 @@ type NotificationsContextValue = {
   openNotificationSettings: () => Promise<void>;
   openPromotedNotificationSettings: () => Promise<void>;
   refreshRuntimeStatus: () => Promise<NotificationRuntimeStatus>;
+  requestTimerStart: (source: string) => Promise<void>;
   resolveExpiredTimerChild: (
     childId: string,
     status: 'awarded' | 'dismissed',
@@ -132,6 +133,46 @@ function isTemporaryCheckInLaunchAction(
   );
 }
 
+function confirmOpenExactAlarmSettings(): Promise<boolean> {
+  return new Promise((resolve) => {
+    let didResolve = false;
+    const complete = (value: boolean) => {
+      if (didResolve) {
+        return;
+      }
+
+      didResolve = true;
+      resolve(value);
+    };
+
+    Alert.alert(
+      'Allow Exact Alarms',
+      'KidPoints needs exact alarms for reliable timer check-ins. We will open Android settings so you can allow exact alarms for this app.',
+      [
+        {
+          style: 'cancel',
+          text: 'Not Now',
+          onPress: () => {
+            complete(false);
+          },
+        },
+        {
+          text: 'Open Settings',
+          onPress: () => {
+            complete(true);
+          },
+        },
+      ],
+      {
+        cancelable: true,
+        onDismiss: () => {
+          complete(false);
+        },
+      },
+    );
+  });
+}
+
 export function NotificationsProvider({ children }: PropsWithChildren) {
   const engineAvailable = isNotificationsModuleAvailable();
   const sharedStoreApi = useSharedStoreApi() as SharedStoreWithPersist;
@@ -181,7 +222,6 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
   const liveCountdownNotificationsEnabledRef = useRef(
     liveCountdownNotificationsEnabled,
   );
-  const didEvaluateStartupNotificationPermissionRef = useRef(false);
   const isReady = hasLocalSettingsHydrated && hasSharedStoreHydrated;
 
   useEffect(() => {
@@ -277,37 +317,52 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     [],
   );
 
-  const maybeRequestStartupNotificationPermission = useCallback(
-    async (runtimeStatus: NotificationRuntimeStatus, source: 'startup') => {
-      if (didEvaluateStartupNotificationPermissionRef.current) {
-        return runtimeStatus;
-      }
+  const requestTimerStart = useCallback(
+    async (source: string) => {
+      let nextRuntimeStatus = await refreshRuntimeStatus();
 
-      didEvaluateStartupNotificationPermissionRef.current = true;
-
-      if (!engineAvailable) {
-        log.debug('Skipped notification permission request', {
-          reason: 'native-module-unavailable',
+      if (!nextRuntimeStatus.notificationPermissionGranted) {
+        log.info('Requesting notification permission from timer start', {
           source,
         });
-        return runtimeStatus;
+        await requestNotificationPermission();
+        nextRuntimeStatus = await refreshRuntimeStatus();
       }
 
-      if (runtimeStatus.notificationPermissionGranted) {
-        log.debug('Skipped notification permission request', {
-          reason: 'already-granted',
+      if (
+        Platform.OS === 'android' &&
+        engineAvailable &&
+        !nextRuntimeStatus.exactAlarmPermissionGranted
+      ) {
+        log.info('Blocking timer start until exact alarms are enabled', {
           source,
         });
-        return runtimeStatus;
+        const shouldOpenSettings = await confirmOpenExactAlarmSettings();
+
+        if (!shouldOpenSettings) {
+          log.info('User declined exact alarm settings handoff', {
+            source,
+          });
+          return;
+        }
+
+        log.info('Opening exact alarm settings from timer start flow', {
+          source,
+        });
+        await openExactAlarmSettings();
+        return;
       }
 
-      log.info('Requesting notification permission from provider', {
+      log.info('Starting timer after notification permission checks', {
+        exactAlarmPermissionGranted:
+          nextRuntimeStatus.exactAlarmPermissionGranted,
+        notificationPermissionGranted:
+          nextRuntimeStatus.notificationPermissionGranted,
         source,
       });
-      await requestNotificationPermission();
-      return refreshRuntimeStatus();
+      startSharedTimer();
     },
-    [engineAvailable, refreshRuntimeStatus],
+    [engineAvailable, refreshRuntimeStatus, startSharedTimer],
   );
 
   const syncResolvedDocument = useCallback(
@@ -467,11 +522,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       setNotificationDocument(nextDocument);
       notificationDocumentRef.current = nextDocument;
       lastSyncedDocumentRef.current = persistedDocument ?? nextDocument;
-      const nextRuntimeStatus = await refreshRuntimeStatus();
-      await maybeRequestStartupNotificationPermission(
-        nextRuntimeStatus,
-        'startup',
-      );
+      await refreshRuntimeStatus();
 
       if (!isCancelled) {
         setHasInitialized(true);
@@ -486,7 +537,6 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
     engineAvailable,
     hasInitialized,
     isReady,
-    maybeRequestStartupNotificationPermission,
     liveCountdownNotificationsEnabled,
     refreshRuntimeStatus,
   ]);
@@ -845,6 +895,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       openNotificationSettings,
       openPromotedNotificationSettings,
       refreshRuntimeStatus,
+      requestTimerStart,
       resolveExpiredTimerChild,
       runtimeStatus,
       setLiveCountdownNotificationsEnabled,
@@ -857,6 +908,7 @@ export function NotificationsProvider({ children }: PropsWithChildren) {
       isReady,
       liveCountdownNotificationsEnabled,
       refreshRuntimeStatus,
+      requestTimerStart,
       resolveExpiredTimerChild,
       runtimeStatus,
       setLiveCountdownNotificationsEnabled,

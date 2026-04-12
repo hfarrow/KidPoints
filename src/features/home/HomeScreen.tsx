@@ -15,6 +15,7 @@ import {
 import { Tile } from '../../components/Tile';
 import { createModuleLogger } from '../../logging/logger';
 import { useSharedStore } from '../../state/sharedStore';
+import { useNotifications } from '../notifications/NotificationsProvider';
 import { presentTextInputModal } from '../overlays/textInputModalStore';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
@@ -38,7 +39,7 @@ export function HomeScreen() {
   const pauseTimer = useSharedStore((state) => state.pauseTimer);
   const resetTimer = useSharedStore((state) => state.resetTimer);
   const setPoints = useSharedStore((state) => state.setPoints);
-  const startTimer = useSharedStore((state) => state.startTimer);
+  const { requestTimerStart } = useNotifications();
   const timerViewModel = useSharedTimerViewModel();
   const [isArchivedChildrenVisible, setIsArchivedChildrenVisible] =
     useState(false);
@@ -164,7 +165,7 @@ export function HomeScreen() {
                 resetTimer();
               }}
               onStart={() => {
-                startTimer();
+                void requestTimerStart('home');
               }}
               pauseDisabled={!timerViewModel.canPause}
               resetDisabled={!timerViewModel.canReset}

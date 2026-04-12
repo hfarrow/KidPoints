@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { Alert, Platform, Text } from 'react-native';
 
 import {
   NotificationsProvider,
@@ -93,6 +93,7 @@ const {
   getNotificationRuntimeStatus: mockGetNotificationRuntimeStatus,
   loadPersistedNotificationDocument: mockLoadPersistedNotificationDocument,
   moveTaskToBack: mockMoveTaskToBack,
+  openExactAlarmSettings: mockOpenExactAlarmSettings,
   pauseNotificationTimer: mockPauseNotificationTimer,
   requestNotificationPermission: mockRequestNotificationPermission,
   startNotificationTimer: mockStartNotificationTimer,
@@ -114,6 +115,7 @@ const {
     []
   >;
   moveTaskToBack: jest.Mock;
+  openExactAlarmSettings: jest.Mock;
   pauseNotificationTimer: jest.Mock;
   requestNotificationPermission: jest.Mock;
   startNotificationTimer: jest.Mock;
@@ -267,6 +269,7 @@ function NotificationsProbe() {
     activeExpiredTimerSession,
     dismissCheckInFlow,
     isReady,
+    requestTimerStart,
     resolveExpiredTimerChild,
   } = useNotifications();
   const sharedDocument = useSharedStore((state) => state.document);
@@ -274,7 +277,6 @@ function NotificationsProbe() {
   const activeChildId = activeChildIds[0] ?? null;
   const secondActiveChildId = activeChildIds[1] ?? null;
   const pauseTimer = useSharedStore((state) => state.pauseTimer);
-  const startTimer = useSharedStore((state) => state.startTimer);
   const pointAdjustmentCount = sharedDocument.transactions.filter(
     (transaction) => transaction.kind === 'points-adjusted',
   ).length;
@@ -381,7 +383,7 @@ function NotificationsProbe() {
       </Text>
       <Text
         onPress={() => {
-          startTimer();
+          void requestTimerStart('test');
         }}
       >
         Start timer
@@ -425,6 +427,7 @@ describe('NotificationsProvider', () => {
   let sharedFixture: ReturnType<typeof createSharedDocumentFixture>;
 
   beforeEach(() => {
+    jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     sharedFixture = createSharedDocumentFixture();
     clearStartupNavigationRequests();
     jest.clearAllMocks();
@@ -1388,39 +1391,100 @@ describe('NotificationsProvider', () => {
     }
   });
 
-  it('requests notification permission at startup when enabled and currently denied', async () => {
-    mockGetNotificationRuntimeStatus
-      .mockResolvedValueOnce({
+  it('requests notification permission when starting a timer and notification access is denied', async () => {
+    const deniedRuntimeStatus = {
+      countdownNotificationChannelImportance: 2,
+      countdownNotificationHasPromotableCharacteristics: true,
+      countdownNotificationIsOngoing: false,
+      countdownNotificationRequestedPromoted: true,
+      countdownNotificationUsesChronometer: true,
+      countdownNotificationWhen: null,
+      exactAlarmPermissionGranted: true,
+      expiredNotificationCategory: 'alarm',
+      expiredNotificationChannelImportance: 4,
+      expiredNotificationHasCustomHeadsUp: true,
+      expiredNotificationHasFullScreenIntent: true,
+      fullScreenIntentPermissionGranted: true,
+      fullScreenIntentSettingsResolvable: true,
+      isAppInForeground: true,
+      isRunning: false,
+      lastTriggeredAt: 100,
+      nextTriggerAt: null,
+      notificationPermissionGranted: false,
+      promotedNotificationPermissionGranted: true,
+      promotedNotificationSettingsResolvable: true,
+      sessionId: 'session-1',
+    };
+    const grantedRuntimeStatus = {
+      countdownNotificationChannelImportance: 2,
+      countdownNotificationHasPromotableCharacteristics: true,
+      countdownNotificationIsOngoing: false,
+      countdownNotificationRequestedPromoted: true,
+      countdownNotificationUsesChronometer: true,
+      countdownNotificationWhen: null,
+      exactAlarmPermissionGranted: true,
+      expiredNotificationCategory: 'alarm',
+      expiredNotificationChannelImportance: 4,
+      expiredNotificationHasCustomHeadsUp: true,
+      expiredNotificationHasFullScreenIntent: true,
+      fullScreenIntentPermissionGranted: true,
+      fullScreenIntentSettingsResolvable: true,
+      isAppInForeground: true,
+      isRunning: false,
+      lastTriggeredAt: 100,
+      nextTriggerAt: null,
+      notificationPermissionGranted: true,
+      promotedNotificationPermissionGranted: true,
+      promotedNotificationSettingsResolvable: true,
+      sessionId: 'session-1',
+    };
+
+    mockGetNotificationRuntimeStatus.mockImplementation(async () =>
+      mockRequestNotificationPermission.mock.calls.length > 0
+        ? grantedRuntimeStatus
+        : deniedRuntimeStatus,
+    );
+
+    renderProvider({
+      initialDocument: sharedFixture.document,
+      initialParentUnlocked: true,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('notifications-ready').props.children).toBe(
+        'ready',
+      ),
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Start timer'));
+    });
+
+    await waitFor(() =>
+      expect(mockRequestNotificationPermission).toHaveBeenCalledTimes(1),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('timer-mode').props.children).toBe('running'),
+    );
+  });
+
+  it('shows an explanatory prompt and opens exact alarm settings before starting when exact alarms are denied', async () => {
+    const originalPlatformOs = Platform.OS;
+
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    });
+
+    try {
+      mockGetNotificationRuntimeStatus.mockResolvedValue({
         countdownNotificationChannelImportance: 2,
         countdownNotificationHasPromotableCharacteristics: true,
         countdownNotificationIsOngoing: false,
         countdownNotificationRequestedPromoted: true,
         countdownNotificationUsesChronometer: true,
         countdownNotificationWhen: null,
-        exactAlarmPermissionGranted: true,
-        expiredNotificationCategory: 'alarm',
-        expiredNotificationChannelImportance: 4,
-        expiredNotificationHasCustomHeadsUp: true,
-        expiredNotificationHasFullScreenIntent: true,
-        fullScreenIntentPermissionGranted: true,
-        fullScreenIntentSettingsResolvable: true,
-        isAppInForeground: true,
-        isRunning: false,
-        lastTriggeredAt: 100,
-        nextTriggerAt: null,
-        notificationPermissionGranted: false,
-        promotedNotificationPermissionGranted: true,
-        promotedNotificationSettingsResolvable: true,
-        sessionId: 'session-1',
-      })
-      .mockResolvedValue({
-        countdownNotificationChannelImportance: 2,
-        countdownNotificationHasPromotableCharacteristics: true,
-        countdownNotificationIsOngoing: false,
-        countdownNotificationRequestedPromoted: true,
-        countdownNotificationUsesChronometer: true,
-        countdownNotificationWhen: null,
-        exactAlarmPermissionGranted: true,
+        exactAlarmPermissionGranted: false,
         expiredNotificationCategory: 'alarm',
         expiredNotificationChannelImportance: 4,
         expiredNotificationHasCustomHeadsUp: true,
@@ -1437,14 +1501,52 @@ describe('NotificationsProvider', () => {
         sessionId: 'session-1',
       });
 
-    renderProvider({
-      initialDocument: sharedFixture.document,
-      initialParentUnlocked: true,
-    });
+      renderProvider({
+        initialDocument: sharedFixture.document,
+        initialParentUnlocked: true,
+      });
 
-    await waitFor(() =>
-      expect(mockRequestNotificationPermission).toHaveBeenCalledTimes(1),
-    );
+      await waitFor(() =>
+        expect(screen.getByTestId('notifications-ready').props.children).toBe(
+          'ready',
+        ),
+      );
+
+      await act(async () => {
+        fireEvent.press(screen.getByText('Start timer'));
+      });
+
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Allow Exact Alarms',
+        expect.stringContaining('open Android settings'),
+        expect.any(Array),
+        expect.objectContaining({
+          cancelable: true,
+        }),
+      );
+      expect(mockStartNotificationTimer).not.toHaveBeenCalled();
+
+      const alertButtons = (Alert.alert as jest.Mock).mock.calls[0]?.[2] as
+        | { onPress?: () => void; text: string }[]
+        | undefined;
+      const openSettingsButton = alertButtons?.find(
+        (button) => button.text === 'Open Settings',
+      );
+
+      await act(async () => {
+        openSettingsButton?.onPress?.();
+      });
+
+      await waitFor(() =>
+        expect(mockOpenExactAlarmSettings).toHaveBeenCalledTimes(1),
+      );
+      expect(screen.getByTestId('timer-mode').props.children).toBe('idle');
+    } finally {
+      Object.defineProperty(Platform, 'OS', {
+        configurable: true,
+        value: originalPlatformOs,
+      });
+    }
   });
 
   it('keeps expiry scheduling active when live countdown notifications are disabled', async () => {

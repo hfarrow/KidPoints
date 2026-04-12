@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { useEffect } from 'react';
 
 import { AlarmScreen } from '../../../src/features/alarm/AlarmScreen';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
@@ -6,11 +7,14 @@ import { AppSettingsProvider } from '../../../src/features/settings/appSettingsC
 import {
   createInitialSharedDocument,
   SharedStoreProvider,
+  useSharedStore,
 } from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockPush = jest.fn();
 const mockUseNotifications = jest.fn();
+const mockRequestTimerStart = jest.fn(async () => undefined);
+let startTimerBridge: (() => void) | null = null;
 
 jest.mock('@expo/vector-icons', () => {
   const mockReactNative = jest.requireActual('react-native');
@@ -36,10 +40,30 @@ jest.mock('../../../src/features/notifications/NotificationsProvider', () => ({
   useNotifications: () => mockUseNotifications(),
 }));
 
+function StoreStartTimerBridge() {
+  const startTimer = useSharedStore((state) => state.startTimer);
+
+  useEffect(() => {
+    startTimerBridge = () => {
+      startTimer();
+    };
+
+    return () => {
+      startTimerBridge = null;
+    };
+  }, [startTimer]);
+
+  return null;
+}
+
 describe('AlarmScreen', () => {
   beforeEach(() => {
     jest.useRealTimers();
     mockPush.mockReset();
+    mockRequestTimerStart.mockReset();
+    mockRequestTimerStart.mockImplementation(async () => {
+      startTimerBridge?.();
+    });
     mockUseNotifications.mockReturnValue({
       activeExpiredTimerSession: null,
       dismissCheckInFlow: jest.fn(),
@@ -51,6 +75,7 @@ describe('AlarmScreen', () => {
       openNotificationSettings: jest.fn(),
       openPromotedNotificationSettings: jest.fn(),
       refreshRuntimeStatus: jest.fn(),
+      requestTimerStart: mockRequestTimerStart,
       resolveExpiredTimerChild: jest.fn(),
       runtimeStatus: {
         countdownNotificationChannelImportance: 2,
@@ -92,6 +117,7 @@ describe('AlarmScreen', () => {
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
+            <StoreStartTimerBridge />
             <AlarmScreen />
           </AppSettingsProvider>
         </ParentSessionProvider>
@@ -123,6 +149,7 @@ describe('AlarmScreen', () => {
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
+            <StoreStartTimerBridge />
             <AlarmScreen />
           </AppSettingsProvider>
         </ParentSessionProvider>
@@ -146,6 +173,7 @@ describe('AlarmScreen', () => {
     expect(screen.getAllByText('Allowed').length).toBeGreaterThan(0);
 
     fireEvent.press(screen.getByLabelText('Alarm start timer'));
+    expect(mockRequestTimerStart).toHaveBeenCalledWith('alarm');
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
 
     const intervalMinutesInput = screen.getByLabelText('Interval minutes');
@@ -181,6 +209,7 @@ describe('AlarmScreen', () => {
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
+            <StoreStartTimerBridge />
             <AlarmScreen />
           </AppSettingsProvider>
         </ParentSessionProvider>

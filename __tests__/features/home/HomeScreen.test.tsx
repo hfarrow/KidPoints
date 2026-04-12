@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { useEffect } from 'react';
 import { Alert } from 'react-native';
 
 import { HomeScreen } from '../../../src/features/home/HomeScreen';
@@ -12,10 +13,13 @@ import {
   createInitialSharedDocument,
   createSharedStore,
   SharedStoreProvider,
+  useSharedStore,
 } from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockPush = jest.fn();
+const mockRequestTimerStart = jest.fn(async () => undefined);
+let startTimerBridge: (() => void) | null = null;
 
 jest.mock('@expo/vector-icons', () => {
   const mockReactNative = jest.requireActual('react-native');
@@ -37,11 +41,37 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
+jest.mock('../../../src/features/notifications/NotificationsProvider', () => ({
+  useNotifications: () => ({
+    requestTimerStart: mockRequestTimerStart,
+  }),
+}));
+
+function StoreStartTimerBridge() {
+  const startTimer = useSharedStore((state) => state.startTimer);
+
+  useEffect(() => {
+    startTimerBridge = () => {
+      startTimer();
+    };
+
+    return () => {
+      startTimerBridge = null;
+    };
+  }, [startTimer]);
+
+  return null;
+}
+
 describe('HomeScreen', () => {
   beforeEach(() => {
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     clearTextInputModal();
     mockPush.mockReset();
+    mockRequestTimerStart.mockReset();
+    mockRequestTimerStart.mockImplementation(async () => {
+      startTimerBridge?.();
+    });
   });
 
   function createDocumentWithActiveChild(args: {
@@ -104,6 +134,7 @@ describe('HomeScreen', () => {
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
+            <StoreStartTimerBridge />
             <HomeScreen />
           </AppSettingsProvider>
         </ParentSessionProvider>
@@ -141,6 +172,7 @@ describe('HomeScreen', () => {
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
+            <StoreStartTimerBridge />
             <HomeScreen />
           </AppSettingsProvider>
         </ParentSessionProvider>
@@ -174,6 +206,7 @@ describe('HomeScreen', () => {
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
+            <StoreStartTimerBridge />
             <HomeScreen />
           </AppSettingsProvider>
         </ParentSessionProvider>
@@ -214,6 +247,7 @@ describe('HomeScreen', () => {
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
+            <StoreStartTimerBridge />
             <HomeScreen />
           </AppSettingsProvider>
         </ParentSessionProvider>
@@ -221,6 +255,7 @@ describe('HomeScreen', () => {
     );
 
     fireEvent.press(screen.getByLabelText('Home start timer'));
+    expect(mockRequestTimerStart).toHaveBeenCalledWith('home');
     expect(screen.getByText('Running')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Open alarm settings'));
@@ -244,6 +279,7 @@ describe('HomeScreen', () => {
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
+            <StoreStartTimerBridge />
             <HomeScreen />
           </AppSettingsProvider>
         </ParentSessionProvider>
@@ -286,6 +322,7 @@ describe('HomeScreen', () => {
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
+            <StoreStartTimerBridge />
             <HomeScreen />
           </AppSettingsProvider>
         </ParentSessionProvider>
