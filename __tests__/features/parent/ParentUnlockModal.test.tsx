@@ -2,7 +2,10 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import * as appHaptics from '../../../src/features/haptics/appHaptics';
-import { ParentUnlockModal } from '../../../src/features/parent/ParentUnlockModal';
+import {
+  ParentUnlockModal,
+  schedulePinInputFocus,
+} from '../../../src/features/parent/ParentUnlockModal';
 import { ParentSessionProvider } from '../../../src/features/parent/parentSessionContext';
 import { AppSettingsProvider } from '../../../src/features/settings/appSettingsContext';
 import { getThemeTokens } from '../../../src/features/theme/theme';
@@ -110,6 +113,41 @@ describe('ParentUnlockModal', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('retries focusing the pin input once when the initial focus does not stick', () => {
+    jest.useFakeTimers();
+    const cancelScheduledFocus = jest.fn();
+    const focus = jest.fn();
+    const isFocused = jest
+      .fn()
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+
+    scheduleAfterFrameCommitModule.scheduleAfterFrameCommit.mockImplementation(
+      (callback: () => void) => {
+        callback();
+        return cancelScheduledFocus;
+      },
+    );
+
+    const cancelFocus = schedulePinInputFocus({
+      current: {
+        focus,
+        isFocused,
+      },
+    } as never);
+
+    expect(focus).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+
+    expect(focus).toHaveBeenCalledTimes(2);
+
+    cancelFocus();
+    expect(cancelScheduledFocus).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a bad configured pin and accepts the stored pin as soon as it is entered', async () => {

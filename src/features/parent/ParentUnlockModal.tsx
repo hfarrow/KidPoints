@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 import { BackHandler, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { KeyboardModalFrame } from '../../components/KeyboardModalFrame';
@@ -22,6 +22,7 @@ import { useParentSession } from './parentSessionContext';
 const log = createModuleLogger('parent-unlock-modal');
 const PIN_SLOT_KEYS = ['pin-slot-0', 'pin-slot-1', 'pin-slot-2', 'pin-slot-3'];
 const PIN_REVEAL_DURATION_MS = 700;
+const PIN_INPUT_FOCUS_RETRY_DELAY_MS = 100;
 const UNLOCK_ERROR_DELAY_MS = 900;
 const UNLOCK_SUCCESS_DELAY_MS = 300;
 const BODY_LINE_HEIGHT = 20;
@@ -40,6 +41,33 @@ function resolveParentModalMode(
   }
 
   return 'unlock';
+}
+
+export function schedulePinInputFocus(inputRef: RefObject<TextInput | null>) {
+  let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  const focusPinInput = () => {
+    inputRef.current?.focus();
+  };
+
+  const cancelScheduledFocus = scheduleAfterFrameCommit(() => {
+    focusPinInput();
+
+    retryTimeoutId = setTimeout(() => {
+      if (inputRef.current?.isFocused()) {
+        return;
+      }
+
+      focusPinInput();
+    }, PIN_INPUT_FOCUS_RETRY_DELAY_MS);
+  });
+
+  return () => {
+    cancelScheduledFocus();
+
+    if (retryTimeoutId) {
+      clearTimeout(retryTimeoutId);
+    }
+  };
 }
 
 export function ParentUnlockModal() {
@@ -315,9 +343,7 @@ export function ParentUnlockModal() {
       return;
     }
 
-    return scheduleAfterFrameCommit(() => {
-      pinInputRef.current?.focus();
-    });
+    return schedulePinInputFocus(pinInputRef);
   }, [pinInputFocusKey]);
 
   return (
