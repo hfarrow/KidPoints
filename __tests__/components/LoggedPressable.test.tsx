@@ -1,7 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
-import { LoggedPressable } from '../../src/components/LoggedPressable';
+import {
+  LoggedPressable,
+  resetLoggedPressableDebounceForTests,
+} from '../../src/components/LoggedPressable';
 
 jest.mock('../../src/logging/logger', () => {
   const mockLogger = {
@@ -27,6 +30,7 @@ const { __mockLogger: mockLogger } = jest.requireMock(
 describe('LoggedPressable', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetLoggedPressableDebounceForTests();
   });
 
   it('logs the press and still calls through to onPress', () => {
@@ -73,6 +77,92 @@ describe('LoggedPressable', () => {
     fireEvent.press(screen.getByLabelText('Open Logs'));
 
     expect(mockLogger.debug).not.toHaveBeenCalled();
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('debounces rapid repeat presses by default', () => {
+    const onPress = jest.fn();
+    const dateNowSpy = jest.spyOn(Date, 'now');
+
+    dateNowSpy
+      .mockReturnValueOnce(1_000)
+      .mockReturnValueOnce(1_100)
+      .mockReturnValueOnce(1_700);
+
+    render(
+      <LoggedPressable
+        accessibilityLabel="Open Logs"
+        logLabel="Open Logs"
+        onPress={onPress}
+        pressDebounceMs={500}
+      >
+        <Text>Open Logs</Text>
+      </LoggedPressable>,
+    );
+
+    fireEvent.press(screen.getByLabelText('Open Logs'));
+    fireEvent.press(screen.getByLabelText('Open Logs'));
+    fireEvent.press(screen.getByLabelText('Open Logs'));
+
+    expect(onPress).toHaveBeenCalledTimes(2);
+  });
+
+  it('can opt out of press debouncing', () => {
+    const onPress = jest.fn();
+    const dateNowSpy = jest.spyOn(Date, 'now');
+
+    dateNowSpy.mockReturnValue(1_000);
+
+    render(
+      <LoggedPressable
+        accessibilityLabel="Increase Points"
+        disablePressDebounce
+        logLabel="Increase Points"
+        onPress={onPress}
+      >
+        <Text>Increase</Text>
+      </LoggedPressable>,
+    );
+
+    fireEvent.press(screen.getByLabelText('Increase Points'));
+    fireEvent.press(screen.getByLabelText('Increase Points'));
+
+    expect(onPress).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps debouncing active across button remounts for the same action', () => {
+    const onPress = jest.fn();
+    const dateNowSpy = jest.spyOn(Date, 'now');
+
+    dateNowSpy.mockReturnValue(1_000);
+
+    const firstRender = render(
+      <LoggedPressable
+        accessibilityLabel="Open Logs"
+        logLabel="Open Logs"
+        onPress={onPress}
+        pressDebounceMs={500}
+      >
+        <Text>Open Logs</Text>
+      </LoggedPressable>,
+    );
+
+    fireEvent.press(firstRender.getByLabelText('Open Logs'));
+    firstRender.unmount();
+
+    const secondRender = render(
+      <LoggedPressable
+        accessibilityLabel="Open Logs"
+        logLabel="Open Logs"
+        onPress={onPress}
+        pressDebounceMs={500}
+      >
+        <Text>Open Logs</Text>
+      </LoggedPressable>,
+    );
+
+    fireEvent.press(secondRender.getByLabelText('Open Logs'));
+
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 });

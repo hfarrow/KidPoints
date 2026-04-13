@@ -230,6 +230,7 @@ export function ChildPointsRail({
           <LoggedPressable
             accessibilityLabel={`Decrease ${childName} points`}
             accessibilityRole="button"
+            disablePressDebounce
             logContext={{
               childId,
               childName,
@@ -282,6 +283,7 @@ export function ChildPointsRail({
           <LoggedPressable
             accessibilityLabel={`Increase ${childName} points`}
             accessibilityRole="button"
+            disablePressDebounce
             logContext={{
               childId,
               childName,

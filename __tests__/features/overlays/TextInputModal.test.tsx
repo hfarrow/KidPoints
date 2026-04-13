@@ -20,13 +20,13 @@ const keyboardControllerModule = jest.requireMock(
   ) => void;
   __resetKeyboardEvents: () => void;
 };
-const mockPush = jest.fn();
+const mockNavigate = jest.fn();
 let mockPathname = '/';
 
 jest.mock('expo-router', () => ({
   usePathname: () => mockPathname,
   useRouter: () => ({
-    push: mockPush,
+    navigate: mockNavigate,
   }),
 }));
 
@@ -34,7 +34,7 @@ describe('TextInputModal', () => {
   beforeEach(() => {
     clearTextInputModal();
     keyboardControllerModule.__resetKeyboardEvents();
-    mockPush.mockReset();
+    mockNavigate.mockReset();
     mockPathname = '/';
   });
 

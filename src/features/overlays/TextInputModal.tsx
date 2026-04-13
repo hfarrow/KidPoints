@@ -246,7 +246,7 @@ export function TextInputModal() {
     }
 
     if (!isParentUnlocked) {
-      router.push('/parent-unlock');
+      router.navigate('/parent-unlock');
       return;
     }
 

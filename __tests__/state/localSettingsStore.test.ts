@@ -2,6 +2,29 @@ import { createLocalSettingsStore } from '../../src/state/localSettingsStore';
 import { createMemoryStorage } from '../testUtils/memoryStorage';
 
 describe('localSettingsStore', () => {
+  it('rehydrates the persisted developer mode setting', async () => {
+    const storage = createMemoryStorage();
+    const firstStore = createLocalSettingsStore({
+      initialDeveloperModeEnabled: false,
+      storage,
+    });
+
+    firstStore.getState().setDeveloperModeEnabled(true);
+
+    const secondStore = createLocalSettingsStore({
+      initialDeveloperModeEnabled: false,
+      storage,
+    });
+
+    await (
+      secondStore as typeof secondStore & {
+        persist: { rehydrate: () => Promise<void> };
+      }
+    ).persist.rehydrate();
+
+    expect(secondStore.getState().developerModeEnabled).toBe(true);
+  });
+
   it('rehydrates the persisted temp log level in development mode', async () => {
     const storage = createMemoryStorage();
     const firstStore = createLocalSettingsStore({

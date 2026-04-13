@@ -15,7 +15,7 @@ import {
 
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn();
-const mockPush = jest.fn();
+const mockNavigate = jest.fn();
 const mockReplace = jest.fn();
 const mockDismissCheckInFlow = jest.fn();
 const mockResolveExpiredTimerChild = jest.fn();
@@ -37,7 +37,7 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: mockBack,
     canGoBack: mockCanGoBack,
-    push: mockPush,
+    navigate: mockNavigate,
     replace: mockReplace,
   }),
 }));
@@ -198,7 +198,7 @@ describe('TimerCheckInModal', () => {
     render(<TimerCheckInModal />);
 
     fireEvent.press(screen.getByText('Unlock'));
-    expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
+    expect(mockNavigate).toHaveBeenCalledWith('/parent-unlock');
     expect(mockKeyboardModalFrame).toHaveBeenCalledWith(
       expect.objectContaining({
         initialVerticalPosition: 'center',

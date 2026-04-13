@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
+import { MainScreenActions } from '../../components/MainScreenActions';
 import { MultiSelectList } from '../../components/MultiSelectList';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
@@ -20,6 +21,7 @@ import {
   SUPPORTED_APP_LOG_LEVELS,
 } from '../../logging/logger';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
+import { scheduleAfterFrameCommit } from '../../timing/scheduleAfterFrameCommit';
 import { presentTextInputModal } from '../overlays/textInputModalStore';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import {
@@ -36,7 +38,6 @@ const LOG_LEVEL_BADGE_LABELS: Record<AppLogLevel, string> = {
   temp: 'T',
   warn: 'W',
 };
-
 export function LogsScreen() {
   const styles = useThemedStyles(createStyles);
   const { tokens } = useAppTheme();
@@ -58,6 +59,7 @@ export function LogsScreen() {
   const [isNamespaceFilterVisible, setIsNamespaceFilterVisible] =
     useState(false);
   const [isSharingLogs, setIsSharingLogs] = useState(false);
+  const [isLogListReady, setIsLogListReady] = useState(false);
 
   const availableNamespaces = useMemo(() => {
     return [
@@ -100,6 +102,12 @@ export function LogsScreen() {
       ]),
     );
   }, [logNamespaceColors, tokens.tileSurface]);
+
+  useEffect(() => {
+    return scheduleAfterFrameCommit(() => {
+      setIsLogListReady(true);
+    });
+  }, []);
 
   useEffect(() => {
     if (bufferedNamespacesByReservationOrder.length === 0) {
@@ -220,7 +228,7 @@ export function LogsScreen() {
   return (
     <View style={styles.screenRoot}>
       <ScreenScaffold footer={<ScreenBackFooter disableLogging />}>
-        <ScreenHeader title="Logs" />
+        <ScreenHeader actions={<MainScreenActions />} title="Logs" />
 
         <Tile density="extraCompact" title="Controls">
           <View style={styles.filterSection}>
@@ -356,7 +364,13 @@ export function LogsScreen() {
           </View>
         </Tile>
 
-        {filteredEntries.length === 0 ? (
+        {!isLogListReady ? (
+          <Tile density="extraCompact" title="Loading Logs">
+            <Text style={styles.emptyCopy}>
+              Preparing the log viewer after the first frame commit.
+            </Text>
+          </Tile>
+        ) : filteredEntries.length === 0 ? (
           <Tile
             density="extraCompact"
             title={entries.length === 0 ? 'No Logs Yet' : 'No Matching Logs'}

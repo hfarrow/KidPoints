@@ -11,7 +11,7 @@ import {
 } from '../../../src/state/sharedStore';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
-const mockPush = jest.fn();
+const mockNavigate = jest.fn();
 const mockUseNotifications = jest.fn();
 const mockRequestTimerStart = jest.fn(async () => undefined);
 let startTimerBridge: (() => void) | null = null;
@@ -32,7 +32,7 @@ jest.mock('@expo/vector-icons', () => {
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
-    push: mockPush,
+    navigate: mockNavigate,
   }),
 }));
 
@@ -59,7 +59,7 @@ function StoreStartTimerBridge() {
 describe('AlarmScreen', () => {
   beforeEach(() => {
     jest.useRealTimers();
-    mockPush.mockReset();
+    mockNavigate.mockReset();
     mockRequestTimerStart.mockReset();
     mockRequestTimerStart.mockImplementation(async () => {
       startTimerBridge?.();
@@ -134,7 +134,7 @@ describe('AlarmScreen', () => {
     expect(screen.queryByText('Readiness')).toBeNull();
 
     fireEvent.press(screen.getByText('Unlock with PIN'));
-    expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
+    expect(mockNavigate).toHaveBeenCalledWith('/parent-unlock');
   });
 
   it('renders live timer controls and expands notifications diagnostics on demand', () => {

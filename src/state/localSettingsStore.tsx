@@ -33,6 +33,7 @@ import { useStableStoreReference } from './useStableStoreReference';
 
 type LocalSettingsState = {
   activeThemeId: ThemeId;
+  developerModeEnabled: boolean;
   ensureLogNamespaceColors: (namespaces: string[]) => void;
   hasHydrated: boolean;
   hapticsEnabled: boolean;
@@ -44,6 +45,7 @@ type LocalSettingsState = {
   resetLogNamespaceColors: () => void;
   restartCountdownAfterCheckIn: boolean;
   setActiveThemeId: (themeId: ThemeId) => void;
+  setDeveloperModeEnabled: (developerModeEnabled: boolean) => void;
   setHapticsEnabled: (hapticsEnabled: boolean) => void;
   setLiveCountdownNotificationsEnabled: (
     liveCountdownNotificationsEnabled: boolean,
@@ -90,6 +92,7 @@ const LocalSettingsStoreContext = createContext<LocalSettingsStore | null>(
 type LocalSettingsStoreProviderProps = PropsWithChildren<{
   initialActiveThemeId?: ThemeId;
   allowTemporaryLogLevel?: boolean;
+  initialDeveloperModeEnabled?: boolean;
   initialHapticsEnabled?: boolean;
   initialLiveCountdownNotificationsEnabled?: boolean;
   initialLogLevel?: AppLogLevel;
@@ -102,6 +105,7 @@ type LocalSettingsStoreProviderProps = PropsWithChildren<{
 export function createLocalSettingsStore({
   initialActiveThemeId = DEFAULT_THEME_ID,
   allowTemporaryLogLevel,
+  initialDeveloperModeEnabled = false,
   initialHapticsEnabled = true,
   initialLiveCountdownNotificationsEnabled = true,
   initialLogLevel = getDefaultAppLogLevel(),
@@ -112,6 +116,7 @@ export function createLocalSettingsStore({
 }: {
   initialActiveThemeId?: ThemeId;
   allowTemporaryLogLevel?: boolean;
+  initialDeveloperModeEnabled?: boolean;
   initialHapticsEnabled?: boolean;
   initialLiveCountdownNotificationsEnabled?: boolean;
   initialLogLevel?: AppLogLevel;
@@ -131,6 +136,7 @@ export function createLocalSettingsStore({
     persist(
       (set) => ({
         activeThemeId: normalizedInitialActiveThemeId,
+        developerModeEnabled: initialDeveloperModeEnabled,
         ensureLogNamespaceColors: (namespaces) => {
           set((state) => {
             const nextColors = assignMissingLogNamespaceColors(
@@ -170,6 +176,13 @@ export function createLocalSettingsStore({
             activeThemeId,
           });
           set({ activeThemeId });
+        },
+        setDeveloperModeEnabled: (developerModeEnabled) => {
+          logLocalSettingsMutation({
+            action: 'setDeveloperModeEnabled',
+            developerModeEnabled,
+          });
+          set({ developerModeEnabled });
         },
         setHapticsEnabled: (hapticsEnabled) => {
           logLocalSettingsMutation({
@@ -258,6 +271,9 @@ export function createLocalSettingsStore({
               persistedSettings.activeThemeId == null
                 ? normalizedInitialActiveThemeId
                 : normalizeThemeId(persistedSettings.activeThemeId),
+            developerModeEnabled:
+              persistedSettings.developerModeEnabled ??
+              initialDeveloperModeEnabled,
             hapticsEnabled:
               persistedSettings.hapticsEnabled ?? initialHapticsEnabled,
             liveCountdownNotificationsEnabled,
@@ -281,6 +297,8 @@ export function createLocalSettingsStore({
             logLocalSettingsRehydrated({
               activeThemeId:
                 state?.activeThemeId ?? normalizedInitialActiveThemeId,
+              developerModeEnabled:
+                state?.developerModeEnabled ?? initialDeveloperModeEnabled,
               hapticsEnabled: state?.hapticsEnabled ?? initialHapticsEnabled,
               liveCountdownNotificationsEnabled:
                 state?.liveCountdownNotificationsEnabled ??
@@ -301,6 +319,7 @@ export function createLocalSettingsStore({
         },
         partialize: ({
           activeThemeId,
+          developerModeEnabled,
           hapticsEnabled,
           liveCountdownNotificationsEnabled,
           logNamespaceColors,
@@ -310,6 +329,7 @@ export function createLocalSettingsStore({
           themeMode,
         }) => ({
           activeThemeId,
+          developerModeEnabled,
           hapticsEnabled,
           liveCountdownNotificationsEnabled,
           logNamespaceColors,
@@ -328,6 +348,7 @@ export function LocalSettingsStoreProvider({
   initialActiveThemeId = DEFAULT_THEME_ID,
   allowTemporaryLogLevel,
   children,
+  initialDeveloperModeEnabled = false,
   initialHapticsEnabled = true,
   initialLiveCountdownNotificationsEnabled = true,
   initialLogLevel = getDefaultAppLogLevel(),
@@ -341,6 +362,7 @@ export function LocalSettingsStoreProvider({
       createLocalSettingsStore({
         initialActiveThemeId,
         allowTemporaryLogLevel,
+        initialDeveloperModeEnabled,
         initialHapticsEnabled,
         initialLiveCountdownNotificationsEnabled,
         initialLogLevel,
@@ -357,6 +379,7 @@ export function LocalSettingsStoreProvider({
   useEffect(() => {
     log.info('Local settings store provider initialized', {
       initialActiveThemeId,
+      initialDeveloperModeEnabled,
       initialHapticsEnabled,
       initialLiveCountdownNotificationsEnabled,
       initialLogLevel,
@@ -366,6 +389,7 @@ export function LocalSettingsStoreProvider({
     });
   }, [
     initialActiveThemeId,
+    initialDeveloperModeEnabled,
     initialLogLevel,
     initialHapticsEnabled,
     initialLiveCountdownNotificationsEnabled,

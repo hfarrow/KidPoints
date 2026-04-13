@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import type { ScrollView } from 'react-native';
 
+import { MainScreenActions } from '../../components/MainScreenActions';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
@@ -11,7 +12,7 @@ export function TransactionsScreen() {
 
   return (
     <ScreenScaffold footer={<ScreenBackFooter />} scrollViewRef={scrollViewRef}>
-      <ScreenHeader title="Transactions" />
+      <ScreenHeader actions={<MainScreenActions />} title="Transactions" />
       <TransactionsScreenContent
         onRequestScroll={(y) => {
           scrollViewRef.current?.scrollTo({

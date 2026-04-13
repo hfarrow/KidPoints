@@ -11,6 +11,7 @@ import {
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockBack = jest.fn();
+const mockNavigate = jest.fn();
 
 jest.mock('@expo/vector-icons', () => {
   const mockReactNative = jest.requireActual('react-native');
@@ -22,12 +23,14 @@ jest.mock('@expo/vector-icons', () => {
 
   return {
     Feather: MockIcon,
+    Ionicons: MockIcon,
   };
 });
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: mockBack,
+    navigate: mockNavigate,
   }),
 }));
 
@@ -39,6 +42,7 @@ beforeAll(() => {
 describe('TransactionsScreen', () => {
   beforeEach(() => {
     mockBack.mockReset();
+    mockNavigate.mockReset();
   });
 
   it('groups adjacent point actions for the same child into one tile', () => {
@@ -97,6 +101,27 @@ describe('TransactionsScreen', () => {
 
     fireEvent.press(screen.getByLabelText('Expand Ava +1 Points [0 > 1]'));
     expect(screen.getByText('Restore To This Point')).toBeTruthy();
+  });
+
+  it('shows the shared sync shortcut in the screen header', () => {
+    render(
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked>
+          <AppSettingsProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <TransactionsScreen />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(screen.getByLabelText('Open Device Sync')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Open Device Sync'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/sync');
   });
 
   it('groups mixed check-in results into one expandable tile while keeping dismissal rows audit-only', () => {

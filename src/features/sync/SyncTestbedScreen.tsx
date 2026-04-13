@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { StateStorage } from 'zustand/middleware';
 
 import { ListScaffold } from '../../components/ListScaffold';
+import { MainScreenActions } from '../../components/MainScreenActions';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import {
@@ -525,7 +526,7 @@ function SyncTestbedScene({
           },
         ]}
       >
-        <ScreenHeader title="Sync Testbed" />
+        <ScreenHeader actions={<MainScreenActions />} title="Sync Testbed" />
 
         <View
           style={[

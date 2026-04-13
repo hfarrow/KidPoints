@@ -111,7 +111,7 @@ export function AlarmScreen() {
           <ActionPillRow>
             <ActionPill
               label="Unlock with PIN"
-              onPress={() => router.push('/parent-unlock')}
+              onPress={() => router.navigate('/parent-unlock')}
               tone="primary"
             />
           </ActionPillRow>
@@ -130,7 +130,7 @@ export function AlarmScreen() {
         onStart={() => {
           void requestTimerStart('alarm');
         }}
-        onUnlock={() => router.push('/parent-unlock')}
+        onUnlock={() => router.navigate('/parent-unlock')}
         pauseDisabled={!timerViewModel.canPause}
         remainingLabel={timerViewModel.remainingLabel}
         resetDisabled={!timerViewModel.canReset}

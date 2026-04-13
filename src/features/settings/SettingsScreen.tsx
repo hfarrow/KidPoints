@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
+import { MainScreenActions } from '../../components/MainScreenActions';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
@@ -69,8 +70,14 @@ export function SettingsScreen() {
     tokens,
   } = useAppTheme();
   const parentPin = useLocalSettingsStore((state) => state.parentPin);
+  const developerModeEnabled = useLocalSettingsStore(
+    (state) => state.developerModeEnabled,
+  );
   const hapticsEnabled = useLocalSettingsStore((state) => state.hapticsEnabled);
   const logLevel = useLocalSettingsStore((state) => state.logLevel);
+  const setDeveloperModeEnabled = useLocalSettingsStore(
+    (state) => state.setDeveloperModeEnabled,
+  );
   const setHapticsEnabled = useLocalSettingsStore(
     (state) => state.setHapticsEnabled,
   );
@@ -81,9 +88,13 @@ export function SettingsScreen() {
     log.debug('Settings screen initialized');
   }, []);
 
+  const openLogsScreen = () => {
+    router.navigate('/logs');
+  };
+
   return (
     <ScreenScaffold footer={<ScreenBackFooter />}>
-      <ScreenHeader title="Settings" />
+      <ScreenHeader actions={<MainScreenActions />} title="Settings" />
 
       <Tile accessory={<StatusBadge label={resolvedTheme} />} title="Theme">
         <View style={styles.themeSection}>
@@ -199,7 +210,7 @@ export function SettingsScreen() {
             }
             onPress={() => {
               if (!parentPin) {
-                router.push('/parent-unlock?mode=setup');
+                router.navigate('/parent-unlock?mode=setup');
                 return;
               }
 
@@ -208,14 +219,14 @@ export function SettingsScreen() {
                 return;
               }
 
-              router.push('/parent-unlock');
+              router.navigate('/parent-unlock');
             }}
             tone="primary"
           />
           {parentPin && isParentUnlocked ? (
             <ActionPill
               label="Change PIN"
-              onPress={() => router.push('/parent-unlock?mode=change')}
+              onPress={() => router.navigate('/parent-unlock?mode=change')}
             />
           ) : null}
         </ActionPillRow>
@@ -246,48 +257,89 @@ export function SettingsScreen() {
         </View>
       </Tile>
 
-      <Tile accessory={<StatusBadge label={logLevel} />} title="Log Level">
-        <LoggedPressable
-          accessibilityLabel={
-            isLogLevelListVisible
-              ? 'Close log level picker'
-              : 'Open log level picker'
-          }
-          accessibilityRole="button"
-          logContext={{
-            isLogLevelListVisible,
-            logLevel,
-          }}
-          logLabel={
-            isLogLevelListVisible
-              ? 'Close log level picker'
-              : 'Open log level picker'
-          }
-          onPress={() => setLogLevelListVisible(true)}
-          style={[
-            styles.themeMenuTrigger,
-            isLogLevelListVisible && {
-              backgroundColor: tokens.accentSoft,
-              borderColor: tokens.accent,
-            },
-          ]}
-        >
-          <View style={styles.themeMenuTriggerCopy}>
-            <Text style={styles.themeMenuTriggerLabel}>{logLevel}</Text>
-            <Text style={styles.themeMenuTriggerHelper}>
-              Choose the active app log level.
+      <Tile
+        accessory={<StatusBadge label={developerModeEnabled ? 'On' : 'Off'} />}
+        title="Developer Mode"
+      >
+        <View style={styles.toggleRow}>
+          <View style={styles.toggleCopy}>
+            <Text style={styles.toggleLabel}>Developer Mode</Text>
+            <Text style={styles.toggleHelper}>
+              Show advanced tools like the sync testbed on this device.
             </Text>
           </View>
-          <Feather color={tokens.controlText} name="chevron-right" size={18} />
-        </LoggedPressable>
-        <ActionPillRow>
-          <ActionPill
-            label="View Logs"
-            onPress={() => router.push('/logs')}
-            tone="primary"
+          <Switch
+            accessibilityLabel="Enable developer mode"
+            onValueChange={setDeveloperModeEnabled}
+            thumbColor="#f8fafc"
+            trackColor={{
+              false: tokens.controlTrackOff,
+              true: tokens.accent,
+            }}
+            value={developerModeEnabled}
           />
-        </ActionPillRow>
+        </View>
+        {developerModeEnabled ? (
+          <ActionPillRow>
+            <ActionPill
+              label="Sync Testbed"
+              onPress={() => router.navigate('/sync-testbed')}
+              pressDebounceMs={750}
+              tone="primary"
+            />
+          </ActionPillRow>
+        ) : null}
       </Tile>
+
+      {developerModeEnabled ? (
+        <Tile accessory={<StatusBadge label={logLevel} />} title="Log Level">
+          <LoggedPressable
+            accessibilityLabel={
+              isLogLevelListVisible
+                ? 'Close log level picker'
+                : 'Open log level picker'
+            }
+            accessibilityRole="button"
+            logContext={{
+              isLogLevelListVisible,
+              logLevel,
+            }}
+            logLabel={
+              isLogLevelListVisible
+                ? 'Close log level picker'
+                : 'Open log level picker'
+            }
+            onPress={() => setLogLevelListVisible(true)}
+            style={[
+              styles.themeMenuTrigger,
+              isLogLevelListVisible && {
+                backgroundColor: tokens.accentSoft,
+                borderColor: tokens.accent,
+              },
+            ]}
+          >
+            <View style={styles.themeMenuTriggerCopy}>
+              <Text style={styles.themeMenuTriggerLabel}>{logLevel}</Text>
+              <Text style={styles.themeMenuTriggerHelper}>
+                Choose the active app log level.
+              </Text>
+            </View>
+            <Feather
+              color={tokens.controlText}
+              name="chevron-right"
+              size={18}
+            />
+          </LoggedPressable>
+          <ActionPillRow>
+            <ActionPill
+              label="View Logs"
+              onPress={openLogsScreen}
+              pressDebounceMs={750}
+              tone="primary"
+            />
+          </ActionPillRow>
+        </Tile>
+      ) : null}
       <SingleSelectList
         getItemDescription={(option) => getLogLevelDescription(option)}
         getItemLabel={(option) => option}

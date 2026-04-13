@@ -1,4 +1,5 @@
 import type { PropsWithChildren } from 'react';
+import { MainScreenActions } from '../../components/MainScreenActions';
 import { ScreenBackFooter } from '../../components/ScreenBackFooter';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
@@ -48,7 +49,7 @@ export function SyncScreenShell({
         )
       }
     >
-      <ScreenHeader title="Device Sync" />
+      <ScreenHeader actions={<MainScreenActions />} title="Device Sync" />
       {children}
     </ScreenScaffold>
   );

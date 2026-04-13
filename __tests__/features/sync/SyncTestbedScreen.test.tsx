@@ -80,6 +80,7 @@ jest.mock('expo-file-system', () => {
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: jest.fn(),
+    navigate: jest.fn(),
   }),
 }));
 
@@ -93,6 +94,7 @@ jest.mock('@expo/vector-icons', () => {
 
   return {
     Feather: MockIcon,
+    Ionicons: MockIcon,
   };
 });
 

@@ -16,13 +16,26 @@ export function MainScreenActions({
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked, lockParentMode } = useParentSession();
   const { tokens } = useAppTheme();
+  const handleOpenSyncDevices = () => {
+    if (onPressSyncDevices) {
+      onPressSyncDevices();
+      return;
+    }
+
+    if (!isParentUnlocked) {
+      router.navigate('/parent-unlock');
+      return;
+    }
+
+    router.navigate('/sync');
+  };
 
   return (
     <View style={styles.row}>
       <LoggedPressable
         accessibilityLabel="Open Settings"
         logLabel="Open Settings"
-        onPress={() => router.push('/settings')}
+        onPress={() => router.navigate('/settings')}
         style={styles.action}
       >
         <Ionicons
@@ -31,24 +44,22 @@ export function MainScreenActions({
           size={18}
         />
       </LoggedPressable>
-      {onPressSyncDevices ? (
-        <LoggedPressable
-          accessibilityLabel={
-            isParentUnlocked
-              ? 'Open Device Sync'
-              : 'Unlock parent mode for device sync'
-          }
-          logLabel={
-            isParentUnlocked
-              ? 'Open Device Sync'
-              : 'Unlock parent mode for device sync'
-          }
-          onPress={onPressSyncDevices}
-          style={styles.action}
-        >
-          <Feather color={tokens.controlText} name="refresh-cw" size={18} />
-        </LoggedPressable>
-      ) : null}
+      <LoggedPressable
+        accessibilityLabel={
+          isParentUnlocked
+            ? 'Open Device Sync'
+            : 'Unlock parent mode for device sync'
+        }
+        logLabel={
+          isParentUnlocked
+            ? 'Open Device Sync'
+            : 'Unlock parent mode for device sync'
+        }
+        onPress={handleOpenSyncDevices}
+        style={styles.action}
+      >
+        <Feather color={tokens.controlText} name="refresh-cw" size={18} />
+      </LoggedPressable>
       <LoggedPressable
         accessibilityLabel={
           isParentUnlocked ? 'Lock Parent Mode' : 'Unlock Parent Mode'
@@ -60,7 +71,7 @@ export function MainScreenActions({
             return;
           }
 
-          router.push('/parent-unlock');
+          router.navigate('/parent-unlock');
         }}
         style={[
           styles.action,

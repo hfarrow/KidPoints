@@ -11,6 +11,7 @@ const log = createModuleLogger('app-settings-context');
 type AppSettingsProviderProps = PropsWithChildren<{
   allowTemporaryLogLevel?: boolean;
   initialActiveThemeId?: ThemeId;
+  initialDeveloperModeEnabled?: boolean;
   initialHapticsEnabled?: boolean;
   initialLiveCountdownNotificationsEnabled?: boolean;
   initialLogLevel?: AppLogLevel;
@@ -24,6 +25,7 @@ export function AppSettingsProvider({
   allowTemporaryLogLevel,
   children,
   initialActiveThemeId = DEFAULT_THEME_ID,
+  initialDeveloperModeEnabled,
   initialHapticsEnabled,
   initialLiveCountdownNotificationsEnabled,
   initialLogLevel,
@@ -43,6 +45,7 @@ export function AppSettingsProvider({
     <LocalSettingsStoreProvider
       allowTemporaryLogLevel={allowTemporaryLogLevel}
       initialActiveThemeId={initialActiveThemeId}
+      initialDeveloperModeEnabled={initialDeveloperModeEnabled}
       initialHapticsEnabled={initialHapticsEnabled}
       initialLiveCountdownNotificationsEnabled={
         initialLiveCountdownNotificationsEnabled

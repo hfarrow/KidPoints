@@ -150,7 +150,7 @@ function TimerCheckInModalContent({
             <ActionPill
               label={!parentPin ? 'Set PIN' : 'Unlock'}
               onPress={() =>
-                router.push(
+                router.navigate(
                   parentPin ? '/parent-unlock' : '/parent-unlock?mode=setup',
                 )
               }

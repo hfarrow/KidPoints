@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 
 import TabsLayout from '../../app/(tabs)/_layout';
 
-const mockPush = jest.fn();
+const mockNavigate = jest.fn();
 const mockInsets = {
   bottom: 0,
   left: 0,
@@ -41,7 +41,7 @@ jest.mock('expo-router', () => {
 
   return {
     Tabs,
-    useRouter: () => ({ push: mockPush }),
+    useRouter: () => ({ navigate: mockNavigate }),
   };
 });
 

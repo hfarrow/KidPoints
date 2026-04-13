@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { useEffect } from 'react';
 import { Alert } from 'react-native';
 
+import { resetLoggedPressableDebounceForTests } from '../../../src/components/LoggedPressable';
 import { HomeScreen } from '../../../src/features/home/HomeScreen';
 import {
   clearTextInputModal,
@@ -18,6 +19,7 @@ import {
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockPush = jest.fn();
+const mockNavigate = jest.fn();
 const mockRequestTimerStart = jest.fn(async () => undefined);
 let startTimerBridge: (() => void) | null = null;
 
@@ -37,6 +39,7 @@ jest.mock('@expo/vector-icons', () => {
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
+    navigate: mockNavigate,
     push: mockPush,
   }),
 }));
@@ -67,6 +70,8 @@ describe('HomeScreen', () => {
   beforeEach(() => {
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     clearTextInputModal();
+    resetLoggedPressableDebounceForTests();
+    mockNavigate.mockReset();
     mockPush.mockReset();
     mockRequestTimerStart.mockReset();
     mockRequestTimerStart.mockImplementation(async () => {
@@ -154,7 +159,7 @@ describe('HomeScreen', () => {
     expect(screen.getByLabelText('Open Device Sync')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Open Settings'));
-    expect(mockPush).toHaveBeenCalledWith('/settings');
+    expect(mockNavigate).toHaveBeenCalledWith('/settings');
   });
 
   it('renders active children and keeps mutations gated when locked', () => {
@@ -191,12 +196,12 @@ describe('HomeScreen', () => {
     ).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Edit Ava points'));
-    expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
+    expect(mockNavigate).toHaveBeenCalledWith('/parent-unlock');
 
     fireEvent.press(
       screen.getByLabelText('Unlock parent mode for device sync'),
     );
-    expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
+    expect(mockNavigate).toHaveBeenCalledWith('/parent-unlock');
   });
 
   it('opens exact points editing from the points capsule and confirms archive inside the expanded tile', () => {
@@ -298,18 +303,90 @@ describe('HomeScreen', () => {
     expect(screen.queryByText('Unlocked')).toBeNull();
     expect(screen.queryByText('Add Child')).toBeNull();
     expect(screen.getByLabelText('Open Device Sync')).toBeTruthy();
+    expect(screen.queryByText('Developer')).toBeNull();
 
     fireEvent.press(screen.getByText('Parent'));
     expect(screen.getByText('Add Child')).toBeTruthy();
-    expect(screen.queryByText('Sync Devices')).toBeNull();
-    expect(screen.getByText('Sync Testbed')).toBeTruthy();
+    expect(screen.queryByText('Unarchive Child')).toBeNull();
+    expect(screen.queryByText('Sync Testbed')).toBeNull();
     expect(screen.getByText('Transactions')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Open Device Sync'));
-    expect(mockPush).toHaveBeenCalledWith('/sync');
+    expect(mockNavigate).toHaveBeenCalledWith('/sync');
+  });
+
+  it('shows a developer tile with sync testbed and logs when developer mode is enabled', () => {
+    const document = createDocumentWithActiveChild({
+      deviceId: 'home-developer',
+      name: 'Milo',
+      points: 2,
+    });
+
+    render(
+      <SharedStoreProvider
+        initialDocument={document}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppSettingsProvider
+            initialDeveloperModeEnabled={true}
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <StoreStartTimerBridge />
+            <HomeScreen />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(screen.getByText('Developer')).toBeTruthy();
+    expect(screen.queryByText('Sync Testbed')).toBeNull();
+    expect(screen.queryByText('Logs')).toBeNull();
+
+    fireEvent.press(screen.getByText('Developer'));
+
+    expect(screen.getByText('Sync Testbed')).toBeTruthy();
+    expect(screen.getByText('Logs')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Sync Testbed'));
-    expect(mockPush).toHaveBeenCalledWith('/sync-testbed');
+    expect(mockNavigate).toHaveBeenCalledWith('/sync-testbed');
+
+    fireEvent.press(screen.getByText('Logs'));
+    expect(mockNavigate).toHaveBeenCalledWith('/logs');
+  });
+
+  it('debounces the developer logs button so duplicate routes do not stack', () => {
+    const document = createDocumentWithActiveChild({
+      deviceId: 'home-developer-logs',
+      name: 'Milo',
+      points: 2,
+    });
+
+    render(
+      <SharedStoreProvider
+        initialDocument={document}
+        storage={createMemoryStorage()}
+      >
+        <ParentSessionProvider initialParentUnlocked>
+          <AppSettingsProvider
+            initialDeveloperModeEnabled={true}
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <StoreStartTimerBridge />
+            <HomeScreen />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    fireEvent.press(screen.getByText('Developer'));
+    fireEvent.press(screen.getByText('Logs'));
+    fireEvent.press(screen.getByText('Logs'));
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith('/logs');
   });
 
   it('opens archived children in a local overlay, restores items, and confirms permanent delete actions', () => {
@@ -339,7 +416,8 @@ describe('HomeScreen', () => {
     );
 
     fireEvent.press(screen.getByText('Parent'));
-    fireEvent.press(screen.getByText('Archived Children'));
+    expect(screen.getByText('Unarchive Child')).toBeTruthy();
+    fireEvent.press(screen.getByText('Unarchive Child'));
 
     expect(
       screen.getByText(

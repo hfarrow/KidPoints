@@ -42,20 +42,24 @@ export function SkeletonCluster({
 
 export function ActionPill({
   accessibilityLabel,
+  disablePressDebounce = false,
   disableLogging = false,
   icon,
   iconOnly = false,
   label,
   onPress,
+  pressDebounceMs,
   testID,
   tone = 'neutral',
 }: {
   accessibilityLabel?: string;
+  disablePressDebounce?: boolean;
   disableLogging?: boolean;
   icon?: ReactNode;
   iconOnly?: boolean;
   label?: string;
   onPress?: () => void;
+  pressDebounceMs?: number;
   testID?: string;
   tone?: 'critical' | 'neutral' | 'primary';
 }) {
@@ -79,10 +83,12 @@ export function ActionPill({
     <LoggedPressable
       accessibilityLabel={resolvedAccessibilityLabel}
       accessibilityRole="button"
+      disablePressDebounce={disablePressDebounce}
       disableLogging={disableLogging}
       logContext={{ tone }}
       logLabel={resolvedLogLabel}
       onPress={onPress}
+      pressDebounceMs={pressDebounceMs}
       style={[styles.pill, toneStyle, iconOnly && styles.iconOnlyPill]}
       testID={testID}
     >

@@ -81,6 +81,9 @@ export function Tile({
       style={[
         styles.tile,
         density === 'extraCompact' && styles.tileExtraCompact,
+        density === 'extraCompact' &&
+          headerHidden &&
+          styles.tileExtraCompactHeaderHidden,
         !hasVisibleContent && styles.tileHeaderOnly,
         !hasVisibleContent &&
           density === 'extraCompact' &&
@@ -203,6 +206,9 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       paddingBottom: 8,
       paddingHorizontal: 10,
       paddingTop: 6,
+    },
+    tileExtraCompactHeaderHidden: {
+      paddingTop: 8,
     },
     tileHeaderOnly: {
       paddingBottom: 8,

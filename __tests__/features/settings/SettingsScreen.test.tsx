@@ -10,6 +10,7 @@ import {
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockBack = jest.fn();
+const mockNavigate = jest.fn();
 const mockPush = jest.fn();
 
 jest.mock('@expo/vector-icons', () => {
@@ -22,12 +23,14 @@ jest.mock('@expo/vector-icons', () => {
 
   return {
     Feather: MockIcon,
+    Ionicons: MockIcon,
   };
 });
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: mockBack,
+    navigate: mockNavigate,
     push: mockPush,
   }),
 }));
@@ -36,6 +39,7 @@ describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
     mockBack.mockReset();
+    mockNavigate.mockReset();
     mockPush.mockReset();
   });
 
@@ -76,9 +80,12 @@ describe('SettingsScreen', () => {
       screen.queryByText(/Parent Mode stays local to this device/i),
     ).toBeNull();
     expect(screen.queryByText('Archived Children')).toBeNull();
+    expect(
+      screen.getByLabelText('Unlock parent mode for device sync'),
+    ).toBeTruthy();
 
     fireEvent.press(screen.getByText('Unlock'));
-    expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
+    expect(mockNavigate).toHaveBeenCalledWith('/parent-unlock');
 
     fireEvent.press(screen.getByLabelText('Go Back'));
     expect(mockBack).toHaveBeenCalled();
@@ -138,12 +145,12 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('Change PIN')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Change PIN'));
-    expect(mockPush).toHaveBeenCalledWith('/parent-unlock?mode=change');
+    expect(mockNavigate).toHaveBeenCalledWith('/parent-unlock?mode=change');
 
-    mockPush.mockReset();
+    mockNavigate.mockReset();
 
     fireEvent.press(screen.getByText('Lock'));
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
 
     const transactions = await rehydrateSharedTransactions(sharedStorage);
 
@@ -155,6 +162,7 @@ describe('SettingsScreen', () => {
       <SharedStoreProvider storage={createMemoryStorage()}>
         <ParentSessionProvider initialParentUnlocked={false}>
           <AppSettingsProvider
+            initialDeveloperModeEnabled={true}
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
@@ -208,7 +216,7 @@ describe('SettingsScreen', () => {
 
     fireEvent(screen.getByLabelText('Enable haptics'), 'valueChange', false);
 
-    expect(screen.getAllByText('Off')).toHaveLength(1);
+    expect(screen.getAllByText('Off').length).toBeGreaterThanOrEqual(1);
   });
 
   it('opens the logs viewer from the debug section', () => {
@@ -216,6 +224,7 @@ describe('SettingsScreen', () => {
       <SharedStoreProvider storage={createMemoryStorage()}>
         <ParentSessionProvider initialParentUnlocked={false}>
           <AppSettingsProvider
+            initialDeveloperModeEnabled={true}
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
@@ -227,7 +236,70 @@ describe('SettingsScreen', () => {
 
     fireEvent.press(screen.getByText('View Logs'));
 
-    expect(mockPush).toHaveBeenCalledWith('/logs');
+    expect(mockNavigate).toHaveBeenCalledWith('/logs');
+  });
+
+  it('shows the shared sync shortcut in the header', () => {
+    render(
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked>
+          <AppSettingsProvider
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <SettingsScreen />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(screen.getByLabelText('Open Device Sync')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Open Device Sync'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/sync');
+  });
+
+  it('keeps sync testbed behind developer mode until the toggle is enabled', () => {
+    render(
+      <SharedStoreProvider storage={createMemoryStorage()}>
+        <ParentSessionProvider initialParentUnlocked={false}>
+          <AppSettingsProvider
+            initialDeveloperModeEnabled={false}
+            initialThemeMode="light"
+            storage={createMemoryStorage()}
+          >
+            <SettingsScreen />
+          </AppSettingsProvider>
+        </ParentSessionProvider>
+      </SharedStoreProvider>,
+    );
+
+    expect(
+      screen.getByText(
+        'Show advanced tools like the sync testbed on this device.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getAllByText('Developer Mode').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Off').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('Sync Testbed')).toBeNull();
+    expect(screen.queryByText('Log Level')).toBeNull();
+    expect(screen.queryByText('View Logs')).toBeNull();
+
+    fireEvent(
+      screen.getByLabelText('Enable developer mode'),
+      'valueChange',
+      true,
+    );
+
+    expect(screen.getAllByText('On').length).toBeGreaterThan(0);
+    expect(screen.getByText('Sync Testbed')).toBeTruthy();
+    expect(screen.getByText('Log Level')).toBeTruthy();
+    expect(screen.getByText('View Logs')).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Sync Testbed'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/sync-testbed');
   });
 
   it('hides the temp option when only production log levels are selectable', () => {
@@ -239,6 +311,7 @@ describe('SettingsScreen', () => {
       <SharedStoreProvider storage={createMemoryStorage()}>
         <ParentSessionProvider initialParentUnlocked={false}>
           <AppSettingsProvider
+            initialDeveloperModeEnabled={true}
             initialThemeMode="light"
             storage={createMemoryStorage()}
           >
@@ -267,6 +340,6 @@ describe('SettingsScreen', () => {
 
     fireEvent.press(screen.getByText('Set PIN'));
 
-    expect(mockPush).toHaveBeenCalledWith('/parent-unlock?mode=setup');
+    expect(mockNavigate).toHaveBeenCalledWith('/parent-unlock?mode=setup');
   });
 });

@@ -66,7 +66,7 @@ export default function TabsLayout() {
             }
 
             event.preventDefault();
-            router.push('/parent-unlock');
+            router.navigate('/parent-unlock');
           },
         }}
         options={{

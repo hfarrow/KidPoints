@@ -107,6 +107,7 @@ describe('store logging', () => {
     });
 
     store.getState().setThemeMode('dark');
+    store.getState().setDeveloperModeEnabled(true);
     store.getState().setHapticsEnabled(false);
     store.getState().setLogLevel('error');
     store.getState().ensureLogNamespaceColors(['alpha']);
@@ -118,6 +119,13 @@ describe('store logging', () => {
       expect.objectContaining({
         action: 'setThemeMode',
         themeMode: 'dark',
+      }),
+    );
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Local settings mutation committed',
+      expect.objectContaining({
+        action: 'setDeveloperModeEnabled',
+        developerModeEnabled: true,
       }),
     );
     expect(mockLogger.debug).toHaveBeenCalledWith(

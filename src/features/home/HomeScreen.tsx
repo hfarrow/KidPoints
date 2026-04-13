@@ -9,6 +9,7 @@ import { ScreenScaffold } from '../../components/ScreenScaffold';
 import { ActionPill, ActionPillRow } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
 import { createModuleLogger } from '../../logging/logger';
+import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { useSharedStore } from '../../state/sharedStore';
 import { useNotifications } from '../notifications/NotificationsProvider';
 import { presentTextInputModal } from '../overlays/textInputModalStore';
@@ -26,6 +27,9 @@ export function HomeScreen() {
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked } = useParentSession();
   const { tokens } = useAppTheme();
+  const developerModeEnabled = useLocalSettingsStore(
+    (state) => state.developerModeEnabled,
+  );
   const head = useSharedStore((state) => state.document.head);
   const addChild = useSharedStore((state) => state.addChild);
   const adjustPoints = useSharedStore((state) => state.adjustPoints);
@@ -44,6 +48,14 @@ export function HomeScreen() {
         .filter(Boolean),
     [head],
   );
+  const archivedChildren = useMemo(
+    () =>
+      head.archivedChildIds
+        .map((childId) => head.childrenById[childId])
+        .filter(Boolean),
+    [head],
+  );
+  const hasArchivedChildren = archivedChildren.length > 0;
 
   useEffect(() => {
     log.debug('Home screen initialized');
@@ -88,11 +100,11 @@ export function HomeScreen() {
 
   const openSyncDevices = () => {
     if (!isParentUnlocked) {
-      router.push('/parent-unlock');
+      router.navigate('/parent-unlock');
       return;
     }
 
-    router.push('/sync');
+    router.navigate('/sync');
   };
 
   return (
@@ -122,7 +134,7 @@ export function HomeScreen() {
           onStart={() => {
             void requestTimerStart('home');
           }}
-          onUnlock={() => router.push('/parent-unlock')}
+          onUnlock={() => router.navigate('/parent-unlock')}
           pauseDisabled={!timerViewModel.canPause}
           remainingLabel={timerViewModel.remainingLabel}
           resetDisabled={!timerViewModel.canReset}
@@ -145,7 +157,7 @@ export function HomeScreen() {
                     return;
                   }
 
-                  router.push('/parent-unlock');
+                  router.navigate('/parent-unlock');
                 }}
                 tone="primary"
               />
@@ -166,7 +178,7 @@ export function HomeScreen() {
                 onAdjustPoints={(delta) => adjustPoints(child.id, delta)}
                 onEditPoints={() => {
                   if (!isParentUnlocked) {
-                    router.push('/parent-unlock');
+                    router.navigate('/parent-unlock');
                     return;
                   }
 
@@ -208,31 +220,46 @@ export function HomeScreen() {
           {isParentUnlocked ? (
             <ActionPillRow>
               <ActionPill label="Add Child" onPress={openAddChildModal} />
-              <ActionPill
-                label="Archived Children"
-                onPress={() => {
-                  setIsArchivedChildrenVisible(true);
-                }}
-              />
-              <ActionPill
-                label="Sync Testbed"
-                onPress={() => router.push('/sync-testbed')}
-              />
+              {hasArchivedChildren ? (
+                <ActionPill
+                  label="Unarchive Child"
+                  onPress={() => {
+                    setIsArchivedChildrenVisible(true);
+                  }}
+                />
+              ) : null}
               <ActionPill
                 label="Transactions"
-                onPress={() => router.push('/transactions')}
+                onPress={() => router.navigate('/transactions')}
               />
             </ActionPillRow>
           ) : (
             <ActionPillRow>
               <ActionPill
                 label="Unlock with PIN"
-                onPress={() => router.push('/parent-unlock')}
+                onPress={() => router.navigate('/parent-unlock')}
                 tone="primary"
               />
             </ActionPillRow>
           )}
         </Tile>
+
+        {developerModeEnabled ? (
+          <Tile collapsible initiallyCollapsed title="Developer">
+            <ActionPillRow>
+              <ActionPill
+                pressDebounceMs={750}
+                label="Sync Testbed"
+                onPress={() => router.navigate('/sync-testbed')}
+              />
+              <ActionPill
+                pressDebounceMs={750}
+                label="Logs"
+                onPress={() => router.navigate('/logs')}
+              />
+            </ActionPillRow>
+          </Tile>
+        ) : null}
       </ScreenScaffold>
       <ArchivedChildrenOverlay
         onRequestClose={() => {

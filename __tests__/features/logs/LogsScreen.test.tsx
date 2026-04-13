@@ -26,9 +26,11 @@ import {
   setAppLogLevel,
 } from '../../../src/logging/logger';
 import { SharedStoreProvider } from '../../../src/state/sharedStore';
+import { scheduleAfterFrameCommit } from '../../../src/timing/scheduleAfterFrameCommit';
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockBack = jest.fn();
+const mockNavigate = jest.fn();
 
 jest.mock('@expo/vector-icons', () => {
   const mockReactNative = jest.requireActual('react-native');
@@ -40,17 +42,26 @@ jest.mock('@expo/vector-icons', () => {
 
   return {
     Feather: MockIcon,
+    Ionicons: MockIcon,
   };
 });
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: mockBack,
+    navigate: mockNavigate,
   }),
 }));
 
 jest.mock('../../../src/features/logs/shareLogs', () => ({
   shareBufferedLogsAsync: jest.fn(),
+}));
+
+jest.mock('../../../src/timing/scheduleAfterFrameCommit', () => ({
+  scheduleAfterFrameCommit: jest.fn((callback: () => void) => {
+    callback();
+    return jest.fn();
+  }),
 }));
 
 describe('LogsScreen', () => {
@@ -59,12 +70,14 @@ describe('LogsScreen', () => {
     setAppLogLevel('debug');
     clearTextInputModal();
     mockBack.mockReset();
+    mockNavigate.mockReset();
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'info').mockImplementation(() => {});
     jest.spyOn(console, 'warn').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.mocked(shareBufferedLogsAsync).mockResolvedValue({ ok: true });
+    jest.mocked(scheduleAfterFrameCommit).mockClear();
   });
 
   afterEach(() => {
@@ -142,10 +155,23 @@ describe('LogsScreen', () => {
 
     expect(screen.getByText('No Logs Yet')).toBeTruthy();
     expect(
+      screen.getByLabelText('Unlock parent mode for device sync'),
+    ).toBeTruthy();
+    expect(
       screen.getByText(
         'Logs written through the shared app logger will appear here during this app session.',
       ),
     ).toBeTruthy();
+  });
+
+  it('opens the shared sync flow from the header actions', () => {
+    renderLogsScreen();
+
+    fireEvent.press(
+      screen.getByLabelText('Unlock parent mode for device sync'),
+    );
+
+    expect(mockNavigate).toHaveBeenCalledWith('/parent-unlock');
   });
 
   it('shows newest logs first and expands full multiline content on demand', () => {
