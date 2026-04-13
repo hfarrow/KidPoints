@@ -19,11 +19,15 @@ import { LoggedPressable } from '../../components/LoggedPressable';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import type { SharedCommandResult } from '../../state/sharedTypes';
 import { triggerLightImpactHaptic } from '../haptics/appHaptics';
+import {
+  CHILD_POINTS_CAP_MIN_WIDTH,
+  CHILD_POINTS_RAIL_MIN_HEIGHT,
+} from '../points/pointsRailMetrics';
 import { type useAppTheme, useThemedStyles } from '../theme/appTheme';
 
 const POINT_TRANSITION_DURATION_MS = 250;
 const MIN_TRAVEL_DISTANCE_PX = 32;
-const POINT_VALUE_LINE_HEIGHT = 28;
+const POINT_VALUE_LINE_HEIGHT = 52;
 
 type ChildPointsRailProps = {
   childId: string;
@@ -324,7 +328,7 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       backgroundColor: tokens.controlSurface,
       borderRadius: 999,
       flexDirection: 'row',
-      minHeight: 42,
+      minHeight: CHILD_POINTS_RAIL_MIN_HEIGHT,
       overflow: 'hidden',
     },
     pointsRailLocked: {
@@ -333,9 +337,9 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     pointsSegment: {
       alignItems: 'center',
       justifyContent: 'center',
-      minWidth: 0,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
+      minWidth: CHILD_POINTS_CAP_MIN_WIDTH,
+      paddingHorizontal: 20,
+      paddingVertical: 16,
     },
     pointsCapLeft: {
       backgroundColor: tokens.actionDecrementSurface,
@@ -358,17 +362,18 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       flexGrow: 6,
       justifyContent: 'center',
       minWidth: 0,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
+      paddingHorizontal: 18,
+      paddingVertical: 16,
     },
     pointsCoreLocked: {
       borderRadius: 999,
       flexBasis: 'auto',
       flexGrow: 0,
-      minWidth: 110,
+      minHeight: CHILD_POINTS_RAIL_MIN_HEIGHT,
+      minWidth: 150,
     },
     pointsCapText: {
-      fontSize: 14,
+      fontSize: 18,
       fontWeight: '800',
     },
     pointsCapTextLeft: {
@@ -403,7 +408,7 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
     },
     pointsValue: {
       color: tokens.textPrimary,
-      fontSize: 24,
+      fontSize: 38,
       fontVariant: ['tabular-nums'],
       fontWeight: '900',
       lineHeight: POINT_VALUE_LINE_HEIGHT,

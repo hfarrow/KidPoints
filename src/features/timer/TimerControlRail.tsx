@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { LoggedPressable } from '../../components/LoggedPressable';
@@ -16,6 +17,7 @@ type TimerControlRailProps = {
 type TimerRailButtonProps = {
   accessibilityLabel: string;
   disabled: boolean;
+  iconName: keyof typeof Feather.glyphMap;
   isLast?: boolean;
   label: string;
   logLabel: string;
@@ -25,6 +27,7 @@ type TimerRailButtonProps = {
 function TimerRailButton({
   accessibilityLabel,
   disabled,
+  iconName,
   isLast = false,
   label,
   logLabel,
@@ -45,9 +48,20 @@ function TimerRailButton({
         disabled && styles.buttonDisabled,
       ]}
     >
-      <Text style={[styles.buttonText, disabled && styles.buttonTextDisabled]}>
-        {label}
-      </Text>
+      <View style={styles.buttonContent}>
+        <Feather
+          color={
+            disabled ? styles.buttonTextDisabled.color : styles.buttonText.color
+          }
+          name={iconName}
+          size={14}
+        />
+        <Text
+          style={[styles.buttonText, disabled && styles.buttonTextDisabled]}
+        >
+          {label}
+        </Text>
+      </View>
     </LoggedPressable>
   );
 }
@@ -68,6 +82,7 @@ export function TimerControlRail({
       <TimerRailButton
         accessibilityLabel={`${contextLabel} start timer`}
         disabled={startDisabled}
+        iconName="play"
         label="Start"
         logLabel={`${contextLabel} start timer`}
         onPress={onStart}
@@ -75,6 +90,7 @@ export function TimerControlRail({
       <TimerRailButton
         accessibilityLabel={`${contextLabel} pause timer`}
         disabled={pauseDisabled}
+        iconName="pause"
         label="Pause"
         logLabel={`${contextLabel} pause timer`}
         onPress={onPause}
@@ -82,6 +98,7 @@ export function TimerControlRail({
       <TimerRailButton
         accessibilityLabel={`${contextLabel} reset timer`}
         disabled={resetDisabled}
+        iconName="rotate-ccw"
         isLast
         label="Reset"
         logLabel={`${contextLabel} reset timer`}
@@ -119,6 +136,12 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       color: tokens.controlText,
       fontSize: 13,
       fontWeight: '800',
+    },
+    buttonContent: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 6,
+      justifyContent: 'center',
     },
     buttonTextDisabled: {
       color: tokens.textMuted,

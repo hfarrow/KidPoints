@@ -5,7 +5,13 @@ import { useParentSession } from '../features/parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../features/theme/appTheme';
 import { LoggedPressable } from './LoggedPressable';
 
-export function MainScreenActions() {
+type MainScreenActionsProps = {
+  onPressSyncDevices?: () => void;
+};
+
+export function MainScreenActions({
+  onPressSyncDevices,
+}: MainScreenActionsProps) {
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const { isParentUnlocked, lockParentMode } = useParentSession();
@@ -25,6 +31,24 @@ export function MainScreenActions() {
           size={18}
         />
       </LoggedPressable>
+      {onPressSyncDevices ? (
+        <LoggedPressable
+          accessibilityLabel={
+            isParentUnlocked
+              ? 'Open Device Sync'
+              : 'Unlock parent mode for device sync'
+          }
+          logLabel={
+            isParentUnlocked
+              ? 'Open Device Sync'
+              : 'Unlock parent mode for device sync'
+          }
+          onPress={onPressSyncDevices}
+          style={styles.action}
+        >
+          <Feather color={tokens.controlText} name="refresh-cw" size={18} />
+        </LoggedPressable>
+      ) : null}
       <LoggedPressable
         accessibilityLabel={
           isParentUnlocked ? 'Lock Parent Mode' : 'Unlock Parent Mode'

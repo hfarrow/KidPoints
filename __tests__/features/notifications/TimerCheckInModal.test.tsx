@@ -5,8 +5,13 @@ import {
   waitFor,
 } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { StyleSheet } from 'react-native';
 
 import { TimerCheckInModal } from '../../../src/features/notifications/TimerCheckInModal';
+import {
+  CHILD_POINTS_CAP_MIN_WIDTH,
+  CHILD_POINTS_RAIL_MIN_HEIGHT,
+} from '../../../src/features/points/pointsRailMetrics';
 
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn();
@@ -54,11 +59,15 @@ jest.mock('../../../src/components/LoggedPressable', () => ({
     children,
     disabled,
     onPress,
+    style,
+    testID,
   }: {
     accessibilityLabel?: string;
     children: ReactNode;
     disabled?: boolean;
     onPress: () => void;
+    style?: unknown;
+    testID?: string;
   }) => {
     const { Pressable } = jest.requireActual('react-native');
 
@@ -67,6 +76,8 @@ jest.mock('../../../src/components/LoggedPressable', () => ({
         accessibilityLabel={accessibilityLabel}
         disabled={disabled}
         onPress={onPress}
+        style={style}
+        testID={testID}
       >
         {children}
       </Pressable>
@@ -211,6 +222,22 @@ describe('TimerCheckInModal', () => {
     expect(renderedTree.indexOf('Restart Countdown')).toBeLessThan(
       renderedTree.indexOf('Avery'),
     );
+
+    const childRailStyle = StyleSheet.flatten(
+      screen.getByTestId('timer-check-in-child-rail-child-1').props.style,
+    );
+    const dismissButtonStyle = StyleSheet.flatten(
+      screen.getByLabelText('Dismiss point for Avery').props.style,
+    );
+    const awardButtonStyle = StyleSheet.flatten(
+      screen.getByLabelText('Award point to Avery').props.style,
+    );
+
+    expect(childRailStyle.minHeight).toBe(CHILD_POINTS_RAIL_MIN_HEIGHT);
+    expect(dismissButtonStyle.width).toBe(CHILD_POINTS_CAP_MIN_WIDTH);
+    expect(dismissButtonStyle.minWidth).toBe(CHILD_POINTS_CAP_MIN_WIDTH);
+    expect(awardButtonStyle.width).toBe(CHILD_POINTS_CAP_MIN_WIDTH);
+    expect(awardButtonStyle.minWidth).toBe(CHILD_POINTS_CAP_MIN_WIDTH);
 
     fireEvent.press(screen.getByLabelText('Award point to Avery'));
     expect(mockTriggerLightImpactHaptic).toHaveBeenCalledWith(true);

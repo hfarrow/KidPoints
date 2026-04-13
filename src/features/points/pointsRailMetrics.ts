@@ -1,0 +1,2 @@
+export const CHILD_POINTS_RAIL_MIN_HEIGHT = 84;
+export const CHILD_POINTS_CAP_MIN_WIDTH = 88;

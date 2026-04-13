@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "platforms": ["android"],
     "scheme": "kidpoints",
-    "icon": "./assets/icon-kidpoints-direction-badge-like.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -16,7 +16,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,

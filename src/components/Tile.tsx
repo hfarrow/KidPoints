@@ -19,6 +19,7 @@ type TileProps = {
   density?: 'default' | 'extraCompact';
   disableCollapseLogging?: boolean;
   footer?: ReactNode;
+  headerHidden?: boolean;
   initiallyCollapsed?: boolean;
   leadingAccessory?: ReactNode;
   muted?: boolean;
@@ -38,6 +39,7 @@ export function Tile({
   density = 'default',
   disableCollapseLogging = false,
   footer,
+  headerHidden = false,
   initiallyCollapsed = false,
   leadingAccessory,
   muted = false,
@@ -100,65 +102,71 @@ export function Tile({
           </View>
         ) : null}
         <View style={styles.body}>
-          {collapsible ? (
-            <LoggedPressable
-              accessibilityLabel={`${isCollapsed ? 'Expand' : 'Collapse'} ${titleText}`}
-              accessibilityRole="button"
-              disableLogging={disableCollapseLogging}
-              logContext={{
-                component: 'Tile',
-                isCollapsed,
-                title: titleText,
-              }}
-              logLabel={`${isCollapsed ? 'Expand' : 'Collapse'} ${titleText}`}
-              onPress={toggleCollapsed}
-              style={[
-                styles.headerRow,
-                density === 'extraCompact' && styles.headerRowExtraCompact,
-              ]}
-            >
-              <View style={styles.titleWrap}>{titleNode}</View>
-              {accessory || collapsible ? (
-                <View style={styles.headerActions}>
-                  {accessory ? (
-                    <View style={styles.accessory}>{accessory}</View>
-                  ) : null}
-                  <View
-                    style={[
-                      styles.expanderButton,
-                      density === 'extraCompact' &&
-                        styles.expanderButtonExtraCompact,
-                    ]}
-                  >
-                    <Feather
-                      color={styles.expanderIcon.color}
-                      name={isCollapsed ? 'chevron-right' : 'chevron-down'}
-                      size={18}
-                    />
+          {!headerHidden ? (
+            collapsible ? (
+              <LoggedPressable
+                accessibilityLabel={`${isCollapsed ? 'Expand' : 'Collapse'} ${titleText}`}
+                accessibilityRole="button"
+                disableLogging={disableCollapseLogging}
+                logContext={{
+                  component: 'Tile',
+                  isCollapsed,
+                  title: titleText,
+                }}
+                logLabel={`${isCollapsed ? 'Expand' : 'Collapse'} ${titleText}`}
+                onPress={toggleCollapsed}
+                style={[
+                  styles.headerRow,
+                  density === 'extraCompact' && styles.headerRowExtraCompact,
+                ]}
+              >
+                <View style={styles.titleWrap}>{titleNode}</View>
+                {accessory || collapsible ? (
+                  <View style={styles.headerActions}>
+                    {accessory ? (
+                      <View style={styles.accessory}>{accessory}</View>
+                    ) : null}
+                    <View
+                      style={[
+                        styles.expanderButton,
+                        density === 'extraCompact' &&
+                          styles.expanderButtonExtraCompact,
+                      ]}
+                    >
+                      <Feather
+                        color={styles.expanderIcon.color}
+                        name={isCollapsed ? 'chevron-right' : 'chevron-down'}
+                        size={18}
+                      />
+                    </View>
                   </View>
-                </View>
-              ) : null}
-            </LoggedPressable>
-          ) : (
-            <View
-              style={[
-                styles.headerRow,
-                density === 'extraCompact' && styles.headerRowExtraCompact,
-              ]}
-            >
-              <View style={styles.titleWrap}>{titleNode}</View>
-              {accessory ? (
-                <View style={styles.headerActions}>
-                  <View style={styles.accessory}>{accessory}</View>
-                </View>
-              ) : null}
-            </View>
-          )}
+                ) : null}
+              </LoggedPressable>
+            ) : (
+              <View
+                style={[
+                  styles.headerRow,
+                  density === 'extraCompact' && styles.headerRowExtraCompact,
+                ]}
+              >
+                <View style={styles.titleWrap}>{titleNode}</View>
+                {accessory ? (
+                  <View style={styles.headerActions}>
+                    <View style={styles.accessory}>{accessory}</View>
+                  </View>
+                ) : null}
+              </View>
+            )
+          ) : null}
           {hasVisibleContent ? (
             <View
               style={[
                 styles.contentWrap,
+                headerHidden && styles.contentWrapHeaderHidden,
                 density === 'extraCompact' && styles.contentWrapExtraCompact,
+                density === 'extraCompact' &&
+                  headerHidden &&
+                  styles.contentWrapHeaderHiddenExtraCompact,
               ]}
             >
               {summary ? (
@@ -246,9 +254,15 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       gap: 8,
       paddingTop: 6,
     },
+    contentWrapHeaderHidden: {
+      paddingTop: 0,
+    },
     contentWrapExtraCompact: {
       gap: 6,
       paddingTop: 4,
+    },
+    contentWrapHeaderHiddenExtraCompact: {
+      paddingTop: 0,
     },
     summaryRow: {
       alignItems: 'center',

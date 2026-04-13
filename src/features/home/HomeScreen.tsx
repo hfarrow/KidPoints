@@ -1,17 +1,12 @@
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 
-import { LoggedPressable } from '../../components/LoggedPressable';
 import { MainScreenActions } from '../../components/MainScreenActions';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { ScreenScaffold } from '../../components/ScreenScaffold';
-import {
-  ActionPill,
-  ActionPillRow,
-  StatusBadge,
-} from '../../components/Skeleton';
+import { ActionPill, ActionPillRow } from '../../components/Skeleton';
 import { Tile } from '../../components/Tile';
 import { createModuleLogger } from '../../logging/logger';
 import { useSharedStore } from '../../state/sharedStore';
@@ -19,8 +14,7 @@ import { useNotifications } from '../notifications/NotificationsProvider';
 import { presentTextInputModal } from '../overlays/textInputModalStore';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
-import { CountdownTileSummary } from '../timer/CountdownTileSummary';
-import { TimerControlRail } from '../timer/TimerControlRail';
+import { CompactCountdownTile } from '../timer/CompactCountdownTile';
 import { useSharedTimerViewModel } from '../timer/useSharedTimerViewModel';
 import { ArchivedChildrenOverlay } from './ArchivedChildrenOverlay';
 import { ChildPointsRail } from './ChildPointsRail';
@@ -92,20 +86,20 @@ export function HomeScreen() {
     });
   };
 
-  const openAlarmScreen = () => {
+  const openSyncDevices = () => {
     if (!isParentUnlocked) {
       router.push('/parent-unlock');
       return;
     }
 
-    router.push('/alarm');
+    router.push('/sync');
   };
 
   return (
     <View style={styles.screenRoot}>
       <ScreenScaffold>
         <ScreenHeader
-          actions={<MainScreenActions />}
+          actions={<MainScreenActions onPressSyncDevices={openSyncDevices} />}
           title="Home"
           titleIcon={
             <Ionicons
@@ -116,71 +110,26 @@ export function HomeScreen() {
           }
         />
 
-        <Tile
-          accessory={
-            <StatusBadge
-              label={timerViewModel.statusLabel}
-              tone={timerViewModel.statusTone}
-            />
-          }
-          summary={
-            <CountdownTileSummary
-              remainingLabel={timerViewModel.remainingLabel}
-              statusLabel={timerViewModel.statusLabel}
-              statusTone={timerViewModel.statusTone}
-              trailingAction={
-                <LoggedPressable
-                  accessibilityLabel={
-                    isParentUnlocked
-                      ? 'Open alarm settings'
-                      : 'Unlock parent mode for alarm settings'
-                  }
-                  logContext={{ isParentUnlocked }}
-                  logLabel={
-                    isParentUnlocked
-                      ? 'Open alarm settings'
-                      : 'Unlock parent mode for alarm settings'
-                  }
-                  onPress={openAlarmScreen}
-                  style={styles.summaryIconAction}
-                >
-                  <Feather
-                    color={tokens.controlText}
-                    name="settings"
-                    size={16}
-                  />
-                </LoggedPressable>
-              }
-            />
-          }
-          title="Countdown"
-        >
-          {isParentUnlocked ? (
-            <TimerControlRail
-              contextLabel="Home"
-              onPause={() => {
-                pauseTimer();
-              }}
-              onReset={() => {
-                resetTimer();
-              }}
-              onStart={() => {
-                void requestTimerStart('home');
-              }}
-              pauseDisabled={!timerViewModel.canPause}
-              resetDisabled={!timerViewModel.canReset}
-              startDisabled={!timerViewModel.canStart}
-            />
-          ) : (
-            <ActionPillRow>
-              <ActionPill
-                label="Unlock To Control"
-                onPress={() => router.push('/parent-unlock')}
-                tone="primary"
-              />
-            </ActionPillRow>
-          )}
-        </Tile>
+        <CompactCountdownTile
+          contextLabel="Home"
+          isParentUnlocked={isParentUnlocked}
+          onPause={() => {
+            pauseTimer();
+          }}
+          onReset={() => {
+            resetTimer();
+          }}
+          onStart={() => {
+            void requestTimerStart('home');
+          }}
+          onUnlock={() => router.push('/parent-unlock')}
+          pauseDisabled={!timerViewModel.canPause}
+          remainingLabel={timerViewModel.remainingLabel}
+          resetDisabled={!timerViewModel.canReset}
+          startDisabled={!timerViewModel.canStart}
+          statusLabel={timerViewModel.statusLabel}
+          statusTone={timerViewModel.statusTone}
+        />
 
         {activeChildren.length === 0 ? (
           <Tile title="Add Child">
@@ -266,11 +215,6 @@ export function HomeScreen() {
                 }}
               />
               <ActionPill
-                label="Sync Devices"
-                onPress={() => router.push('/sync')}
-                tone="primary"
-              />
-              <ActionPill
                 label="Sync Testbed"
                 onPress={() => router.push('/sync-testbed')}
               />
@@ -310,15 +254,6 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       fontSize: 13,
       fontWeight: '600',
       lineHeight: 18,
-    },
-    summaryIconAction: {
-      alignItems: 'center',
-      backgroundColor: tokens.controlSurface,
-      borderRadius: 16,
-      flexShrink: 0,
-      height: 32,
-      justifyContent: 'center',
-      width: 32,
     },
     screenRoot: {
       flex: 1,

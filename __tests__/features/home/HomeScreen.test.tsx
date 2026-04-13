@@ -142,14 +142,16 @@ describe('HomeScreen', () => {
     );
 
     expect(screen.getByText('Home')).toBeTruthy();
-    expect(screen.getByText('Countdown')).toBeTruthy();
+    expect(screen.queryByText('Countdown')).toBeNull();
     expect(screen.getByText('15:00')).toBeTruthy();
+    expect(screen.getByLabelText(/Countdown Ready/)).toBeTruthy();
     expect(screen.queryByText('15m cadence')).toBeNull();
     expect(screen.queryByText('20s alarm')).toBeNull();
     expect(screen.getAllByText('Add Child')).toHaveLength(2);
     expect(screen.getByText('Add a child to get started!')).toBeTruthy();
     expect(screen.getByText('Parent')).toBeTruthy();
     expect(screen.getByLabelText('Home start timer')).toBeTruthy();
+    expect(screen.getByLabelText('Open Device Sync')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Open Settings'));
     expect(mockPush).toHaveBeenCalledWith('/settings');
@@ -184,8 +186,16 @@ describe('HomeScreen', () => {
     expect(screen.queryByText('Unlock Parent Mode')).toBeNull();
     expect(screen.queryByLabelText('Expand Ava')).toBeNull();
     expect(screen.queryByText('Add Child')).toBeNull();
+    expect(
+      screen.getByLabelText('Unlock parent mode for device sync'),
+    ).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Edit Ava points'));
+    expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
+
+    fireEvent.press(
+      screen.getByLabelText('Unlock parent mode for device sync'),
+    );
     expect(mockPush).toHaveBeenCalledWith('/parent-unlock');
   });
 
@@ -234,7 +244,7 @@ describe('HomeScreen', () => {
     );
   });
 
-  it('starts the shared timer from Home and opens the alarm tab affordance', () => {
+  it('starts the shared timer from the compact Home countdown rail', () => {
     render(
       <SharedStoreProvider
         initialDocument={createInitialSharedDocument({
@@ -256,10 +266,8 @@ describe('HomeScreen', () => {
 
     fireEvent.press(screen.getByLabelText('Home start timer'));
     expect(mockRequestTimerStart).toHaveBeenCalledWith('home');
-    expect(screen.getByText('Running')).toBeTruthy();
-
-    fireEvent.press(screen.getByLabelText('Open alarm settings'));
-    expect(mockPush).toHaveBeenCalledWith('/alarm');
+    expect(screen.getByLabelText(/Countdown Running/)).toBeTruthy();
+    expect(screen.queryByLabelText('Open alarm settings')).toBeNull();
   });
 
   it('keeps parent tools collapsed by default without an unlocked badge', () => {
@@ -289,14 +297,15 @@ describe('HomeScreen', () => {
     expect(screen.getByText('Parent')).toBeTruthy();
     expect(screen.queryByText('Unlocked')).toBeNull();
     expect(screen.queryByText('Add Child')).toBeNull();
+    expect(screen.getByLabelText('Open Device Sync')).toBeTruthy();
 
     fireEvent.press(screen.getByText('Parent'));
     expect(screen.getByText('Add Child')).toBeTruthy();
-    expect(screen.getByText('Sync Devices')).toBeTruthy();
+    expect(screen.queryByText('Sync Devices')).toBeNull();
     expect(screen.getByText('Sync Testbed')).toBeTruthy();
     expect(screen.getByText('Transactions')).toBeTruthy();
 
-    fireEvent.press(screen.getByText('Sync Devices'));
+    fireEvent.press(screen.getByLabelText('Open Device Sync'));
     expect(mockPush).toHaveBeenCalledWith('/sync');
 
     fireEvent.press(screen.getByText('Sync Testbed'));

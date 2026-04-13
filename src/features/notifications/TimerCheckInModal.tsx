@@ -14,6 +14,10 @@ import { ActionPill } from '../../components/Skeleton';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
 import { triggerLightImpactHaptic } from '../haptics/appHaptics';
 import { useParentSession } from '../parent/parentSessionContext';
+import {
+  CHILD_POINTS_CAP_MIN_WIDTH,
+  CHILD_POINTS_RAIL_MIN_HEIGHT,
+} from '../points/pointsRailMetrics';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import { useNotifications } from './NotificationsProvider';
 
@@ -177,7 +181,11 @@ function TimerCheckInModalContent({
 
             <View style={styles.childList}>
               {activeExpiredTimerSession.childActions.map((childAction) => (
-                <View key={childAction.childId} style={styles.childRail}>
+                <View
+                  key={childAction.childId}
+                  style={styles.childRail}
+                  testID={`timer-check-in-child-rail-${childAction.childId}`}
+                >
                   <ResolveChildButton
                     accessibilityLabel={`Dismiss point for ${childAction.childName}`}
                     color={tokens.resolveDismissText}
@@ -266,7 +274,7 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       backgroundColor: tokens.controlSurface,
       borderRadius: 999,
       flexDirection: 'row',
-      minHeight: 58,
+      minHeight: CHILD_POINTS_RAIL_MIN_HEIGHT,
       overflow: 'hidden',
       width: '100%',
     },
@@ -279,8 +287,8 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       gap: 2,
       justifyContent: 'center',
       minWidth: 140,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
     },
     childStatus: {
       color: tokens.textMuted,
@@ -315,10 +323,10 @@ const createStyles = ({ tokens }: ReturnType<typeof useAppTheme>) =>
       flexGrow: 0,
       flexShrink: 0,
       justifyContent: 'center',
-      width: 56,
-      minWidth: 56,
-      paddingHorizontal: 8,
-      paddingVertical: 10,
+      width: CHILD_POINTS_CAP_MIN_WIDTH,
+      minWidth: CHILD_POINTS_CAP_MIN_WIDTH,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
     },
     resolveButtonActive: {
       opacity: 1,

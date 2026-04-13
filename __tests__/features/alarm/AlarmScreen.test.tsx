@@ -126,7 +126,8 @@ describe('AlarmScreen', () => {
 
     expect(screen.getByText('Alarm')).toBeTruthy();
     expect(screen.getByText('Unlock Required')).toBeTruthy();
-    expect(screen.getByText('Countdown')).toBeTruthy();
+    expect(screen.queryByText('Countdown')).toBeNull();
+    expect(screen.getByLabelText(/Countdown Ready/)).toBeTruthy();
     expect(screen.queryByText('15m cadence')).toBeNull();
     expect(screen.queryByText('20s alarm')).toBeNull();
     expect(screen.getByText('Live Countdown')).toBeTruthy();
@@ -157,7 +158,8 @@ describe('AlarmScreen', () => {
     );
 
     expect(screen.getByText('Settings')).toBeTruthy();
-    expect(screen.getByText('Countdown')).toBeTruthy();
+    expect(screen.queryByText('Countdown')).toBeNull();
+    expect(screen.getByLabelText(/Countdown Ready/)).toBeTruthy();
     expect(screen.queryByText('15m cadence')).toBeNull();
     expect(screen.queryByText('20s alarm')).toBeNull();
     expect(screen.getByLabelText('Alarm start timer')).toBeTruthy();
@@ -174,7 +176,7 @@ describe('AlarmScreen', () => {
 
     fireEvent.press(screen.getByLabelText('Alarm start timer'));
     expect(mockRequestTimerStart).toHaveBeenCalledWith('alarm');
-    expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText(/Countdown Running/)).toBeTruthy();
 
     const intervalMinutesInput = screen.getByLabelText('Interval minutes');
     const intervalSecondsInput = screen.getByLabelText('Interval seconds');

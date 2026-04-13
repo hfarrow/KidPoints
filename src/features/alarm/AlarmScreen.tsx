@@ -21,8 +21,7 @@ import { NotificationSettingsTile } from '../notifications/NotificationSettingsT
 import { useNotifications } from '../notifications/NotificationsProvider';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
-import { CountdownTileSummary } from '../timer/CountdownTileSummary';
-import { TimerControlRail } from '../timer/TimerControlRail';
+import { CompactCountdownTile } from '../timer/CompactCountdownTile';
 import { useSharedTimerViewModel } from '../timer/useSharedTimerViewModel';
 
 const log = createModuleLogger('alarm-screen');
@@ -119,48 +118,26 @@ export function AlarmScreen() {
         </Tile>
       ) : null}
 
-      <Tile
-        accessory={
-          <StatusBadge
-            label={timerViewModel.statusLabel}
-            tone={timerViewModel.statusTone}
-          />
-        }
-        summary={
-          <CountdownTileSummary
-            remainingLabel={timerViewModel.remainingLabel}
-            statusLabel={timerViewModel.statusLabel}
-            statusTone={timerViewModel.statusTone}
-          />
-        }
-        title="Countdown"
-      >
-        {isParentUnlocked ? (
-          <TimerControlRail
-            contextLabel="Alarm"
-            onPause={() => {
-              pauseTimer();
-            }}
-            onReset={() => {
-              resetTimer();
-            }}
-            onStart={() => {
-              void requestTimerStart('alarm');
-            }}
-            pauseDisabled={!timerViewModel.canPause}
-            resetDisabled={!timerViewModel.canReset}
-            startDisabled={!timerViewModel.canStart}
-          />
-        ) : (
-          <ActionPillRow>
-            <ActionPill
-              label="Unlock To Control"
-              onPress={() => router.push('/parent-unlock')}
-              tone="primary"
-            />
-          </ActionPillRow>
-        )}
-      </Tile>
+      <CompactCountdownTile
+        contextLabel="Alarm"
+        isParentUnlocked={isParentUnlocked}
+        onPause={() => {
+          pauseTimer();
+        }}
+        onReset={() => {
+          resetTimer();
+        }}
+        onStart={() => {
+          void requestTimerStart('alarm');
+        }}
+        onUnlock={() => router.push('/parent-unlock')}
+        pauseDisabled={!timerViewModel.canPause}
+        remainingLabel={timerViewModel.remainingLabel}
+        resetDisabled={!timerViewModel.canReset}
+        startDisabled={!timerViewModel.canStart}
+        statusLabel={timerViewModel.statusLabel}
+        statusTone={timerViewModel.statusTone}
+      />
 
       {isParentUnlocked ? (
         <Tile title="Settings">
