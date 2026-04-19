@@ -63,6 +63,11 @@ const grantedPermissions = {
 
 const mockAcceptConnection = jest.fn<Promise<void>, [string]>(async () => {});
 const mockBeginNfcBootstrap = jest.fn(async () => undefined);
+const mockCreateBackup = jest.fn(async () => ({
+  metadata: null,
+  ok: true as const,
+  source: 'local' as const,
+}));
 const mockGetNfcBootstrapAvailability = jest.fn(
   async () => readyNfcAvailability,
 );
@@ -149,6 +154,12 @@ jest.mock('../../../src/features/sync/syncRuntimeContext', () => ({
   useSyncRuntime: () => mockRuntime,
 }));
 
+jest.mock('../../../src/features/backup/BackupProvider', () => ({
+  useBackup: () => ({
+    createBackup: mockCreateBackup,
+  }),
+}));
+
 jest.mock('../../../src/features/sync/syncFileTransfer', () => ({
   exportSyncProjectionToFile: jest.fn(() => ({
     exportId: 'projection-export-1',
@@ -207,6 +218,11 @@ describe('useNearbySyncSession', () => {
     listeners.payloadProgress = null;
     mockAcceptConnection.mockResolvedValue(undefined);
     mockBeginNfcBootstrap.mockResolvedValue(undefined);
+    mockCreateBackup.mockResolvedValue({
+      metadata: null,
+      ok: true,
+      source: 'local',
+    });
     mockGetNfcBootstrapAvailability.mockResolvedValue(readyNfcAvailability);
     mockIsAvailable.mockResolvedValue(readyAvailability);
     mockRequestConnection.mockResolvedValue(undefined);

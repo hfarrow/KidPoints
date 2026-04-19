@@ -4,6 +4,10 @@ import { AppState, Text } from 'react-native';
 
 import { AppProviders } from '../../src/providers/AppProviders';
 
+jest.mock('../../src/features/backup/BackupProvider', () => ({
+  BackupProvider: ({ children }: { children: ReactNode }) => children,
+}));
+
 jest.mock('../../src/logging/logger', () => {
   const mockLogger = {
     debug: jest.fn(),

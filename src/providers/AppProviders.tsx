@@ -5,6 +5,7 @@ import {
   initialWindowMetrics,
   SafeAreaProvider,
 } from 'react-native-safe-area-context';
+import { BackupProvider } from '../features/backup/BackupProvider';
 import { NotificationsProvider } from '../features/notifications/NotificationsProvider';
 import { ParentSessionProvider } from '../features/parent/parentSessionContext';
 import { AppSettingsProvider } from '../features/settings/appSettingsContext';
@@ -94,14 +95,16 @@ export function AppProviders({ children }: PropsWithChildren) {
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <KeyboardProvider>
         <SharedStoreProvider>
-          <ParentSessionProvider>
-            <AppSettingsProvider>
-              <NotificationsProvider>
-                <AppLogLevelObserver />
-                {children}
-              </NotificationsProvider>
-            </AppSettingsProvider>
-          </ParentSessionProvider>
+          <BackupProvider>
+            <ParentSessionProvider>
+              <AppSettingsProvider>
+                <NotificationsProvider>
+                  <AppLogLevelObserver />
+                  {children}
+                </NotificationsProvider>
+              </AppSettingsProvider>
+            </ParentSessionProvider>
+          </BackupProvider>
         </SharedStoreProvider>
       </KeyboardProvider>
     </SafeAreaProvider>

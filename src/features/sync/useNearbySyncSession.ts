@@ -1,5 +1,4 @@
 import { useEffect, useReducer, useRef } from 'react';
-
 import { createModuleLogger } from '../../logging/logger';
 import { connectNativeLogReceiver } from '../../logging/nativeLogSync';
 import { useSharedStore } from '../../state/sharedStore';
@@ -9,6 +8,8 @@ import {
   prepareSyncDeviceBundle,
 } from '../../state/sharedSync';
 import type { SharedCommandResult } from '../../state/sharedTypes';
+import { useBackup } from '../backup/BackupProvider';
+import { applyPreparedSyncBundle } from './applyPreparedSyncBundle';
 import type {
   NearbySyncConnectionStateEvent,
   NearbySyncEndpoint,
@@ -162,6 +163,7 @@ function createSessionStartFailureMessage(
 
 export function useNearbySyncSession(): NearbySyncSessionController {
   const runtime = useSyncRuntime();
+  const { createBackup } = useBackup();
   const document = useSharedStore((state) => state.document);
   const applySyncBundle = useSharedStore((state) => state.applySyncBundle);
   const revertLastSync = useSharedStore((state) => state.revertLastSync);
@@ -649,6 +651,14 @@ export function useNearbySyncSession(): NearbySyncSessionController {
       };
     }
 
+    const applyResult = await applyPreparedSyncBundle({
+      applySyncBundle,
+      bundleHash,
+      createBackup,
+      currentDocument: documentRef.current,
+      preparedBundle,
+    });
+
     if (
       documentRef.current.syncState?.lastAppliedSync?.bundleHash === bundleHash
     ) {
@@ -660,13 +670,9 @@ export function useNearbySyncSession(): NearbySyncSessionController {
           sessionId: stateRef.current.sessionId,
         }),
       });
-      return { ok: true as const };
     }
 
-    return applySyncBundle(
-      preparedBundle.sharedBundle,
-      preparedBundle.localRollbackSnapshot,
-    );
+    return applyResult;
   }
 
   async function finalizeSuccessfulCommit(

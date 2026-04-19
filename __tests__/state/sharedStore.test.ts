@@ -1237,4 +1237,39 @@ describe('sharedStore sync integration', () => {
       leftStore.getState().document.syncState?.lastAppliedSync?.bundleHash,
     ).toBe(preparedBundle.sharedBundle.bundleHash);
   });
+
+  it('replaces the shared document when a backup is restored', () => {
+    const sourceStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-backup-restore-source',
+      }),
+      storage: createMemoryStorage(),
+    });
+    const targetStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-backup-restore-target',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(sourceStore.getState().addChild('Ava').ok).toBe(true);
+    const sourceChildId =
+      sourceStore.getState().document.head.activeChildIds[0];
+
+    if (!sourceChildId) {
+      throw new Error('Expected backup restore fixture to create a child.');
+    }
+
+    expect(sourceStore.getState().adjustPoints(sourceChildId, 4).ok).toBe(true);
+    expect(targetStore.getState().addChild('Noah').ok).toBe(true);
+
+    expect(
+      targetStore
+        .getState()
+        .restoreDocumentFromBackup(sourceStore.getState().document).ok,
+    ).toBe(true);
+    expect(targetStore.getState().document).toEqual(
+      cloneSharedDocument(sourceStore.getState().document),
+    );
+  });
 });

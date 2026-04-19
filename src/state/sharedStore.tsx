@@ -69,6 +69,7 @@ type SharedStoreState = {
     }[],
   ) => SharedCommandResult;
   restoreChild: (childId: string) => SharedCommandResult;
+  restoreDocumentFromBackup: (document: SharedDocument) => SharedCommandResult;
   revertLastSync: () => SharedCommandResult;
   restoreTransaction: (transactionId: string) => SharedCommandResult;
   setPoints: (childId: string, points: number) => SharedCommandResult;
@@ -634,7 +635,7 @@ function deriveNextSequence(events: SharedEvent[]) {
   return maxSequence + 1;
 }
 
-function isSharedDocument(value: unknown): value is SharedDocument {
+export function isSharedDocument(value: unknown): value is SharedDocument {
   if (!value || typeof value !== 'object') {
     return false;
   }
@@ -2438,6 +2439,34 @@ function createSharedStoreActions(
       });
 
       return result;
+    },
+    restoreDocumentFromBackup(document: SharedDocument): SharedCommandResult {
+      if (!isSharedDocument(document)) {
+        logRejectedSharedStoreMutation(
+          'restoreDocumentFromBackup',
+          'The requested backup did not contain a valid shared document.',
+        );
+        return {
+          error:
+            'The requested backup did not contain a valid shared document.',
+          ok: false,
+        };
+      }
+
+      const restoredDocument = cloneSharedDocument(document);
+
+      logSharedStoreMutation('restoreDocumentFromBackup', {
+        deviceId: restoredDocument.deviceId,
+        eventCount: restoredDocument.events.length,
+        transactionCount: restoredDocument.transactions.length,
+      });
+
+      set((state) => ({
+        ...state,
+        document: restoredDocument,
+      }));
+
+      return { ok: true };
     },
     restoreChild(childId: string): SharedCommandResult {
       let result: SharedCommandResult = { ok: true };

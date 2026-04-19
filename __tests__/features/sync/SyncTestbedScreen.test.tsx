@@ -16,6 +16,17 @@ import {
 import { createMemoryStorage } from '../../testUtils/memoryStorage';
 
 const mockFileContents = new Map<string, string>();
+const mockCreateBackup = jest.fn(async () => ({
+  metadata: null,
+  ok: true as const,
+  source: 'local' as const,
+}));
+
+jest.mock('../../../src/features/backup/BackupProvider', () => ({
+  useBackup: () => ({
+    createBackup: mockCreateBackup,
+  }),
+}));
 
 function setWindowDimensions(width: number, height: number) {
   const setDimensions = ReactNative.Dimensions.set as unknown as (dims: {
@@ -140,6 +151,7 @@ async function waitForPresetCompletion() {
 describe('SyncTestbedScreen', () => {
   beforeEach(() => {
     mockFileContents.clear();
+    mockCreateBackup.mockClear();
     setWindowDimensions(390, 844);
   });
 

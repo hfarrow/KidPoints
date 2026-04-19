@@ -21,6 +21,7 @@ import {
   getSelectableAppLogLevels,
 } from '../../logging/logger';
 import { useLocalSettingsStore } from '../../state/localSettingsStore';
+import { BackupSettingsTile } from '../backup/BackupSettingsTile';
 import { useParentSession } from '../parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../theme/appTheme';
 import type { ThemeDefinition, ThemeMode } from '../theme/theme';
@@ -256,6 +257,8 @@ export function SettingsScreen() {
           />
         </View>
       </Tile>
+
+      {isParentUnlocked ? <BackupSettingsTile /> : null}
 
       <Tile
         accessory={<StatusBadge label={developerModeEnabled ? 'On' : 'Off'} />}

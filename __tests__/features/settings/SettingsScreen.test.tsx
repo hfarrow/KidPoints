@@ -35,6 +35,10 @@ jest.mock('expo-router', () => ({
   }),
 }));
 
+jest.mock('../../../src/features/backup/BackupSettingsTile', () => ({
+  BackupSettingsTile: () => null,
+}));
+
 describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
