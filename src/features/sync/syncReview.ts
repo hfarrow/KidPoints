@@ -91,6 +91,34 @@ function summarizeSyncRestoreTarget(
       return targetEntry.childName
         ? `${targetEntry.childName} Deleted`
         : 'Child Deleted';
+    case 'shop-sku-created':
+      return targetEntry.shopSkuName
+        ? `${targetEntry.shopSkuName} Added To Shop`
+        : 'Shop Item Added';
+    case 'shop-sku-updated':
+      return targetEntry.shopSkuName
+        ? `${targetEntry.shopSkuName} Updated`
+        : 'Shop Item Updated';
+    case 'shop-sku-reordered':
+      return 'Reordered Shop Items';
+    case 'shop-purchase-completed': {
+      const itemCount =
+        targetEntry.shopPurchaseItems?.reduce(
+          (currentTotal, item) => currentTotal + item.quantity,
+          0,
+        ) ?? 0;
+
+      if (
+        targetEntry.childName &&
+        itemCount > 0 &&
+        targetEntry.pointsBefore != null &&
+        targetEntry.pointsAfter != null
+      ) {
+        return `${targetEntry.childName} Purchased ${itemCount} Item${itemCount === 1 ? '' : 's'} [${targetEntry.pointsBefore} > ${targetEntry.pointsAfter}]`;
+      }
+
+      return 'Completed Shop Purchase';
+    }
     case 'history-restored': {
       const nestedTarget = targetEntry.restoredToTransactionId
         ? entriesById.get(targetEntry.restoredToTransactionId)
@@ -142,6 +170,34 @@ function summarizeSyncEntry(
         : 'Child Unarchived';
     case 'child-deleted':
       return entry.childName ? `${entry.childName} Deleted` : 'Child Deleted';
+    case 'shop-sku-created':
+      return entry.shopSkuName
+        ? `${entry.shopSkuName} Added To Shop`
+        : 'Shop Item Added';
+    case 'shop-sku-updated':
+      return entry.shopSkuName
+        ? `${entry.shopSkuName} Updated`
+        : 'Shop Item Updated';
+    case 'shop-sku-reordered':
+      return 'Reordered Shop Items';
+    case 'shop-purchase-completed': {
+      const itemCount =
+        entry.shopPurchaseItems?.reduce(
+          (currentTotal, item) => currentTotal + item.quantity,
+          0,
+        ) ?? 0;
+
+      if (
+        entry.childName &&
+        itemCount > 0 &&
+        entry.pointsBefore != null &&
+        entry.pointsAfter != null
+      ) {
+        return `${entry.childName} Purchased ${itemCount} Item${itemCount === 1 ? '' : 's'} [${entry.pointsBefore} > ${entry.pointsAfter}]`;
+      }
+
+      return 'Completed Shop Purchase';
+    }
     case 'history-restored': {
       const targetEntry = entry.restoredToTransactionId
         ? entriesById.get(entry.restoredToTransactionId)

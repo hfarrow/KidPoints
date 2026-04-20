@@ -10,6 +10,36 @@ export type ChildSnapshot = {
   updatedAt: string;
 };
 
+export type ShopSkuImageSnapshot = {
+  aspectRatio: '4:3';
+  base64: string;
+  height: number;
+  mimeType: string;
+  width: number;
+};
+
+export type ShopSkuSnapshot = {
+  createdAt: string;
+  id: string;
+  image: ShopSkuImageSnapshot;
+  name: string;
+  pointCost: number;
+  updatedAt: string;
+};
+
+export type ShopPurchaseItemSnapshot = {
+  lineTotal: number;
+  pointCost: number;
+  quantity: number;
+  skuId: string;
+  skuName: string;
+};
+
+export type SharedShopState = {
+  skuOrder: string[];
+  skusById: Record<string, ShopSkuSnapshot>;
+};
+
 export type SharedTimerConfig = {
   alarmDurationSeconds: number;
   intervalMinutes: number;
@@ -29,6 +59,7 @@ export type SharedHead = {
   activeChildIds: string[];
   archivedChildIds: string[];
   childrenById: Record<string, ChildSnapshot>;
+  shop: SharedShopState;
   timerConfig: SharedTimerConfig;
   timerState: SharedTimerState;
 };
@@ -84,6 +115,43 @@ export type ChildRestoredEvent = SharedEventBase & {
   type: 'child.restored';
 };
 
+export type ShopSkuCreatedEvent = SharedEventBase & {
+  payload: {
+    sku: ShopSkuSnapshot;
+  };
+  type: 'shop.skuCreated';
+};
+
+export type ShopSkuDeletedEvent = SharedEventBase & {
+  payload: {
+    skuId: string;
+  };
+  type: 'shop.skuDeleted';
+};
+
+export type ShopSkuUpdatedEvent = SharedEventBase & {
+  payload: {
+    sku: ShopSkuSnapshot;
+  };
+  type: 'shop.skuUpdated';
+};
+
+export type ShopSkuOrderUpdatedEvent = SharedEventBase & {
+  payload: {
+    skuOrder: string[];
+  };
+  type: 'shop.skuOrderUpdated';
+};
+
+export type ShopPurchaseCompletedEvent = SharedEventBase & {
+  payload: {
+    childId: string;
+    items: ShopPurchaseItemSnapshot[];
+    totalPointCost: number;
+  };
+  type: 'shop.purchaseCompleted';
+};
+
 export type TimerConfigUpdatedEvent = SharedEventBase & {
   payload: {
     timerConfig: SharedTimerConfig;
@@ -105,6 +173,11 @@ export type SharedEvent =
   | ChildPointsAdjustedEvent
   | ChildPointsSetEvent
   | ChildRestoredEvent
+  | ShopPurchaseCompletedEvent
+  | ShopSkuCreatedEvent
+  | ShopSkuDeletedEvent
+  | ShopSkuOrderUpdatedEvent
+  | ShopSkuUpdatedEvent
   | TimerConfigUpdatedEvent
   | TimerStateUpdatedEvent;
 
@@ -121,6 +194,10 @@ export type TransactionKind =
   | 'parent-unlock-succeeded'
   | 'points-adjusted'
   | 'points-set'
+  | 'shop-purchase-completed'
+  | 'shop-sku-created'
+  | 'shop-sku-reordered'
+  | 'shop-sku-updated'
   | 'sync-applied'
   | 'timer-config-updated'
   | 'timer-paused'
@@ -145,6 +222,10 @@ export type TransactionRecord = {
   isRestorable: boolean;
   restoredFromTransactionId?: string;
   restoredToTransactionId?: string;
+  shopPurchaseItems?: ShopPurchaseItemSnapshot[];
+  shopPurchaseTotalCost?: number;
+  shopSkuId?: string;
+  shopSkuName?: string;
   stateAfter: SharedHead;
 };
 
@@ -175,6 +256,10 @@ export type TransactionRow = {
   restoreDisabledReason?: string;
   restoredFromTransactionId?: string;
   restoredToTransactionId?: string;
+  shopPurchaseItems?: ShopPurchaseItemSnapshot[];
+  shopPurchaseTotalCost?: number;
+  shopSkuId?: string;
+  shopSkuName?: string;
   stateAfter: SharedHead;
   summaryText: string;
   timestampLabel: string;
@@ -187,7 +272,7 @@ export type SharedDocument = {
   head: SharedHead;
   isOrphanedRestoreWindowOpen: boolean;
   nextSequence: number;
-  schemaVersion: 5;
+  schemaVersion: 6;
   syncState: SharedSyncState | null;
   transactions: TransactionRecord[];
 };
@@ -201,7 +286,7 @@ export type SharedDocumentSnapshot = {
   head: SharedHead;
   isOrphanedRestoreWindowOpen: boolean;
   nextSequence: number;
-  schemaVersion: 3 | 4 | 5;
+  schemaVersion: 3 | 4 | 5 | 6;
   transactions: TransactionRecord[];
 };
 

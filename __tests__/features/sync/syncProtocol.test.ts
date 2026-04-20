@@ -28,6 +28,10 @@ function createFixtureBundle() {
       activeChildIds: [],
       archivedChildIds: [],
       childrenById: {},
+      shop: {
+        skuOrder: [],
+        skusById: {},
+      },
     },
     mergedHeadSyncHash: 'sync-head-1234567890',
     mode: 'bootstrap' as const,

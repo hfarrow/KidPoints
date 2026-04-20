@@ -481,7 +481,7 @@ export function parseSyncEnvelope(
         isString(envelope.headHash) &&
         isString(envelope.headSyncHash) &&
         isString(envelope.payloadId) &&
-        envelope.projectionScope === 'child-ledger' &&
+        envelope.projectionScope === 'family-ledger' &&
         isNumber(envelope.projectionSyncSchemaVersion)
       ) {
         return {

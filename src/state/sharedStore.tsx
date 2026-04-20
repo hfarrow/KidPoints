@@ -36,9 +36,13 @@ import type {
   SharedDocumentSnapshot,
   SharedEvent,
   SharedHead,
+  SharedShopState,
   SharedSyncState,
   SharedTimerConfig,
   SharedTimerState,
+  ShopPurchaseItemSnapshot,
+  ShopSkuImageSnapshot,
+  ShopSkuSnapshot,
   StoredSyncBundle,
   StoredSyncRollbackSnapshot,
   TransactionFilterChild,
@@ -56,12 +60,25 @@ type SharedStoreState = {
     rollbackSnapshot: SyncRollbackSnapshot,
   ) => SharedCommandResult;
   archiveChild: (childId: string) => SharedCommandResult;
+  completeShopPurchase: (
+    childId: string,
+    items: {
+      quantity: number;
+      skuId: string;
+    }[],
+  ) => SharedCommandResult;
+  createShopSku: (input: {
+    image: ShopSkuImageSnapshot;
+    name: string;
+    pointCost: number;
+  }) => SharedCommandResult;
   deleteChildPermanently: (childId: string) => SharedCommandResult;
   document: SharedDocument;
   pauseTimer: () => SharedCommandResult;
   recordParentModeLocked: () => SharedCommandResult;
   recordParentUnlockAttempt: (success: boolean) => SharedCommandResult;
   resetTimer: () => SharedCommandResult;
+  reorderShopSkus: (skuOrder: string[]) => SharedCommandResult;
   resolveCheckInSession: (
     childDecisions: {
       childId: string;
@@ -73,6 +90,14 @@ type SharedStoreState = {
   restoreTransaction: (transactionId: string) => SharedCommandResult;
   setPoints: (childId: string, points: number) => SharedCommandResult;
   startTimer: () => SharedCommandResult;
+  updateShopSku: (
+    skuId: string,
+    updates: {
+      image: ShopSkuImageSnapshot;
+      name: string;
+      pointCost: number;
+    },
+  ) => SharedCommandResult;
   updateTimerConfig: (
     updates: Partial<SharedTimerConfig>,
   ) => SharedCommandResult;
@@ -172,6 +197,10 @@ function createEmptyHead(): SharedHead {
     activeChildIds: [],
     archivedChildIds: [],
     childrenById: {},
+    shop: {
+      skuOrder: [],
+      skusById: {},
+    },
     timerConfig: cloneTimerConfig(DEFAULT_TIMER_CONFIG),
     timerState: cloneTimerState(DEFAULT_TIMER_STATE),
   };
@@ -185,6 +214,37 @@ function generateId(prefix: string) {
 
 function cloneChildSnapshot(child: ChildSnapshot): ChildSnapshot {
   return { ...child };
+}
+
+function cloneShopSkuImageSnapshot(
+  image: ShopSkuImageSnapshot,
+): ShopSkuImageSnapshot {
+  return { ...image };
+}
+
+function cloneShopSkuSnapshot(sku: ShopSkuSnapshot): ShopSkuSnapshot {
+  return {
+    ...sku,
+    image: cloneShopSkuImageSnapshot(sku.image),
+  };
+}
+
+function cloneShopPurchaseItemSnapshot(
+  item: ShopPurchaseItemSnapshot,
+): ShopPurchaseItemSnapshot {
+  return { ...item };
+}
+
+function cloneSharedShopState(shop: SharedShopState): SharedShopState {
+  return {
+    skuOrder: [...shop.skuOrder],
+    skusById: Object.fromEntries(
+      Object.entries(shop.skusById).map(([skuId, sku]) => [
+        skuId,
+        cloneShopSkuSnapshot(sku),
+      ]),
+    ),
+  };
 }
 
 /**
@@ -201,6 +261,7 @@ function cloneHead(head: SharedHead): SharedHead {
         cloneChildSnapshot(child),
       ]),
     ),
+    shop: cloneSharedShopState(head.shop),
     timerConfig: cloneTimerConfig(head.timerConfig),
     timerState: cloneTimerState(head.timerState),
   };
@@ -225,6 +286,26 @@ function normalizeHead(
             ]),
           )
         : {},
+    shop:
+      head?.shop && typeof head.shop === 'object'
+        ? {
+            skuOrder: Array.isArray(head.shop.skuOrder)
+              ? [...head.shop.skuOrder]
+              : [],
+            skusById:
+              head.shop.skusById && typeof head.shop.skusById === 'object'
+                ? Object.fromEntries(
+                    Object.entries(head.shop.skusById).map(([skuId, sku]) => [
+                      skuId,
+                      cloneShopSkuSnapshot(sku as ShopSkuSnapshot),
+                    ]),
+                  )
+                : {},
+          }
+        : {
+            skuOrder: [],
+            skusById: {},
+          },
     timerConfig: normalizeTimerConfig(head?.timerConfig),
     timerState: normalizeTimerState(head?.timerState),
   };
@@ -275,6 +356,37 @@ function cloneSharedEventRecord(event: SharedEvent): SharedEvent {
         ...event,
         payload: {
           child: cloneChildSnapshot(event.payload.child),
+        },
+      };
+    case 'shop.skuCreated':
+    case 'shop.skuUpdated':
+      return {
+        ...event,
+        payload: {
+          sku: cloneShopSkuSnapshot(event.payload.sku),
+        },
+      };
+    case 'shop.skuDeleted':
+      return {
+        ...event,
+        payload: {
+          skuId: event.payload.skuId,
+        },
+      };
+    case 'shop.skuOrderUpdated':
+      return {
+        ...event,
+        payload: {
+          skuOrder: [...event.payload.skuOrder],
+        },
+      };
+    case 'shop.purchaseCompleted':
+      return {
+        ...event,
+        payload: {
+          childId: event.payload.childId,
+          items: event.payload.items.map(cloneShopPurchaseItemSnapshot),
+          totalPointCost: event.payload.totalPointCost,
         },
       };
     case 'child.pointsAdjusted':
@@ -410,6 +522,49 @@ function areChildrenEquivalent(
   );
 }
 
+function areShopSkuImagesEquivalent(
+  left: ShopSkuImageSnapshot | null,
+  right: ShopSkuImageSnapshot | null,
+) {
+  if (!left && !right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    left.aspectRatio === right.aspectRatio &&
+    left.base64 === right.base64 &&
+    left.height === right.height &&
+    left.mimeType === right.mimeType &&
+    left.width === right.width
+  );
+}
+
+function areShopSkusEquivalent(
+  left: ShopSkuSnapshot | null,
+  right: ShopSkuSnapshot | null,
+) {
+  if (!left && !right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    left.createdAt === right.createdAt &&
+    left.id === right.id &&
+    areShopSkuImagesEquivalent(left.image, right.image) &&
+    left.name === right.name &&
+    left.pointCost === right.pointCost &&
+    left.updatedAt === right.updatedAt
+  );
+}
+
 function sortEventsCanonical(events: SharedEvent[]) {
   return [...events].sort((left, right) => {
     if (left.deviceId !== right.deviceId) {
@@ -436,7 +591,7 @@ export function createInitialSharedDocument({
     head: createEmptyHead(),
     isOrphanedRestoreWindowOpen: false,
     nextSequence: 1,
-    schemaVersion: 5,
+    schemaVersion: 6,
     syncState: null,
     transactions: [],
   };
@@ -552,6 +707,54 @@ export function applySharedEvent(head: SharedHead, event: SharedEvent) {
       nextHead.archivedChildIds = removeId(nextHead.archivedChildIds, child.id);
       return nextHead;
     }
+    case 'shop.skuCreated': {
+      const sku = cloneShopSkuSnapshot(event.payload.sku);
+
+      nextHead.shop.skusById[sku.id] = sku;
+      nextHead.shop.skuOrder = insertUniqueId(nextHead.shop.skuOrder, sku.id);
+      return nextHead;
+    }
+    case 'shop.skuUpdated': {
+      const sku = cloneShopSkuSnapshot(event.payload.sku);
+
+      nextHead.shop.skusById[sku.id] = sku;
+      nextHead.shop.skuOrder = insertUniqueId(nextHead.shop.skuOrder, sku.id);
+      return nextHead;
+    }
+    case 'shop.skuDeleted': {
+      delete nextHead.shop.skusById[event.payload.skuId];
+      nextHead.shop.skuOrder = removeId(
+        nextHead.shop.skuOrder,
+        event.payload.skuId,
+      );
+      return nextHead;
+    }
+    case 'shop.skuOrderUpdated': {
+      const orderedIds = event.payload.skuOrder.filter(
+        (skuId, index, values) =>
+          values.indexOf(skuId) === index && nextHead.shop.skusById[skuId],
+      );
+      const remainingIds = Object.keys(nextHead.shop.skusById).filter(
+        (skuId) => !orderedIds.includes(skuId),
+      );
+
+      nextHead.shop.skuOrder = [...orderedIds, ...remainingIds];
+      return nextHead;
+    }
+    case 'shop.purchaseCompleted': {
+      const child = nextHead.childrenById[event.payload.childId];
+
+      if (!child) {
+        return nextHead;
+      }
+
+      nextHead.childrenById[event.payload.childId] = {
+        ...child,
+        points: child.points - event.payload.totalPointCost,
+        updatedAt: event.occurredAt,
+      };
+      return nextHead;
+    }
     case 'timer.configUpdated': {
       nextHead.timerConfig = cloneTimerConfig(event.payload.timerConfig);
       return nextHead;
@@ -611,6 +814,12 @@ function normalizeTransactionRecord(
     participatesInHistory: isTransientTimerTransaction
       ? false
       : (transaction.participatesInHistory ?? true),
+    shopPurchaseItems: transaction.shopPurchaseItems?.map(
+      cloneShopPurchaseItemSnapshot,
+    ),
+    shopPurchaseTotalCost: transaction.shopPurchaseTotalCost,
+    shopSkuId: transaction.shopSkuId,
+    shopSkuName: transaction.shopSkuName,
     stateAfter: normalizeHead(transaction.stateAfter),
   };
 }
@@ -647,7 +856,8 @@ function isSharedDocument(value: unknown): value is SharedDocument {
     (candidate.schemaVersion === 2 ||
       candidate.schemaVersion === 3 ||
       candidate.schemaVersion === 4 ||
-      candidate.schemaVersion === 5) &&
+      candidate.schemaVersion === 5 ||
+      candidate.schemaVersion === 6) &&
     typeof candidate.deviceId === 'string' &&
     Array.isArray(candidate.events) &&
     Array.isArray(candidate.transactions)
@@ -692,7 +902,7 @@ export function cloneSharedDocument(
     head: cloneHeadWithTimerState(historyHead, persistedHead.timerState),
     isOrphanedRestoreWindowOpen: Boolean(document.isOrphanedRestoreWindowOpen),
     nextSequence: document.nextSequence ?? deriveNextSequence(events),
-    schemaVersion: 5,
+    schemaVersion: 6,
     syncState: cloneSharedSyncState(document.syncState),
     transactions,
   };
@@ -749,6 +959,10 @@ function createTransactionRecord(args: {
   pointsBefore?: number;
   restoredFromTransactionId?: string;
   restoredToTransactionId?: string;
+  shopPurchaseItems?: ShopPurchaseItemSnapshot[];
+  shopPurchaseTotalCost?: number;
+  shopSkuId?: string;
+  shopSkuName?: string;
   stateAfter: SharedHead;
   transactionId?: string;
 }) {
@@ -770,6 +984,10 @@ function createTransactionRecord(args: {
     pointsBefore,
     restoredFromTransactionId,
     restoredToTransactionId,
+    shopPurchaseItems,
+    shopPurchaseTotalCost,
+    shopSkuId,
+    shopSkuName,
     stateAfter,
     transactionId,
   } = args;
@@ -792,6 +1010,10 @@ function createTransactionRecord(args: {
     pointsBefore,
     restoredFromTransactionId,
     restoredToTransactionId,
+    shopPurchaseItems: shopPurchaseItems?.map(cloneShopPurchaseItemSnapshot),
+    shopPurchaseTotalCost,
+    shopSkuId,
+    shopSkuName,
     stateAfter: cloneHead(stateAfter),
   } satisfies TransactionRecord;
 }
@@ -819,6 +1041,12 @@ function createTransactionRecordFromSyncEntry(args: {
     pointsBefore: entry.pointsBefore ?? undefined,
     restoredFromTransactionId: entry.restoredFromTransactionId ?? undefined,
     restoredToTransactionId: entry.restoredToTransactionId ?? undefined,
+    shopPurchaseItems: entry.shopPurchaseItems?.map(
+      cloneShopPurchaseItemSnapshot,
+    ),
+    shopPurchaseTotalCost: entry.shopPurchaseTotalCost ?? undefined,
+    shopSkuId: entry.shopSkuId ?? undefined,
+    shopSkuName: entry.shopSkuName ?? undefined,
     stateAfter: createSharedHeadFromSyncProjectionHead(
       entry.stateAfter,
       localHead,
@@ -972,6 +1200,15 @@ function createSharedHeadFromSyncProjectionHead(
         },
       ]),
     ),
+    shop: {
+      skuOrder: [...syncHead.shop.skuOrder],
+      skusById: Object.fromEntries(
+        Object.entries(syncHead.shop.skusById).map(([skuId, sku]) => [
+          skuId,
+          cloneShopSkuSnapshot(sku),
+        ]),
+      ),
+    },
     timerConfig: cloneTimerConfig(localHead.timerConfig),
     timerState: cloneTimerState(localHead.timerState),
   };
@@ -1013,22 +1250,34 @@ function getActiveTransactionIds(document: SharedDocument) {
 function areHeadsEquivalent(left: SharedHead, right: SharedHead) {
   const leftIds = Object.keys(left.childrenById).sort();
   const rightIds = Object.keys(right.childrenById).sort();
+  const leftShopIds = Object.keys(left.shop.skusById).sort();
+  const rightShopIds = Object.keys(right.shop.skusById).sort();
 
   if (
     leftIds.length !== rightIds.length ||
+    leftShopIds.length !== rightShopIds.length ||
     left.activeChildIds.join('|') !== right.activeChildIds.join('|') ||
     left.archivedChildIds.join('|') !== right.archivedChildIds.join('|') ||
+    left.shop.skuOrder.join('|') !== right.shop.skuOrder.join('|') ||
     !areTimerConfigsEquivalent(left.timerConfig, right.timerConfig) ||
     !areTimerStatesEquivalent(left.timerState, right.timerState)
   ) {
     return false;
   }
 
-  return leftIds.every((childId) =>
-    areChildrenEquivalent(
-      left.childrenById[childId],
-      right.childrenById[childId],
-    ),
+  return (
+    leftIds.every((childId) =>
+      areChildrenEquivalent(
+        left.childrenById[childId],
+        right.childrenById[childId],
+      ),
+    ) &&
+    leftShopIds.every((skuId) =>
+      areShopSkusEquivalent(
+        left.shop.skusById[skuId],
+        right.shop.skusById[skuId],
+      ),
+    )
   );
 }
 
@@ -1168,6 +1417,74 @@ function buildRestoreEvents(
     }
   }
 
+  const allSkuIds = [
+    ...new Set([
+      ...Object.keys(document.head.shop.skusById),
+      ...Object.keys(targetHead.shop.skusById),
+    ]),
+  ].sort();
+
+  for (const skuId of allSkuIds) {
+    const currentSku = document.head.shop.skusById[skuId] ?? null;
+    const targetSku = targetHead.shop.skusById[skuId] ?? null;
+
+    if (areShopSkusEquivalent(currentSku, targetSku)) {
+      continue;
+    }
+
+    if (!currentSku && targetSku) {
+      eventsToAppend.push(
+        builder.build(
+          'shop.skuCreated',
+          {
+            sku: cloneShopSkuSnapshot(targetSku),
+          },
+          occurredAt,
+        ),
+      );
+      continue;
+    }
+
+    if (currentSku && !targetSku) {
+      eventsToAppend.push(
+        builder.build(
+          'shop.skuDeleted',
+          {
+            skuId,
+          },
+          occurredAt,
+        ),
+      );
+      continue;
+    }
+
+    if (targetSku) {
+      eventsToAppend.push(
+        builder.build(
+          'shop.skuUpdated',
+          {
+            sku: cloneShopSkuSnapshot(targetSku),
+          },
+          occurredAt,
+        ),
+      );
+    }
+  }
+
+  if (
+    document.head.shop.skuOrder.join('|') !== targetHead.shop.skuOrder.join('|')
+  ) {
+    eventsToAppend.push(
+      builder.build(
+        'shop.skuOrderUpdated',
+        {
+          skuOrder: [...targetHead.shop.skuOrder],
+        },
+        occurredAt,
+      ),
+    );
+  }
+
   if (
     !areTimerConfigsEquivalent(
       document.head.timerConfig,
@@ -1291,6 +1608,34 @@ function summarizeRestoreTarget(
       return targetTransaction.childName
         ? `${targetTransaction.childName} Deleted`
         : 'Child Deleted';
+    case 'shop-sku-created':
+      return targetTransaction.shopSkuName
+        ? `${targetTransaction.shopSkuName} Added To Shop`
+        : 'Shop Item Added';
+    case 'shop-sku-updated':
+      return targetTransaction.shopSkuName
+        ? `${targetTransaction.shopSkuName} Updated`
+        : 'Shop Item Updated';
+    case 'shop-sku-reordered':
+      return 'Reordered Shop Items';
+    case 'shop-purchase-completed': {
+      const itemCount =
+        targetTransaction.shopPurchaseItems?.reduce(
+          (currentTotal, item) => currentTotal + item.quantity,
+          0,
+        ) ?? 0;
+
+      if (
+        targetTransaction.childName &&
+        itemCount > 0 &&
+        targetTransaction.pointsBefore != null &&
+        targetTransaction.pointsAfter != null
+      ) {
+        return `${targetTransaction.childName} Purchased ${itemCount} Item${itemCount === 1 ? '' : 's'} [${targetTransaction.pointsBefore} > ${targetTransaction.pointsAfter}]`;
+      }
+
+      return 'Completed Shop Purchase';
+    }
     case 'history-restored': {
       const nestedTarget = targetTransaction.restoredToTransactionId
         ? transactionsById.get(targetTransaction.restoredToTransactionId)
@@ -1391,6 +1736,34 @@ function summarizeTransactionRow(
       return transaction.childName
         ? `${transaction.childName} Deleted`
         : 'Child Deleted';
+    case 'shop-sku-created':
+      return transaction.shopSkuName
+        ? `${transaction.shopSkuName} Added To Shop`
+        : 'Shop Item Added';
+    case 'shop-sku-updated':
+      return transaction.shopSkuName
+        ? `${transaction.shopSkuName} Updated`
+        : 'Shop Item Updated';
+    case 'shop-sku-reordered':
+      return 'Reordered Shop Items';
+    case 'shop-purchase-completed': {
+      const itemCount =
+        transaction.shopPurchaseItems?.reduce(
+          (currentTotal, item) => currentTotal + item.quantity,
+          0,
+        ) ?? 0;
+
+      if (
+        transaction.childName &&
+        itemCount > 0 &&
+        transaction.pointsBefore != null &&
+        transaction.pointsAfter != null
+      ) {
+        return `${transaction.childName} Purchased ${itemCount} Item${itemCount === 1 ? '' : 's'} [${transaction.pointsBefore} > ${transaction.pointsAfter}]`;
+      }
+
+      return 'Completed Shop Purchase';
+    }
     case 'history-restored': {
       const targetTransaction = transaction.restoredToTransactionId
         ? transactionsById.get(transaction.restoredToTransactionId)
@@ -1483,6 +1856,12 @@ export function deriveTransactionRows(document: SharedDocument) {
       restoreDisabledReason,
       restoredFromTransactionId: transaction.restoredFromTransactionId,
       restoredToTransactionId: transaction.restoredToTransactionId,
+      shopPurchaseItems: transaction.shopPurchaseItems?.map(
+        cloneShopPurchaseItemSnapshot,
+      ),
+      shopPurchaseTotalCost: transaction.shopPurchaseTotalCost,
+      shopSkuId: transaction.shopSkuId,
+      shopSkuName: transaction.shopSkuName,
       stateAfter: cloneHead(transaction.stateAfter),
       summaryText: summarizeTransactionRow(transaction, transactionsById),
       timestampLabel: formatTransactionTimestamp(transaction.occurredAt),
@@ -1507,6 +1886,41 @@ function deriveTransactionFilterChildren(document: SharedDocument) {
   }
 
   return [...children.values()];
+}
+
+function normalizeShopSkuName(name: string) {
+  return normalizeName(name);
+}
+
+function isValidShopSkuImage(image: ShopSkuImageSnapshot) {
+  return (
+    image.aspectRatio === '4:3' &&
+    typeof image.base64 === 'string' &&
+    image.base64.length > 0 &&
+    Number.isInteger(image.height) &&
+    image.height > 0 &&
+    typeof image.mimeType === 'string' &&
+    image.mimeType.length > 0 &&
+    Number.isInteger(image.width) &&
+    image.width > 0
+  );
+}
+
+function normalizeSkuOrderForHead(head: SharedHead, skuOrder: string[]) {
+  const seenIds = new Set<string>();
+  const normalizedIds = skuOrder.filter((skuId) => {
+    if (seenIds.has(skuId) || !head.shop.skusById[skuId]) {
+      return false;
+    }
+
+    seenIds.add(skuId);
+    return true;
+  });
+
+  return [
+    ...normalizedIds,
+    ...Object.keys(head.shop.skusById).filter((skuId) => !seenIds.has(skuId)),
+  ];
 }
 
 /**
@@ -2112,6 +2526,442 @@ function createSharedStoreActions(
 
       return result;
     },
+    createShopSku(input: {
+      image: ShopSkuImageSnapshot;
+      name: string;
+      pointCost: number;
+    }): SharedCommandResult {
+      const name = normalizeShopSkuName(input.name);
+
+      if (!name) {
+        logRejectedSharedStoreMutation(
+          'createShopSku',
+          'Enter an item name before saving.',
+        );
+        return {
+          error: 'Enter an item name before saving.',
+          ok: false,
+        };
+      }
+
+      if (!Number.isInteger(input.pointCost) || input.pointCost < 0) {
+        logRejectedSharedStoreMutation(
+          'createShopSku',
+          'Item cost must be a whole number of points.',
+          {
+            pointCost: input.pointCost,
+          },
+        );
+        return {
+          error: 'Item cost must be a whole number of points.',
+          ok: false,
+        };
+      }
+
+      if (!isValidShopSkuImage(input.image)) {
+        logRejectedSharedStoreMutation(
+          'createShopSku',
+          'Add a valid item photo before saving.',
+        );
+        return {
+          error: 'Add a valid item photo before saving.',
+          ok: false,
+        };
+      }
+
+      const result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const occurredAt = new Date().toISOString();
+        const builder = createEventBuilder(state.document);
+        const sku: ShopSkuSnapshot = {
+          createdAt: occurredAt,
+          id: generateId('sku'),
+          image: cloneShopSkuImageSnapshot(input.image),
+          name,
+          pointCost: input.pointCost,
+          updatedAt: occurredAt,
+        };
+        const event = builder.build('shop.skuCreated', { sku }, occurredAt);
+        const nextHead = applySharedEvent(state.document.head, event);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [],
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: [event.eventId],
+          kind: 'shop-sku-created',
+          occurredAt,
+          originDeviceId: state.document.deviceId,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          shopSkuId: sku.id,
+          shopSkuName: sku.name,
+          stateAfter: nextHead,
+        });
+
+        logSharedStoreMutation('createShopSku', {
+          eventId: event.eventId,
+          skuId: sku.id,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+          skuId: sku.id,
+        });
+
+        return {
+          ...state,
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
+    updateShopSku(
+      skuId: string,
+      updates: {
+        image: ShopSkuImageSnapshot;
+        name: string;
+        pointCost: number;
+      },
+    ): SharedCommandResult {
+      const name = normalizeShopSkuName(updates.name);
+
+      if (!name) {
+        logRejectedSharedStoreMutation(
+          'updateShopSku',
+          'Enter an item name before saving.',
+          { skuId },
+        );
+        return {
+          error: 'Enter an item name before saving.',
+          ok: false,
+        };
+      }
+
+      if (!Number.isInteger(updates.pointCost) || updates.pointCost < 0) {
+        logRejectedSharedStoreMutation(
+          'updateShopSku',
+          'Item cost must be a whole number of points.',
+          {
+            pointCost: updates.pointCost,
+            skuId,
+          },
+        );
+        return {
+          error: 'Item cost must be a whole number of points.',
+          ok: false,
+        };
+      }
+
+      if (!isValidShopSkuImage(updates.image)) {
+        logRejectedSharedStoreMutation(
+          'updateShopSku',
+          'Add a valid item photo before saving.',
+          { skuId },
+        );
+        return {
+          error: 'Add a valid item photo before saving.',
+          ok: false,
+        };
+      }
+
+      let result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const currentSku = state.document.head.shop.skusById[skuId] ?? null;
+
+        if (!currentSku) {
+          logRejectedSharedStoreMutation(
+            'updateShopSku',
+            'That shop item could not be found.',
+            { skuId },
+          );
+          result = {
+            error: 'That shop item could not be found.',
+            ok: false,
+          };
+          return state;
+        }
+
+        const occurredAt = new Date().toISOString();
+        const builder = createEventBuilder(state.document);
+        const sku: ShopSkuSnapshot = {
+          ...currentSku,
+          image: cloneShopSkuImageSnapshot(updates.image),
+          name,
+          pointCost: updates.pointCost,
+          updatedAt: occurredAt,
+        };
+        const event = builder.build('shop.skuUpdated', { sku }, occurredAt);
+        const nextHead = applySharedEvent(state.document.head, event);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [],
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: [event.eventId],
+          kind: 'shop-sku-updated',
+          occurredAt,
+          originDeviceId: state.document.deviceId,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          shopSkuId: sku.id,
+          shopSkuName: sku.name,
+          stateAfter: nextHead,
+        });
+
+        logSharedStoreMutation('updateShopSku', {
+          eventId: event.eventId,
+          skuId,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+          skuId,
+        });
+
+        return {
+          ...state,
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
+    reorderShopSkus(skuOrder: string[]): SharedCommandResult {
+      const result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const normalizedOrder = normalizeSkuOrderForHead(
+          state.document.head,
+          skuOrder,
+        );
+
+        if (
+          normalizedOrder.join('|') ===
+          state.document.head.shop.skuOrder.join('|')
+        ) {
+          return state;
+        }
+
+        const occurredAt = new Date().toISOString();
+        const builder = createEventBuilder(state.document);
+        const event = builder.build(
+          'shop.skuOrderUpdated',
+          {
+            skuOrder: normalizedOrder,
+          },
+          occurredAt,
+        );
+        const nextHead = applySharedEvent(state.document.head, event);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [],
+          childAfter: null,
+          childBefore: null,
+          childId: null,
+          eventIds: [event.eventId],
+          kind: 'shop-sku-reordered',
+          occurredAt,
+          originDeviceId: state.document.deviceId,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          stateAfter: nextHead,
+        });
+
+        logSharedStoreMutation('reorderShopSkus', {
+          eventId: event.eventId,
+          skuCount: normalizedOrder.length,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+          skuCount: normalizedOrder.length,
+        });
+
+        return {
+          ...state,
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
+    completeShopPurchase(
+      childId: string,
+      items: {
+        quantity: number;
+        skuId: string;
+      }[],
+    ): SharedCommandResult {
+      const normalizedItems = items
+        .filter(
+          (item) =>
+            typeof item.skuId === 'string' &&
+            item.skuId.length > 0 &&
+            Number.isInteger(item.quantity) &&
+            item.quantity > 0,
+        )
+        .map((item) => ({
+          quantity: item.quantity,
+          skuId: item.skuId,
+        }));
+
+      if (normalizedItems.length === 0) {
+        logRejectedSharedStoreMutation(
+          'completeShopPurchase',
+          'Add at least one item to the cart before checking out.',
+          { childId },
+        );
+        return {
+          error: 'Add at least one item to the cart before checking out.',
+          ok: false,
+        };
+      }
+
+      let result: SharedCommandResult = { ok: true };
+
+      set((state) => {
+        const child = getChild(state.document.head, childId);
+
+        if (!child || child.status !== 'active') {
+          logRejectedSharedStoreMutation(
+            'completeShopPurchase',
+            'Only active children can complete a shop purchase.',
+            { childId },
+          );
+          result = {
+            error: 'Only active children can complete a shop purchase.',
+            ok: false,
+          };
+          return state;
+        }
+
+        const purchaseItems: ShopPurchaseItemSnapshot[] = [];
+
+        for (const item of normalizedItems) {
+          const sku = state.document.head.shop.skusById[item.skuId] ?? null;
+
+          if (!sku) {
+            logRejectedSharedStoreMutation(
+              'completeShopPurchase',
+              'One of the cart items no longer exists in the shop.',
+              {
+                childId,
+                skuId: item.skuId,
+              },
+            );
+            result = {
+              error: 'One of the cart items no longer exists in the shop.',
+              ok: false,
+            };
+            return state;
+          }
+
+          purchaseItems.push({
+            lineTotal: sku.pointCost * item.quantity,
+            pointCost: sku.pointCost,
+            quantity: item.quantity,
+            skuId: sku.id,
+            skuName: sku.name,
+          });
+        }
+
+        const totalPointCost = purchaseItems.reduce(
+          (currentTotal, item) => currentTotal + item.lineTotal,
+          0,
+        );
+
+        if (child.points < totalPointCost) {
+          logRejectedSharedStoreMutation(
+            'completeShopPurchase',
+            'That child does not have enough points for this cart.',
+            {
+              childId,
+              childPoints: child.points,
+              totalPointCost,
+            },
+          );
+          result = {
+            error: 'That child does not have enough points for this cart.',
+            ok: false,
+          };
+          return state;
+        }
+
+        const occurredAt = new Date().toISOString();
+        const builder = createEventBuilder(state.document);
+        const event = builder.build(
+          'shop.purchaseCompleted',
+          {
+            childId,
+            items: purchaseItems.map(cloneShopPurchaseItemSnapshot),
+            totalPointCost,
+          },
+          occurredAt,
+        );
+        const nextHead = applySharedEvent(state.document.head, event);
+        const nextChild = getChild(nextHead, childId);
+        const transaction = createTransactionRecord({
+          affectedChildIds: [childId],
+          childAfter: nextChild,
+          childBefore: child,
+          childId,
+          eventIds: [event.eventId],
+          kind: 'shop-purchase-completed',
+          occurredAt,
+          originDeviceId: state.document.deviceId,
+          parentTransactionId: state.document.currentHeadTransactionId,
+          pointsAfter: nextChild?.points,
+          pointsBefore: child.points,
+          shopPurchaseItems: purchaseItems,
+          shopPurchaseTotalCost: totalPointCost,
+          stateAfter: nextHead,
+        });
+
+        logSharedStoreMutation('completeShopPurchase', {
+          childId,
+          eventId: event.eventId,
+          itemCount: purchaseItems.length,
+          totalPointCost,
+          transactionId: transaction.id,
+        });
+        logSharedTransaction(transaction, {
+          eventId: event.eventId,
+          itemCount: purchaseItems.length,
+          totalPointCost,
+        });
+
+        return {
+          ...state,
+          document: commitDocumentChange({
+            document: state.document,
+            eventsToAppend: [event],
+            isOrphanedRestoreWindowOpen: false,
+            nextHead,
+            transaction,
+          }),
+        };
+      });
+
+      return result;
+    },
     deleteChildPermanently(childId: string): SharedCommandResult {
       let result: SharedCommandResult = { ok: true };
 
@@ -2421,7 +3271,7 @@ function createSharedStoreActions(
 
         const revertedDocument = cloneSharedDocument({
           ...rollbackSnapshot.documentSnapshot,
-          schemaVersion: 5,
+          schemaVersion: 6,
           syncState: null,
         });
 

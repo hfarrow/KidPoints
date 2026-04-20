@@ -1,15 +1,18 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useParentSession } from '../features/parent/parentSessionContext';
 import { useAppTheme, useThemedStyles } from '../features/theme/appTheme';
 import { LoggedPressable } from './LoggedPressable';
 
 type MainScreenActionsProps = {
+  extraActions?: ReactNode;
   onPressSyncDevices?: () => void;
 };
 
 export function MainScreenActions({
+  extraActions,
   onPressSyncDevices,
 }: MainScreenActionsProps) {
   const router = useRouter();
@@ -32,6 +35,7 @@ export function MainScreenActions({
 
   return (
     <View style={styles.row}>
+      {extraActions}
       <LoggedPressable
         accessibilityLabel="Open Settings"
         logLabel="Open Settings"

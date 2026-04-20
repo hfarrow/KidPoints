@@ -5,14 +5,17 @@ import type {
   SharedDocumentSnapshot,
   SharedEvent,
   SharedHead,
+  SharedShopState,
   SharedSyncState,
+  ShopPurchaseItemSnapshot,
+  ShopSkuSnapshot,
   StoredSyncBundle,
   StoredSyncRollbackSnapshot,
   TransactionKind,
   TransactionRecord,
 } from './sharedTypes';
 
-export type SyncProjectionScope = 'child-ledger';
+export type SyncProjectionScope = 'family-ledger';
 
 export type SyncProjectionChild = Pick<
   ChildSnapshot,
@@ -21,10 +24,13 @@ export type SyncProjectionChild = Pick<
   archivedAt: string | null;
 };
 
+export type SyncProjectionShopState = SharedShopState;
+
 export type SyncProjectionHead = {
   activeChildIds: string[];
   archivedChildIds: string[];
   childrenById: Record<string, SyncProjectionChild>;
+  shop: SyncProjectionShopState;
 };
 
 export type SyncableTransactionKind =
@@ -34,7 +40,11 @@ export type SyncableTransactionKind =
   | 'child-restored'
   | 'history-restored'
   | 'points-adjusted'
-  | 'points-set';
+  | 'points-set'
+  | 'shop-purchase-completed'
+  | 'shop-sku-created'
+  | 'shop-sku-reordered'
+  | 'shop-sku-updated';
 
 export type SyncEntry = {
   affectedChildIds: string[];
@@ -49,6 +59,10 @@ export type SyncEntry = {
   pointsBefore: number | null;
   restoredFromTransactionId: string | null;
   restoredToTransactionId: string | null;
+  shopPurchaseItems: ShopPurchaseItemSnapshot[] | null;
+  shopPurchaseTotalCost: number | null;
+  shopSkuId: string | null;
+  shopSkuName: string | null;
   sourceTransactionId: string;
   stateAfter: SyncProjectionHead;
   stateHash: string;
@@ -140,6 +154,7 @@ export type ReconcileSyncProjectionsResult =
         | 'invalid-bootstrap-target'
         | 'invalid-left-projection'
         | 'invalid-right-projection'
+        | 'shop-state-mismatch'
         | 'unsupported-post-base-transaction';
       childId?: string;
       entryHash?: string;
@@ -192,7 +207,7 @@ export type ConfirmSyncBundleAgreementResult =
       ok: false;
     };
 
-const SYNC_PROJECTION_SCOPE = 'child-ledger' satisfies SyncProjectionScope;
+const SYNC_PROJECTION_SCOPE = 'family-ledger' satisfies SyncProjectionScope;
 export const CURRENT_SYNC_SCHEMA_VERSION = 2 as const;
 const SYNCABLE_TRANSACTION_KINDS = new Set<TransactionKind>([
   'child-archived',
@@ -202,6 +217,10 @@ const SYNCABLE_TRANSACTION_KINDS = new Set<TransactionKind>([
   'history-restored',
   'points-adjusted',
   'points-set',
+  'shop-purchase-completed',
+  'shop-sku-created',
+  'shop-sku-reordered',
+  'shop-sku-updated',
 ]);
 
 type CanonicalValue =
@@ -216,6 +235,33 @@ function sortIds(ids: string[]) {
   return [...ids].sort((left, right) => left.localeCompare(right));
 }
 
+function cloneShopSkuSnapshotForSync(sku: ShopSkuSnapshot): ShopSkuSnapshot {
+  return {
+    ...sku,
+    image: {
+      ...sku.image,
+    },
+  };
+}
+
+function cloneShopPurchaseItemSnapshotForSync(
+  item: ShopPurchaseItemSnapshot,
+): ShopPurchaseItemSnapshot {
+  return { ...item };
+}
+
+function cloneSharedShopStateForSync(shop: SharedShopState): SharedShopState {
+  return {
+    skuOrder: [...shop.skuOrder],
+    skusById: Object.fromEntries(
+      Object.entries(shop.skusById).map(([skuId, sku]) => [
+        skuId,
+        cloneShopSkuSnapshotForSync(sku),
+      ]),
+    ),
+  };
+}
+
 function cloneSyncProjectionHead(head: SyncProjectionHead): SyncProjectionHead {
   return {
     activeChildIds: [...head.activeChildIds],
@@ -228,6 +274,7 @@ function cloneSyncProjectionHead(head: SyncProjectionHead): SyncProjectionHead {
         },
       ]),
     ),
+    shop: cloneSharedShopStateForSync(head.shop),
   };
 }
 
@@ -245,6 +292,12 @@ function cloneSyncEntry(entry: SyncEntry): SyncEntry {
     pointsBefore: entry.pointsBefore,
     restoredFromTransactionId: entry.restoredFromTransactionId,
     restoredToTransactionId: entry.restoredToTransactionId,
+    shopPurchaseItems:
+      entry.shopPurchaseItems?.map(cloneShopPurchaseItemSnapshotForSync) ??
+      null,
+    shopPurchaseTotalCost: entry.shopPurchaseTotalCost,
+    shopSkuId: entry.shopSkuId,
+    shopSkuName: entry.shopSkuName,
     sourceTransactionId: entry.sourceTransactionId,
     stateAfter: cloneSyncProjectionHead(entry.stateAfter),
     stateHash: entry.stateHash,
@@ -281,6 +334,37 @@ function cloneSharedEventRecordForSync(event: SharedEvent): SharedEvent {
         ...event,
         payload: {
           child: { ...event.payload.child },
+        },
+      };
+    case 'shop.skuCreated':
+    case 'shop.skuUpdated':
+      return {
+        ...event,
+        payload: {
+          sku: cloneShopSkuSnapshotForSync(event.payload.sku),
+        },
+      };
+    case 'shop.skuDeleted':
+      return {
+        ...event,
+        payload: {
+          skuId: event.payload.skuId,
+        },
+      };
+    case 'shop.skuOrderUpdated':
+      return {
+        ...event,
+        payload: {
+          skuOrder: [...event.payload.skuOrder],
+        },
+      };
+    case 'shop.purchaseCompleted':
+      return {
+        ...event,
+        payload: {
+          childId: event.payload.childId,
+          items: event.payload.items.map(cloneShopPurchaseItemSnapshotForSync),
+          totalPointCost: event.payload.totalPointCost,
         },
       };
     case 'child.pointsAdjusted':
@@ -326,6 +410,7 @@ function cloneSharedHeadForSync(head: SharedHead): SharedHead {
         { ...child },
       ]),
     ),
+    shop: cloneSharedShopStateForSync(head.shop),
     timerConfig: cloneTimerConfig(head.timerConfig),
     timerState: cloneTimerState(head.timerState),
   };
@@ -338,6 +423,12 @@ function cloneTransactionRecordForSync(
     ...transaction,
     affectedChildIds: [...transaction.affectedChildIds],
     eventIds: [...transaction.eventIds],
+    shopPurchaseItems: transaction.shopPurchaseItems?.map(
+      cloneShopPurchaseItemSnapshotForSync,
+    ),
+    shopPurchaseTotalCost: transaction.shopPurchaseTotalCost,
+    shopSkuId: transaction.shopSkuId,
+    shopSkuName: transaction.shopSkuName,
     stateAfter: cloneSharedHeadForSync(transaction.stateAfter),
   };
 }
@@ -535,6 +626,14 @@ export function projectSharedHeadForSync(head: SharedHead): SyncProjectionHead {
     activeChildIds: sortIds(head.activeChildIds),
     archivedChildIds: sortIds(head.archivedChildIds),
     childrenById,
+    shop: {
+      skuOrder: [...head.shop.skuOrder],
+      skusById: Object.fromEntries(
+        Object.entries(head.shop.skusById)
+          .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+          .map(([skuId, sku]) => [skuId, cloneShopSkuSnapshotForSync(sku)]),
+      ),
+    },
   };
 }
 
@@ -550,6 +649,10 @@ function buildSyncEntryHash(args: {
   pointsBefore: number | null;
   restoredFromTransactionId: string | null;
   restoredToTransactionId: string | null;
+  shopPurchaseItems: ShopPurchaseItemSnapshot[] | null;
+  shopPurchaseTotalCost: number | null;
+  shopSkuId: string | null;
+  shopSkuName: string | null;
   sourceTransactionId: string;
   stateHash: string;
 }) {
@@ -565,6 +668,10 @@ function buildSyncEntryHash(args: {
     pointsBefore,
     restoredFromTransactionId,
     restoredToTransactionId,
+    shopPurchaseItems,
+    shopPurchaseTotalCost,
+    shopSkuId,
+    shopSkuName,
     sourceTransactionId,
     stateHash,
   } = args;
@@ -581,6 +688,10 @@ function buildSyncEntryHash(args: {
     pointsBefore,
     restoredFromTransactionId,
     restoredToTransactionId,
+    shopPurchaseItems,
+    shopPurchaseTotalCost,
+    shopSkuId,
+    shopSkuName,
     sourceTransactionId,
     stateHash,
   });
@@ -608,6 +719,13 @@ export function deriveSyncProjection(document: SharedDocument): SyncProjection {
       pointsBefore: transaction.pointsBefore ?? null,
       restoredFromTransactionId: transaction.restoredFromTransactionId ?? null,
       restoredToTransactionId: transaction.restoredToTransactionId ?? null,
+      shopPurchaseItems:
+        transaction.shopPurchaseItems?.map(
+          cloneShopPurchaseItemSnapshotForSync,
+        ) ?? null,
+      shopPurchaseTotalCost: transaction.shopPurchaseTotalCost ?? null,
+      shopSkuId: transaction.shopSkuId ?? null,
+      shopSkuName: transaction.shopSkuName ?? null,
       sourceTransactionId: transaction.id,
       stateHash,
     });
@@ -625,6 +743,13 @@ export function deriveSyncProjection(document: SharedDocument): SyncProjection {
       pointsBefore: transaction.pointsBefore ?? null,
       restoredFromTransactionId: transaction.restoredFromTransactionId ?? null,
       restoredToTransactionId: transaction.restoredToTransactionId ?? null,
+      shopPurchaseItems:
+        transaction.shopPurchaseItems?.map(
+          cloneShopPurchaseItemSnapshotForSync,
+        ) ?? null,
+      shopPurchaseTotalCost: transaction.shopPurchaseTotalCost ?? null,
+      shopSkuId: transaction.shopSkuId ?? null,
+      shopSkuName: transaction.shopSkuName ?? null,
       sourceTransactionId: transaction.id,
       stateAfter,
       stateHash,
@@ -649,7 +774,9 @@ function isEmptySyncProjectionHead(head: SyncProjectionHead) {
   return (
     head.activeChildIds.length === 0 &&
     head.archivedChildIds.length === 0 &&
-    Object.keys(head.childrenById).length === 0
+    Object.keys(head.childrenById).length === 0 &&
+    head.shop.skuOrder.length === 0 &&
+    Object.keys(head.shop.skusById).length === 0
   );
 }
 
@@ -693,6 +820,10 @@ function validateProjectionEntryChain(
       pointsBefore: entry.pointsBefore,
       restoredFromTransactionId: entry.restoredFromTransactionId,
       restoredToTransactionId: entry.restoredToTransactionId,
+      shopPurchaseItems: entry.shopPurchaseItems,
+      shopPurchaseTotalCost: entry.shopPurchaseTotalCost,
+      shopSkuId: entry.shopSkuId,
+      shopSkuName: entry.shopSkuName,
       sourceTransactionId: entry.sourceTransactionId,
       stateHash: entry.stateHash,
     });
@@ -734,11 +865,168 @@ function areSyncChildrenEquivalentIgnoringPoints(
   );
 }
 
+function areSyncShopSkusEquivalent(
+  left: ShopSkuSnapshot | null,
+  right: ShopSkuSnapshot | null,
+) {
+  if (!left && !right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    left.createdAt === right.createdAt &&
+    left.id === right.id &&
+    left.image.aspectRatio === right.image.aspectRatio &&
+    left.image.base64 === right.image.base64 &&
+    left.image.height === right.image.height &&
+    left.image.mimeType === right.image.mimeType &&
+    left.image.width === right.image.width &&
+    left.name === right.name &&
+    left.pointCost === right.pointCost &&
+    left.updatedAt === right.updatedAt
+  );
+}
+
+function normalizeSyncShopOrder(shop: SharedShopState) {
+  const seenIds = new Set<string>();
+
+  return [
+    ...shop.skuOrder.filter((skuId) => {
+      if (seenIds.has(skuId) || !shop.skusById[skuId]) {
+        return false;
+      }
+
+      seenIds.add(skuId);
+      return true;
+    }),
+    ...Object.keys(shop.skusById).filter((skuId) => !seenIds.has(skuId)),
+  ];
+}
+
+function areSyncShopStatesEquivalent(
+  left: SharedShopState,
+  right: SharedShopState,
+) {
+  const leftIds = Object.keys(left.skusById).sort();
+  const rightIds = Object.keys(right.skusById).sort();
+
+  if (
+    leftIds.length !== rightIds.length ||
+    normalizeSyncShopOrder(left).join('|') !==
+      normalizeSyncShopOrder(right).join('|')
+  ) {
+    return false;
+  }
+
+  return leftIds.every((skuId) =>
+    areSyncShopSkusEquivalent(
+      left.skusById[skuId] ?? null,
+      right.skusById[skuId] ?? null,
+    ),
+  );
+}
+
+function mergeSyncShopStates(args: {
+  baseShop: SharedShopState;
+  leftShop: SharedShopState;
+  rightShop: SharedShopState;
+}) {
+  const { baseShop, leftShop, rightShop } = args;
+
+  if (areSyncShopStatesEquivalent(leftShop, rightShop)) {
+    return {
+      ok: true as const,
+      shop: cloneSharedShopStateForSync(leftShop),
+    };
+  }
+
+  const mergedSkuIds = sortIds([
+    ...new Set([
+      ...Object.keys(baseShop.skusById),
+      ...Object.keys(leftShop.skusById),
+      ...Object.keys(rightShop.skusById),
+    ]),
+  ]);
+  const mergedSkusById: Record<string, ShopSkuSnapshot> = {};
+
+  for (const skuId of mergedSkuIds) {
+    const baseSku = baseShop.skusById[skuId] ?? null;
+    const leftSku = leftShop.skusById[skuId] ?? null;
+    const rightSku = rightShop.skusById[skuId] ?? null;
+
+    if (areSyncShopSkusEquivalent(leftSku, rightSku)) {
+      if (leftSku) {
+        mergedSkusById[skuId] = cloneShopSkuSnapshotForSync(leftSku);
+      }
+      continue;
+    }
+
+    if (areSyncShopSkusEquivalent(baseSku, leftSku) && rightSku) {
+      mergedSkusById[skuId] = cloneShopSkuSnapshotForSync(rightSku);
+      continue;
+    }
+
+    if (areSyncShopSkusEquivalent(baseSku, rightSku) && leftSku) {
+      mergedSkusById[skuId] = cloneShopSkuSnapshotForSync(leftSku);
+      continue;
+    }
+
+    return {
+      message:
+        'The devices changed the same shop item in different ways, which this sync phase does not reconcile.',
+      ok: false as const,
+      skuId,
+    };
+  }
+
+  const baseOrder = normalizeSyncShopOrder(baseShop);
+  const leftOrder = normalizeSyncShopOrder(leftShop);
+  const rightOrder = normalizeSyncShopOrder(rightShop);
+  const orderSource =
+    leftOrder.join('|') === rightOrder.join('|')
+      ? leftOrder
+      : baseOrder.join('|') === leftOrder.join('|')
+        ? rightOrder
+        : baseOrder.join('|') === rightOrder.join('|')
+          ? leftOrder
+          : null;
+
+  if (!orderSource) {
+    return {
+      message:
+        'The devices changed shop ordering in different ways, which this sync phase does not reconcile.',
+      ok: false as const,
+      skuId: null,
+    };
+  }
+
+  const mergedShop: SharedShopState = {
+    skuOrder: normalizeSyncShopOrder({
+      skuOrder: orderSource,
+      skusById: mergedSkusById,
+    }),
+    skusById: mergedSkusById,
+  };
+
+  return {
+    ok: true as const,
+    shop: mergedShop,
+  };
+}
+
 function createEmptySyncProjectionHead(): SyncProjectionHead {
   return {
     activeChildIds: [],
     archivedChildIds: [],
     childrenById: {},
+    shop: {
+      skuOrder: [],
+      skusById: {},
+    },
   };
 }
 
@@ -946,27 +1234,6 @@ export function reconcileSyncProjections(args: {
     (commonBaseResult.rightBaseIndex ?? -1) + 1,
   );
 
-  for (const [side, entries] of [
-    ['left', leftPostBaseEntries] as const,
-    ['right', rightPostBaseEntries] as const,
-  ]) {
-    const unsupportedEntry = entries.find(
-      (entry) =>
-        entry.kind !== 'points-adjusted' && entry.kind !== 'points-set',
-    );
-
-    if (unsupportedEntry) {
-      return {
-        code: 'unsupported-post-base-transaction',
-        entryHash: unsupportedEntry.hash,
-        entryKind: unsupportedEntry.kind,
-        message: `The ${side} device has unsupported post-base transaction kind ${unsupportedEntry.kind}.`,
-        ok: false,
-        side,
-      };
-    }
-  }
-
   const baseHead =
     commonBaseResult.commonBaseEntry?.stateAfter ??
     createEmptySyncProjectionHead();
@@ -1038,10 +1305,37 @@ export function reconcileSyncProjections(args: {
     };
   }
 
+  const mergedShopResult = mergeSyncShopStates({
+    baseShop: baseHead.shop,
+    leftShop: leftProjection.head.shop,
+    rightShop: rightProjection.head.shop,
+  });
+
+  if (!mergedShopResult.ok) {
+    const conflictingEntry =
+      [...leftPostBaseEntries, ...rightPostBaseEntries].find(
+        (entry) =>
+          entry.shopSkuId === mergedShopResult.skuId ||
+          (mergedShopResult.skuId == null &&
+            (entry.kind === 'shop-sku-created' ||
+              entry.kind === 'shop-sku-reordered' ||
+              entry.kind === 'shop-sku-updated')),
+      ) ?? null;
+
+    return {
+      code: 'shop-state-mismatch',
+      entryHash: conflictingEntry?.hash,
+      entryKind: conflictingEntry?.kind,
+      message: mergedShopResult.message,
+      ok: false,
+    };
+  }
+
   const mergedHead: SyncProjectionHead = {
     activeChildIds: [...baseHead.activeChildIds],
     archivedChildIds: [...baseHead.archivedChildIds],
     childrenById,
+    shop: mergedShopResult.shop,
   };
 
   return {
@@ -1205,6 +1499,10 @@ export function serializeSyncProjection(projection: SyncProjection) {
     pointsBefore: entry.pointsBefore,
     restoredFromTransactionId: entry.restoredFromTransactionId,
     restoredToTransactionId: entry.restoredToTransactionId,
+    shopPurchaseItems: entry.shopPurchaseItems,
+    shopPurchaseTotalCost: entry.shopPurchaseTotalCost,
+    shopSkuId: entry.shopSkuId,
+    shopSkuName: entry.shopSkuName,
     sourceTransactionId: entry.sourceTransactionId,
     stateAfter: entry.stateAfter,
     stateHash: entry.stateHash,
@@ -1236,6 +1534,10 @@ export function serializeSyncBundle(bundle: SyncBundle) {
         pointsBefore: entry.pointsBefore,
         restoredFromTransactionId: entry.restoredFromTransactionId,
         restoredToTransactionId: entry.restoredToTransactionId,
+        shopPurchaseItems: entry.shopPurchaseItems,
+        shopPurchaseTotalCost: entry.shopPurchaseTotalCost,
+        shopSkuId: entry.shopSkuId,
+        shopSkuName: entry.shopSkuName,
         sourceTransactionId: entry.sourceTransactionId,
         stateAfter: entry.stateAfter,
         stateHash: entry.stateHash,
