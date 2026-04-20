@@ -18,6 +18,21 @@ import {
 import type { SharedDocument } from '../../src/state/sharedTypes';
 import { createMemoryStorage } from '../testUtils/memoryStorage';
 
+function createShopImage(overrides?: {
+  base64?: string;
+  height?: number;
+  mimeType?: string;
+  width?: number;
+}) {
+  return {
+    aspectRatio: '4:3' as const,
+    base64: overrides?.base64 ?? 'fixture-image-base64',
+    height: overrides?.height ?? 300,
+    mimeType: overrides?.mimeType ?? 'image/jpeg',
+    width: overrides?.width ?? 400,
+  };
+}
+
 function expectChildId(
   document: ReturnType<typeof createInitialSharedDocument>,
 ) {
@@ -188,6 +203,67 @@ describe('sharedSync phase 1 projection', () => {
     expect(setEntry?.pointsBefore).toBe(1);
     expect(setEntry?.pointsAfter).toBe(7);
     expect(projection.headHash).toBe(setEntry?.hash);
+  });
+
+  it('projects shop catalog state and purchase metadata into the sync domain', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-shop-projection',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = expectChildId(store.getState().document);
+    expect(store.getState().setPoints(childId, 10).ok).toBe(true);
+    expect(
+      store.getState().createShopSku({
+        image: createShopImage({ base64: 'puzzle' }),
+        name: 'Puzzle',
+        pointCost: 4,
+      }).ok,
+    ).toBe(true);
+
+    const skuId = store.getState().document.head.shop.skuOrder[0];
+
+    if (!skuId) {
+      throw new Error(
+        'Expected a shop item before deriving the sync projection.',
+      );
+    }
+
+    expect(
+      store.getState().completeShopPurchase(childId, [{ quantity: 2, skuId }])
+        .ok,
+    ).toBe(true);
+
+    const projection = deriveSyncProjection(store.getState().document);
+    const purchaseEntry = projection.entries.at(-1);
+
+    expect(projection.scope).toBe('family-ledger');
+    expect(projection.head.shop).toEqual(store.getState().document.head.shop);
+    expect(projection.entries.map((entry) => entry.kind)).toEqual([
+      'child-created',
+      'points-set',
+      'shop-sku-created',
+      'shop-purchase-completed',
+    ]);
+    expect(purchaseEntry).toMatchObject({
+      childId,
+      kind: 'shop-purchase-completed',
+      pointsAfter: 2,
+      pointsBefore: 10,
+      shopPurchaseItems: [
+        {
+          lineTotal: 8,
+          pointCost: 4,
+          quantity: 2,
+          skuId,
+          skuName: 'Puzzle',
+        },
+      ],
+      shopPurchaseTotalCost: 8,
+    });
   });
 
   it('rejects projections from an older sync schema version', () => {
@@ -587,13 +663,153 @@ describe('sharedSync phase 3 reconciliation', () => {
     });
 
     expect(result).toEqual({
-      code: 'unsupported-post-base-transaction',
-      entryHash: leftProjection.entries.at(-1)?.hash,
-      entryKind: 'child-archived',
+      childId,
+      code: 'child-shape-mismatch',
       message:
-        'The left device has unsupported post-base transaction kind child-archived.',
+        'The devices disagree about a child outside of point totals, which Phase 3 does not reconcile.',
       ok: false,
-      side: 'left',
+    });
+  });
+
+  it('merges one-sided shop catalog changes into the shared sync head', () => {
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-shop-merge-seed',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(
+      seedStore.getState().createShopSku({
+        image: createShopImage({ base64: 'cards' }),
+        name: 'Cards',
+        pointCost: 3,
+      }).ok,
+    ).toBe(true);
+
+    const skuId = seedStore.getState().document.head.shop.skuOrder[0];
+
+    if (!skuId) {
+      throw new Error('Expected a seeded shop item before reconciliation.');
+    }
+
+    const leftStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-shop-merge-left',
+      ),
+      storage: createMemoryStorage(),
+    });
+    const rightStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-shop-merge-right',
+      ),
+      storage: createMemoryStorage(),
+    });
+
+    expect(
+      leftStore.getState().updateShopSku(skuId, {
+        image: createShopImage({
+          base64: 'cards-updated',
+          height: 600,
+          width: 800,
+        }),
+        name: 'Cards Deluxe',
+        pointCost: 6,
+      }).ok,
+    ).toBe(true);
+
+    const result = reconcileSyncProjections({
+      leftProjection: deriveSyncProjection(leftStore.getState().document),
+      rightProjection: deriveSyncProjection(rightStore.getState().document),
+    });
+
+    expect(result).toMatchObject({
+      childReconciliations: [],
+      mode: 'merged',
+      ok: true,
+    });
+    if (!result.ok) {
+      throw new Error('Expected the shop reconciliation to succeed.');
+    }
+
+    expect(result.mergedHead.shop.skuOrder).toEqual([skuId]);
+    expect(result.mergedHead.shop.skusById[skuId]).toMatchObject({
+      id: skuId,
+      image: createShopImage({
+        base64: 'cards-updated',
+        height: 600,
+        width: 800,
+      }),
+      name: 'Cards Deluxe',
+      pointCost: 6,
+    });
+  });
+
+  it('rejects conflicting shop edits that touch the same SKU differently', () => {
+    const seedStore = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-sync-shop-conflict-seed',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(
+      seedStore.getState().createShopSku({
+        image: createShopImage({ base64: 'paint' }),
+        name: 'Paint Set',
+        pointCost: 4,
+      }).ok,
+    ).toBe(true);
+
+    const skuId = seedStore.getState().document.head.shop.skuOrder[0];
+
+    if (!skuId) {
+      throw new Error('Expected a seeded shop item before conflict testing.');
+    }
+
+    const leftStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-shop-conflict-left',
+      ),
+      storage: createMemoryStorage(),
+    });
+    const rightStore = createSharedStore({
+      initialDocument: cloneDocumentForDevice(
+        seedStore.getState().document,
+        'device-sync-shop-conflict-right',
+      ),
+      storage: createMemoryStorage(),
+    });
+
+    expect(
+      leftStore.getState().updateShopSku(skuId, {
+        image: createShopImage({ base64: 'paint-left' }),
+        name: 'Paint Set Left',
+        pointCost: 5,
+      }).ok,
+    ).toBe(true);
+    expect(
+      rightStore.getState().updateShopSku(skuId, {
+        image: createShopImage({ base64: 'paint-right' }),
+        name: 'Paint Set Right',
+        pointCost: 6,
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      reconcileSyncProjections({
+        leftProjection: deriveSyncProjection(leftStore.getState().document),
+        rightProjection: deriveSyncProjection(rightStore.getState().document),
+      }),
+    ).toMatchObject({
+      code: 'shop-state-mismatch',
+      entryKind: 'shop-sku-updated',
+      message:
+        'The devices changed the same shop item in different ways, which this sync phase does not reconcile.',
+      ok: false,
     });
   });
 });

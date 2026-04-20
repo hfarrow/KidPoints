@@ -19,6 +19,8 @@ function RootNavigator() {
         <Stack.Screen name="sync" />
         <Stack.Screen name="sync-testbed" />
         <Stack.Screen name="logs" />
+        <Stack.Screen name="shop-history" />
+        <Stack.Screen name="shop-sku-editor" />
         <Stack.Screen name="transactions" />
         <Stack.Screen
           name="parent-unlock"

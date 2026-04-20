@@ -12,6 +12,21 @@ import { buildSharedTimerViewModel } from '../../src/state/sharedTimer';
 import type { SharedDocument } from '../../src/state/sharedTypes';
 import { createMemoryStorage } from '../testUtils/memoryStorage';
 
+function createShopImage(overrides?: {
+  base64?: string;
+  height?: number;
+  mimeType?: string;
+  width?: number;
+}) {
+  return {
+    aspectRatio: '4:3' as const,
+    base64: overrides?.base64 ?? 'fixture-image-base64',
+    height: overrides?.height ?? 300,
+    mimeType: overrides?.mimeType ?? 'image/jpeg',
+    width: overrides?.width ?? 400,
+  };
+}
+
 function cloneDocumentForDevice(document: SharedDocument, deviceId: string) {
   return {
     ...document,
@@ -330,6 +345,278 @@ describe('sharedStore transaction graph', () => {
     expect(orphanedSetRow?.isOrphaned).toBe(true);
     expect(orphanedSetRow?.isRestorableNow).toBe(true);
     expect(rows[0]?.summaryText).toBe('Parent PIN Unlock Failed');
+  });
+
+  it('creates, updates, and reorders shop items while recording transaction metadata', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-shop-catalog',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(
+      store.getState().createShopSku({
+        image: createShopImage({ base64: 'robot' }),
+        name: ' Robot Toy ',
+        pointCost: 12,
+      }).ok,
+    ).toBe(true);
+    expect(
+      store.getState().createShopSku({
+        image: createShopImage({ base64: 'book' }),
+        name: 'Book',
+        pointCost: 5,
+      }).ok,
+    ).toBe(true);
+
+    const [firstSkuId, secondSkuId] =
+      store.getState().document.head.shop.skuOrder;
+
+    if (!firstSkuId || !secondSkuId) {
+      throw new Error('Expected two shop items in the catalog.');
+    }
+
+    expect(
+      store.getState().updateShopSku(firstSkuId, {
+        image: createShopImage({
+          base64: 'robot-updated',
+          height: 600,
+          width: 800,
+        }),
+        name: 'Robot Toy Deluxe',
+        pointCost: 15,
+      }).ok,
+    ).toBe(true);
+    expect(store.getState().reorderShopSkus([secondSkuId, firstSkuId]).ok).toBe(
+      true,
+    );
+
+    const document = store.getState().document;
+    const rows = deriveTransactionRows(document);
+
+    expect(document.head.shop.skuOrder).toEqual([secondSkuId, firstSkuId]);
+    expect(document.head.shop.skusById[firstSkuId]).toMatchObject({
+      id: firstSkuId,
+      image: createShopImage({
+        base64: 'robot-updated',
+        height: 600,
+        width: 800,
+      }),
+      name: 'Robot Toy Deluxe',
+      pointCost: 15,
+    });
+    expect(
+      document.transactions.slice(-4).map((transaction) => transaction.kind),
+    ).toEqual([
+      'shop-sku-created',
+      'shop-sku-created',
+      'shop-sku-updated',
+      'shop-sku-reordered',
+    ]);
+    expect(document.transactions.at(-2)).toMatchObject({
+      kind: 'shop-sku-updated',
+      shopSkuId: firstSkuId,
+      shopSkuName: 'Robot Toy Deluxe',
+    });
+    expect(rows[0]?.summaryText).toBe('Reordered Shop Items');
+    expect(rows[1]?.summaryText).toBe('Robot Toy Deluxe Updated');
+    expect(rows[2]?.summaryText).toBe('Book Added To Shop');
+    expect(rows[3]?.summaryText).toBe('Robot Toy Added To Shop');
+  });
+
+  it('completes a shop purchase, deducts points, and stores itemized history', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-shop-purchase',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error('Expected a child before purchasing from the shop.');
+    }
+
+    expect(store.getState().setPoints(childId, 20).ok).toBe(true);
+    expect(
+      store.getState().createShopSku({
+        image: createShopImage({ base64: 'slime' }),
+        name: 'Slime',
+        pointCost: 4,
+      }).ok,
+    ).toBe(true);
+    expect(
+      store.getState().createShopSku({
+        image: createShopImage({ base64: 'stickers' }),
+        name: 'Sticker Pack',
+        pointCost: 3,
+      }).ok,
+    ).toBe(true);
+
+    const [slimeSkuId, stickerSkuId] =
+      store.getState().document.head.shop.skuOrder;
+
+    if (!slimeSkuId || !stickerSkuId) {
+      throw new Error('Expected two SKUs before checkout.');
+    }
+
+    expect(
+      store.getState().completeShopPurchase(childId, [
+        { quantity: 2, skuId: slimeSkuId },
+        { quantity: 1, skuId: stickerSkuId },
+      ]).ok,
+    ).toBe(true);
+
+    const document = store.getState().document;
+    const purchaseTransaction = document.transactions.at(-1);
+    const rows = deriveTransactionRows(document);
+
+    expect(document.head.childrenById[childId]?.points).toBe(9);
+    expect(purchaseTransaction).toMatchObject({
+      childId,
+      childName: 'Ava',
+      kind: 'shop-purchase-completed',
+      pointsAfter: 9,
+      pointsBefore: 20,
+      shopPurchaseTotalCost: 11,
+    });
+    expect(purchaseTransaction?.shopPurchaseItems).toEqual([
+      {
+        lineTotal: 8,
+        pointCost: 4,
+        quantity: 2,
+        skuId: slimeSkuId,
+        skuName: 'Slime',
+      },
+      {
+        lineTotal: 3,
+        pointCost: 3,
+        quantity: 1,
+        skuId: stickerSkuId,
+        skuName: 'Sticker Pack',
+      },
+    ]);
+    expect(rows[0]?.summaryText).toBe('Ava Purchased 3 Items [20 > 9]');
+  });
+
+  it('restores shop catalog state and child points when rewinding before a purchase', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-shop-restore',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error('Expected a child in the shop restore test.');
+    }
+
+    expect(store.getState().setPoints(childId, 10).ok).toBe(true);
+    expect(
+      store.getState().createShopSku({
+        image: createShopImage({ base64: 'ball' }),
+        name: 'Ball',
+        pointCost: 3,
+      }).ok,
+    ).toBe(true);
+    expect(
+      store.getState().createShopSku({
+        image: createShopImage({ base64: 'kite' }),
+        name: 'Kite',
+        pointCost: 4,
+      }).ok,
+    ).toBe(true);
+
+    const [ballSkuId, kiteSkuId] = store.getState().document.head.shop.skuOrder;
+
+    if (!ballSkuId || !kiteSkuId) {
+      throw new Error('Expected two SKUs in the shop restore test.');
+    }
+
+    const targetTransactionId =
+      store.getState().document.transactions.at(-1)?.id ?? null;
+
+    expect(
+      store
+        .getState()
+        .completeShopPurchase(childId, [{ quantity: 1, skuId: ballSkuId }]).ok,
+    ).toBe(true);
+    expect(store.getState().reorderShopSkus([kiteSkuId, ballSkuId]).ok).toBe(
+      true,
+    );
+    expect(
+      store.getState().restoreTransaction(targetTransactionId ?? '').ok,
+    ).toBe(true);
+
+    const document = store.getState().document;
+    const rows = deriveTransactionRows(document);
+
+    expect(document.head.childrenById[childId]?.points).toBe(10);
+    expect(document.head.shop.skuOrder).toEqual([ballSkuId, kiteSkuId]);
+    expect(rows[0]?.summaryText).toBe('Restored App to Kite Added To Shop');
+  });
+
+  it('rejects invalid shop purchases without changing the ledger head', () => {
+    const store = createSharedStore({
+      initialDocument: createInitialSharedDocument({
+        deviceId: 'device-shop-rejections',
+      }),
+      storage: createMemoryStorage(),
+    });
+
+    expect(store.getState().addChild('Ava').ok).toBe(true);
+    const childId = store.getState().document.head.activeChildIds[0];
+
+    if (!childId) {
+      throw new Error('Expected a child in the shop rejection test.');
+    }
+
+    expect(store.getState().setPoints(childId, 2).ok).toBe(true);
+    expect(
+      store.getState().createShopSku({
+        image: createShopImage({ base64: 'lego' }),
+        name: 'LEGO Minifig',
+        pointCost: 5,
+      }).ok,
+    ).toBe(true);
+
+    const skuId = store.getState().document.head.shop.skuOrder[0];
+
+    if (!skuId) {
+      throw new Error('Expected one SKU in the shop rejection test.');
+    }
+
+    const headTransactionId =
+      store.getState().document.currentHeadTransactionId;
+    const transactionCount = store.getState().document.transactions.length;
+
+    expect(store.getState().completeShopPurchase(childId, []).ok).toBe(false);
+    expect(
+      store
+        .getState()
+        .completeShopPurchase(childId, [{ quantity: 1, skuId: 'missing-sku' }]),
+    ).toEqual({
+      error: 'One of the cart items no longer exists in the shop.',
+      ok: false,
+    });
+    expect(
+      store.getState().completeShopPurchase(childId, [{ quantity: 1, skuId }]),
+    ).toEqual({
+      error: 'That child does not have enough points for this cart.',
+      ok: false,
+    });
+    expect(store.getState().document.currentHeadTransactionId).toBe(
+      headTransactionId,
+    );
+    expect(store.getState().document.transactions).toHaveLength(
+      transactionCount,
+    );
   });
 });
 

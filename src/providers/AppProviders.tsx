@@ -9,6 +9,7 @@ import { BackupProvider } from '../features/backup/BackupProvider';
 import { NotificationsProvider } from '../features/notifications/NotificationsProvider';
 import { ParentSessionProvider } from '../features/parent/parentSessionContext';
 import { AppSettingsProvider } from '../features/settings/appSettingsContext';
+import { ShopUiStoreProvider } from '../features/shop/shopUiStore';
 import {
   createModuleLogger,
   getAppLogLevel,
@@ -97,12 +98,14 @@ export function AppProviders({ children }: PropsWithChildren) {
         <SharedStoreProvider>
           <BackupProvider>
             <ParentSessionProvider>
-              <AppSettingsProvider>
-                <NotificationsProvider>
-                  <AppLogLevelObserver />
-                  {children}
-                </NotificationsProvider>
-              </AppSettingsProvider>
+              <ShopUiStoreProvider>
+                <AppSettingsProvider>
+                  <NotificationsProvider>
+                    <AppLogLevelObserver />
+                    {children}
+                  </NotificationsProvider>
+                </AppSettingsProvider>
+              </ShopUiStoreProvider>
             </ParentSessionProvider>
           </BackupProvider>
         </SharedStoreProvider>

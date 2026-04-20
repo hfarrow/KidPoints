@@ -297,6 +297,9 @@ function cloneTransactionRecord(
     ...transaction,
     affectedChildIds: [...transaction.affectedChildIds],
     eventIds: [...transaction.eventIds],
+    shopPurchaseItems: transaction.shopPurchaseItems?.map((item) => ({
+      ...item,
+    })),
     stateAfter: {
       ...transaction.stateAfter,
       activeChildIds: [...transaction.stateAfter.activeChildIds],
@@ -306,6 +309,22 @@ function cloneTransactionRecord(
           ([childId, child]) => [childId, { ...child }],
         ),
       ),
+      shop: {
+        skuOrder: [...transaction.stateAfter.shop.skuOrder],
+        skusById: Object.fromEntries(
+          Object.entries(transaction.stateAfter.shop.skusById).map(
+            ([skuId, sku]) => [
+              skuId,
+              {
+                ...sku,
+                image: {
+                  ...sku.image,
+                },
+              },
+            ],
+          ),
+        ),
+      },
       timerConfig: { ...transaction.stateAfter.timerConfig },
       timerState: { ...transaction.stateAfter.timerState },
     },
